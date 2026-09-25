@@ -1,0 +1,86 @@
+version: "3.8"
+
+services:
+  # ==========================================
+  # Database Service: PostgreSQL 15
+  # ==========================================
+  db:
+    image: postgres:15-alpine
+    container_name: investai_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-investai_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-investai_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - investai_network
+
+  # ==========================================
+  # Backend Service: FastAPI
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: investai_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - PROJECT_NAME=${PROJECT_NAME:-InvestAI Portfolio & Risk Platform}
+      - API_V1_STR=${API_V1_STR:-/api/v1}
+      - SECRET_KEY=${SECRET_KEY:-change_this_to_a_secure_random_secret_in_production_32_chars_min}
+      - POSTGRES_SERVER=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-investai_db}
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-["http://localhost:5173","http://localhost:3000","http://127.0.0.1:5173"]}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - investai_network
+
+  # ==========================================
+  # Frontend Service: React (Vite)
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: investai_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+    depends_on:
+      - backend
+    networks:
+      - investai_network
+
+volumes:
+  postgres_data:
+    name: investai_postgres_data
+
+networks:
+  investai_network:
+    name: investai_network
+    driver: bridge
+
