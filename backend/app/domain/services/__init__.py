@@ -1,6 +1,17 @@
 """Domain Services Package for Quantitative Financial Operations"""
 from app.domain.services.calendar_service import MarketCalendarService
 from app.domain.services.fx_service import FXService
+from app.domain.services.markov_regime import (
+    MarkovRegimeModel,
+    MarketRegime,
+    get_dynamic_rebalance_band,
+)
+from app.domain.services.numerical_stability import (
+    matrix_condition_number,
+    nearest_positive_definite,
+    safe_cholesky,
+    safe_pinv,
+)
 from app.domain.services.portfolio_optimizer import (
     calculate_diversification_ratio,
     calculate_portfolio_volatility,
@@ -29,4 +40,11 @@ __all__ = [
     "calculate_portfolio_volatility",
     "calculate_risk_contributions",
     "calculate_diversification_ratio",
+    "safe_cholesky",
+    "safe_pinv",
+    "nearest_positive_definite",
+    "matrix_condition_number",
+    "MarketRegime",
+    "MarkovRegimeModel",
+    "get_dynamic_rebalance_band",
 ]
