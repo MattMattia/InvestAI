@@ -73,7 +73,7 @@ export interface PortfolioCreatePayload {
 
 export interface PortfolioUpdatePayload {
   name?: string;
-  investor_profile?: InvestorProfile;
+  investor_profile?: InvestorProfile | string;
   cash_balance_ars?: number;
   cash_balance_usd?: number;
 }

@@ -26,6 +26,7 @@ export const App: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [isRebalanceOpen, setIsRebalanceOpen] = useState<boolean>(false);
+  const [updatingProfile, setUpdatingProfile] = useState<boolean>(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   // Load portfolios on mount
@@ -153,22 +154,37 @@ export const App: React.FC = () => {
     return await api.generatePortfolioRebalance(selectedId, { targets });
   };
 
-  const activeProfile = currentPortfolio?.investor_profile || "MODERATE";
-  const profileBadgeMap: Record<InvestorProfile, { label: string; cls: string }> = {
-    CONSERVATIVE: {
-      label: "Perfil Conservador",
-      cls: "bg-emerald-950/80 text-emerald-400 border-emerald-800",
-    },
-    MODERATE: {
-      label: "Perfil Moderado",
-      cls: "bg-sky-950/80 text-sky-400 border-sky-800",
-    },
-    AGGRESSIVE: {
-      label: "Perfil Agresivo",
-      cls: "bg-purple-950/80 text-purple-400 border-purple-800",
-    },
+  const handleUpdateProfile = async (newProfile: InvestorProfile) => {
+    if (!selectedId || !currentPortfolio) return;
+    setUpdatingProfile(true);
+    try {
+      // a) Call api.updatePortfolio with new profile
+      const updated = await api.updatePortfolio(selectedId, {
+        investor_profile: newProfile,
+      });
+
+      // b) Update local state currentPortfolio and portfolios list
+      setCurrentPortfolio(updated);
+      setPortfolios((prev) =>
+        prev.map((p) =>
+          p.id === updated.id
+            ? { ...p, investor_profile: updated.investor_profile }
+            : p
+        )
+      );
+
+      // c) Re-run evaluateRisk automatically to audit against new thresholds
+      await evaluateRisk(selectedId);
+    } catch (err: any) {
+      setGlobalError(
+        err.response?.data?.message || err.message || "Error al actualizar el perfil del inversor."
+      );
+    } finally {
+      setUpdatingProfile(false);
+    }
   };
-  const activeProfileBadge = profileBadgeMap[activeProfile] || profileBadgeMap.MODERATE;
+
+  const activeProfile = currentPortfolio?.investor_profile || "MODERATE";
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
@@ -178,6 +194,7 @@ export const App: React.FC = () => {
         currentProfile={currentPortfolio?.investor_profile}
         onSelectPortfolio={handleSelectPortfolio}
         onCreatePortfolio={handleCreatePortfolio}
+        onUpdateProfile={handleUpdateProfile}
         onRefresh={() => selectedId && loadPortfolioDetails(selectedId)}
         loading={loading}
       />
@@ -202,20 +219,55 @@ export const App: React.FC = () => {
         {/* Action Header Banner */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-800/60 border border-slate-700/80 rounded-xl p-4 sm:p-5">
           <div>
-            <div className="flex items-center space-x-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <h2 className="text-xl font-bold text-white tracking-tight">
                 {currentPortfolio ? currentPortfolio.name : "Cargando Cartera..."}
               </h2>
               {currentPortfolio && (
-                <span
-                  className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${activeProfileBadge.cls} inline-flex items-center space-x-1`}
-                >
-                  <Compass className="w-3 h-3 mr-1 inline" />
-                  <span>{activeProfileBadge.label}</span>
-                </span>
+                <div className="flex items-center space-x-2">
+                  <div className="relative inline-flex items-center">
+                    <Compass
+                      className={`w-3.5 h-3.5 absolute left-2.5 pointer-events-none ${
+                        activeProfile === "CONSERVATIVE"
+                          ? "text-emerald-400"
+                          : activeProfile === "AGGRESSIVE"
+                          ? "text-purple-400"
+                          : "text-sky-400"
+                      }`}
+                    />
+                    <select
+                      value={activeProfile}
+                      onChange={(e) => handleUpdateProfile(e.target.value as InvestorProfile)}
+                      disabled={updatingProfile}
+                      className={`text-xs font-semibold pl-8 pr-3 py-1.5 rounded-lg border cursor-pointer focus:outline-none shadow-sm transition ${
+                        activeProfile === "CONSERVATIVE"
+                          ? "bg-emerald-950/80 text-emerald-300 border-emerald-700 hover:border-emerald-600"
+                          : activeProfile === "AGGRESSIVE"
+                          ? "bg-purple-950/80 text-purple-300 border-purple-700 hover:border-purple-600"
+                          : "bg-sky-950/80 text-sky-300 border-sky-700 hover:border-sky-600"
+                      }`}
+                      title="Cambiar perfil de inversor y auditar en tiempo real"
+                    >
+                      <option value="CONSERVATIVE" className="bg-slate-900 text-emerald-400">
+                        Conservador (Max 10% Activo | Min 60% RF)
+                      </option>
+                      <option value="MODERATE" className="bg-slate-900 text-sky-400">
+                        Moderado (Max 20% Activo | Min 25% RF)
+                      </option>
+                      <option value="AGGRESSIVE" className="bg-slate-900 text-purple-400">
+                        Agresivo (Max 35% Activo | Sin piso RF)
+                      </option>
+                    </select>
+                  </div>
+                  {updatingProfile && (
+                    <span className="text-[11px] text-slate-400 animate-pulse">
+                      Actualizando reglas...
+                    </span>
+                  )}
+                </div>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-400 mt-1">
               Gestión determinista de tenencias, valuación bimoneda y rebalanceo cuantitativo
             </p>
           </div>

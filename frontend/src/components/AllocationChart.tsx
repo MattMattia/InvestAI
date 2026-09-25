@@ -1,17 +1,18 @@
 import React, { useMemo, useState } from "react";
 import { Portfolio, Holding } from "../types/portfolio";
-import { PieChart, Layers } from "lucide-react";
+import { PieChart, Layers, TrendingUp } from "lucide-react";
 
 interface AllocationChartProps {
   portfolio: Portfolio | null;
   fxCcl?: number;
 }
 
-type ViewMode = "assetType" | "sector";
+type ViewMode = "asset" | "sector" | "assetType";
 
 interface AllocationSlice {
   key: string;
   label: string;
+  subLabel?: string;
   valueArs: number;
   percentage: number;
   count: number;
@@ -29,6 +30,20 @@ const COLOR_PALETTE = [
   "#fb923c", // Orange 400
   "#60a5fa", // Blue 400
   "#a78bfa", // Violet 400
+  "#e879f9", // Fuchsia 400
+  "#4ade80", // Green 400
+  "#f87171", // Red 400
+  "#facc15", // Yellow 400
+  "#22d3ee", // Cyan 400
+  "#ec4899", // Pink 500
+  "#14b8a6", // Teal 500
+  "#6366f1", // Indigo 500
+  "#8b5cf6", // Violet 500
+  "#d946ef", // Fuchsia 500
+  "#06b6d4", // Cyan 500
+  "#10b981", // Emerald 500
+  "#84cc16", // Lime 500
+  "#f59e0b", // Amber 500
   "#94a3b8", // Slate 400
 ];
 
@@ -63,8 +78,9 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
   portfolio,
   fxCcl = 1300.0,
 }) => {
-  const [viewMode, setViewMode] = useState<ViewMode>("assetType");
+  const [viewMode, setViewMode] = useState<ViewMode>("asset");
   const [hoveredSlice, setHoveredSlice] = useState<AllocationSlice | null>(null);
+  const [clickedSlice, setClickedSlice] = useState<AllocationSlice | null>(null);
 
   const { slices, totalValueArs } = useMemo(() => {
     if (!portfolio) return { slices: [], totalValueArs: 0 };
@@ -92,31 +108,80 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
       return { slices: [], totalValueArs: 0 };
     }
 
-    const groupMap: Record<string, { value: number; count: number }> = {};
+    const groupMap: Record<
+      string,
+      { value: number; count: number; label: string; subLabel?: string }
+    > = {};
 
     if (viewMode === "assetType") {
       holdings.forEach((h) => {
         const typeKey = h.asset?.asset_type || "OTHER";
         const val = getHoldingValueArs(h);
-        if (!groupMap[typeKey]) groupMap[typeKey] = { value: 0, count: 0 };
+        if (!groupMap[typeKey]) {
+          groupMap[typeKey] = {
+            value: 0,
+            count: 0,
+            label: ASSET_TYPE_LABELS[typeKey] || typeKey,
+          };
+        }
         groupMap[typeKey].value += val;
         groupMap[typeKey].count += 1;
       });
 
       if (totalCashArs > 0) {
-        groupMap["CASH"] = { value: totalCashArs, count: 1 };
+        groupMap["CASH"] = {
+          value: totalCashArs,
+          count: 1,
+          label: ASSET_TYPE_LABELS["CASH"],
+        };
       }
-    } else {
+    } else if (viewMode === "sector") {
       holdings.forEach((h) => {
         const secKey = h.asset?.sector || "OTHER";
         const val = getHoldingValueArs(h);
-        if (!groupMap[secKey]) groupMap[secKey] = { value: 0, count: 0 };
+        if (!groupMap[secKey]) {
+          groupMap[secKey] = {
+            value: 0,
+            count: 0,
+            label: SECTOR_LABELS[secKey] || secKey,
+          };
+        }
         groupMap[secKey].value += val;
         groupMap[secKey].count += 1;
       });
 
       if (totalCashArs > 0) {
-        groupMap["CASH"] = { value: totalCashArs, count: 1 };
+        groupMap["CASH"] = {
+          value: totalCashArs,
+          count: 1,
+          label: SECTOR_LABELS["CASH"],
+        };
+      }
+    } else {
+      // viewMode === "asset" (Por Activo individual)
+      holdings.forEach((h) => {
+        const ticker = h.asset_ticker || "UNKNOWN";
+        const val = getHoldingValueArs(h);
+        const assetName = h.asset?.name && h.asset.name !== ticker ? h.asset.name : undefined;
+        if (!groupMap[ticker]) {
+          groupMap[ticker] = {
+            value: 0,
+            count: 0,
+            label: ticker,
+            subLabel: assetName,
+          };
+        }
+        groupMap[ticker].value += val;
+        groupMap[ticker].count += 1;
+      });
+
+      if (totalCashArs > 0) {
+        groupMap["EFECTIVO"] = {
+          value: totalCashArs,
+          count: 1,
+          label: "EFECTIVO",
+          subLabel: "Saldos ARS / USD",
+        };
       }
     }
 
@@ -127,14 +192,10 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
     const resultSlices: AllocationSlice[] = sortedEntries.map(
       ([key, data], idx) => {
         const pct = (data.value / totalPortfolioArs) * 100;
-        const label =
-          viewMode === "assetType"
-            ? ASSET_TYPE_LABELS[key] || key
-            : SECTOR_LABELS[key] || key;
-
         return {
           key,
-          label,
+          label: data.label,
+          subLabel: data.subLabel,
           valueArs: data.value,
           percentage: round2(pct),
           count: data.count,
@@ -146,7 +207,7 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
     return { slices: resultSlices, totalValueArs: totalPortfolioArs };
   }, [portfolio, fxCcl, viewMode]);
 
-  const activeSlice = hoveredSlice || (slices.length > 0 ? slices[0] : null);
+  const activeSlice = hoveredSlice || clickedSlice || (slices.length > 0 ? slices[0] : null);
 
   const formatCurrency = (val: number) => {
     return new Intl.NumberFormat("es-AR", {
@@ -186,7 +247,7 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
         </div>
         <h4 className="text-sm font-semibold text-slate-200">Sin tenencias para distribuir</h4>
         <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-          Carga un archivo de Balanz o añade activos manualmente para visualizar la diversificación por tipo de activo y sector económico.
+          Carga un archivo de Balanz o añade activos manualmente para visualizar la diversificación por activo individual, sector o tipo de activo.
         </p>
       </div>
     );
@@ -206,12 +267,43 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
           </p>
         </div>
 
-        {/* View Switcher Toggle */}
-        <div className="flex items-center bg-slate-900/90 p-1 rounded-lg border border-slate-700/80 self-stretch sm:self-auto">
+        {/* View Switcher Toggle: Por Activo | Por Sector | Por Tipo de Activo */}
+        <div className="flex items-center bg-slate-900/90 p-1 rounded-lg border border-slate-700/80 self-stretch sm:self-auto gap-1">
+          <button
+            onClick={() => {
+              setViewMode("asset");
+              setHoveredSlice(null);
+              setClickedSlice(null);
+            }}
+            className={`flex-1 sm:flex-initial flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+              viewMode === "asset"
+                ? "bg-sky-600 text-white shadow-sm"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            <span>Por Activo</span>
+          </button>
+          <button
+            onClick={() => {
+              setViewMode("sector");
+              setHoveredSlice(null);
+              setClickedSlice(null);
+            }}
+            className={`flex-1 sm:flex-initial flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+              viewMode === "sector"
+                ? "bg-sky-600 text-white shadow-sm"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+            }`}
+          >
+            <PieChart className="w-3.5 h-3.5" />
+            <span>Por Sector</span>
+          </button>
           <button
             onClick={() => {
               setViewMode("assetType");
               setHoveredSlice(null);
+              setClickedSlice(null);
             }}
             className={`flex-1 sm:flex-initial flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
               viewMode === "assetType"
@@ -222,28 +314,14 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
             <Layers className="w-3.5 h-3.5" />
             <span>Por Tipo de Activo</span>
           </button>
-          <button
-            onClick={() => {
-              setViewMode("sector");
-              setHoveredSlice(null);
-            }}
-            className={`flex-1 sm:flex-initial flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
-              viewMode === "sector"
-                ? "bg-sky-600 text-white shadow-sm"
-                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
-            }`}
-          >
-            <PieChart className="w-3.5 h-3.5" />
-            <span>Por Sector Económico</span>
-          </button>
         </div>
       </div>
 
-      {/* Main Visual Section: SVG Donut + Stacked Bars */}
+      {/* Main Visual Section: SVG Donut + Breakdown List */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
         {/* SVG Interactive Donut Chart */}
         <div className="md:col-span-5 flex flex-col items-center justify-center relative p-2">
-          <div className="relative w-48 h-48 flex items-center justify-center">
+          <div className="relative w-52 h-52 flex items-center justify-center">
             <svg viewBox="0 0 160 160" className="w-full h-full -rotate-90 transform">
               <circle
                 cx="80"
@@ -268,20 +346,32 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
                     strokeDashoffset={segment.strokeDashoffset}
                     className="cursor-pointer transition-all duration-200 hover:opacity-90"
                     onMouseEnter={() => setHoveredSlice(segment)}
+                    onClick={() => setClickedSlice(segment)}
                   />
                 );
               })}
             </svg>
 
             {/* Central Donut Readout */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-4">
-              <span className="text-[11px] font-medium text-slate-400 line-clamp-1 max-w-[110px]">
-                {activeSlice ? activeSlice.label : "Total"}
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-3">
+              <span
+                className="text-xs font-bold text-slate-200 truncate max-w-[125px]"
+                title={activeSlice?.label}
+              >
+                {activeSlice ? activeSlice.label : "Total Cartera"}
               </span>
-              <span className="text-xl font-extrabold text-white tracking-tight">
+              {activeSlice?.subLabel && (
+                <span
+                  className="text-[10px] text-slate-400 truncate max-w-[115px] -mt-0.5"
+                  title={activeSlice.subLabel}
+                >
+                  {activeSlice.subLabel}
+                </span>
+              )}
+              <span className="text-xl font-black text-white tracking-tight mt-0.5">
                 {activeSlice ? `${activeSlice.percentage}%` : "100%"}
               </span>
-              <span className="text-[10px] font-medium text-slate-400 mt-0.5">
+              <span className="text-[10px] font-semibold text-slate-400 mt-0.5">
                 {activeSlice ? formatCurrency(activeSlice.valueArs) : formatCurrency(totalValueArs)}
               </span>
             </div>
@@ -291,9 +381,15 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
         {/* Detailed Breakdown List with Progress Bars */}
         <div className="md:col-span-7 space-y-2.5">
           <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-1">
-            <span>{viewMode === "assetType" ? "Clase de Instrumento" : "Sector Económico"}</span>
+            <span>
+              {viewMode === "asset"
+                ? "Ticker / Activo"
+                : viewMode === "sector"
+                ? "Sector Económico"
+                : "Clase de Instrumento"}
+            </span>
             <div className="flex items-center space-x-6">
-              <span>Monto (ARS)</span>
+              <span>Valuación (ARS)</span>
               <span className="w-12 text-right">Peso</span>
             </div>
           </div>
@@ -305,9 +401,10 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
                 <div
                   key={slice.key}
                   onMouseEnter={() => setHoveredSlice(slice)}
+                  onClick={() => setClickedSlice(slice)}
                   className={`p-2 rounded-lg transition border cursor-pointer ${
                     isSelected
-                      ? "bg-slate-900/90 border-slate-600 shadow-sm"
+                      ? "bg-slate-900/90 border-slate-600 shadow-sm ring-1 ring-sky-500/30"
                       : "bg-slate-900/40 border-slate-700/60 hover:bg-slate-900/60 hover:border-slate-600"
                   }`}
                 >
@@ -317,14 +414,24 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
                         className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                         style={{ backgroundColor: slice.color }}
                       />
-                      <span className="font-semibold text-slate-200 truncate" title={slice.label}>
-                        {slice.label}
-                      </span>
-                      {slice.count > 0 && slice.key !== "CASH" && (
-                        <span className="text-[10px] text-slate-500 flex-shrink-0">
-                          ({slice.count} {slice.count === 1 ? "activo" : "activos"})
+                      <div className="truncate flex items-baseline space-x-1.5">
+                        <span className="font-bold text-slate-100 font-mono text-xs">
+                          {slice.label}
                         </span>
-                      )}
+                        {slice.subLabel && (
+                          <span
+                            className="text-[11px] text-slate-400 truncate max-w-[160px] sm:max-w-[200px]"
+                            title={slice.subLabel}
+                          >
+                            {slice.subLabel}
+                          </span>
+                        )}
+                        {slice.count > 0 && viewMode !== "asset" && slice.key !== "CASH" && (
+                          <span className="text-[10px] text-slate-500 flex-shrink-0">
+                            ({slice.count} {slice.count === 1 ? "activo" : "activos"})
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center space-x-4 flex-shrink-0">
@@ -367,6 +474,7 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
               }}
               className="h-full transition-all hover:brightness-125 cursor-pointer first:rounded-l-full last:rounded-r-full"
               onMouseEnter={() => setHoveredSlice(slice)}
+              onClick={() => setClickedSlice(slice)}
             />
           ))}
         </div>

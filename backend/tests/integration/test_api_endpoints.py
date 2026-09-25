@@ -261,6 +261,37 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(order["estimated_shares"], 0)
         self.assertTrue(plan_data["is_liquidity_sufficient"])
 
+    async def test_portfolio_update_investor_profile(self) -> None:
+        # Create portfolio with default MODERATE profile
+        p_res = await self.client.post(
+            "/api/v1/portfolios",
+            json={"name": "Cartera Perfil Test", "investor_profile": "MODERATE"},
+        )
+        self.assertEqual(p_res.status_code, 201)
+        port_id = p_res.json()["id"]
+        self.assertEqual(p_res.json()["investor_profile"], "MODERATE")
+
+        # Update to CONSERVATIVE
+        patch_res = await self.client.patch(
+            f"/api/v1/portfolios/{port_id}",
+            json={"investor_profile": "CONSERVATIVE"},
+        )
+        self.assertEqual(patch_res.status_code, 200)
+        self.assertEqual(patch_res.json()["investor_profile"], "CONSERVATIVE")
+
+        # Verify persistence with GET
+        get_res = await self.client.get(f"/api/v1/portfolios/{port_id}")
+        self.assertEqual(get_res.status_code, 200)
+        self.assertEqual(get_res.json()["investor_profile"], "CONSERVATIVE")
+
+        # Update to AGGRESSIVE
+        patch_res2 = await self.client.patch(
+            f"/api/v1/portfolios/{port_id}",
+            json={"investor_profile": "AGGRESSIVE"},
+        )
+        self.assertEqual(patch_res2.status_code, 200)
+        self.assertEqual(patch_res2.json()["investor_profile"], "AGGRESSIVE")
+
 
 if __name__ == "__main__":
     unittest.main()

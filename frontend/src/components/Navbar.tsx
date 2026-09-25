@@ -13,6 +13,7 @@ interface NavbarProps {
     cashUsd: number,
     profile: InvestorProfile
   ) => Promise<void>;
+  onUpdateProfile?: (profile: InvestorProfile) => Promise<void>;
   onRefresh: () => void;
   loading: boolean;
 }
@@ -47,6 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentProfile = "MODERATE",
   onSelectPortfolio,
   onCreatePortfolio,
+  onUpdateProfile,
   onRefresh,
   loading,
 }) => {
@@ -112,14 +114,38 @@ export const Navbar: React.FC<NavbarProps> = ({
                 )}
               </select>
 
-              {/* Active Profile Badge */}
-              <span
-                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${profileInfo.badgeCls} hidden sm:inline-flex items-center space-x-1`}
-                title={`${profileInfo.description} — ${profileInfo.limits}`}
-              >
-                <Compass className="w-3 h-3 inline mr-1" />
-                <span>{profileInfo.label}</span>
-              </span>
+              {/* Active Profile Badge / Selector */}
+              {selectedPort && onUpdateProfile ? (
+                <span
+                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${profileInfo.badgeCls} hidden sm:inline-flex items-center space-x-1`}
+                  title={`${profileInfo.description} — Click para cambiar perfil`}
+                >
+                  <Compass className="w-3 h-3 inline mr-1 flex-shrink-0" />
+                  <select
+                    value={activeProfile}
+                    onChange={(e) => onUpdateProfile(e.target.value as InvestorProfile)}
+                    className="bg-transparent text-[11px] font-semibold text-inherit cursor-pointer focus:outline-none"
+                  >
+                    <option value="CONSERVATIVE" className="bg-slate-900 text-emerald-400">
+                      Conservador
+                    </option>
+                    <option value="MODERATE" className="bg-slate-900 text-sky-400">
+                      Moderado
+                    </option>
+                    <option value="AGGRESSIVE" className="bg-slate-900 text-purple-400">
+                      Agresivo
+                    </option>
+                  </select>
+                </span>
+              ) : (
+                <span
+                  className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${profileInfo.badgeCls} hidden sm:inline-flex items-center space-x-1`}
+                  title={`${profileInfo.description} — ${profileInfo.limits}`}
+                >
+                  <Compass className="w-3 h-3 inline mr-1" />
+                  <span>{profileInfo.label}</span>
+                </span>
+              )}
             </div>
 
             <button

@@ -77,6 +77,14 @@ class PortfolioCreate(BaseModel):
     cash_balance_usd: float = Field(default=0.0, ge=0.0)
     holdings: Optional[List[HoldingCreate]] = None
 
+    @field_validator("investor_profile")
+    @classmethod
+    def validate_investor_profile(cls, v: str) -> str:
+        v_upper = v.strip().upper()
+        if v_upper not in {"CONSERVATIVE", "MODERATE", "AGGRESSIVE"}:
+            raise ValueError("El perfil del inversor debe ser CONSERVATIVE, MODERATE o AGGRESSIVE.")
+        return v_upper
+
 
 class PortfolioUpdate(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
@@ -85,6 +93,16 @@ class PortfolioUpdate(BaseModel):
     investor_profile: Optional[str] = Field(default=None, description="Perfil del inversor: CONSERVATIVE, MODERATE, AGGRESSIVE")
     cash_balance_ars: Optional[float] = Field(default=None, ge=0.0)
     cash_balance_usd: Optional[float] = Field(default=None, ge=0.0)
+
+    @field_validator("investor_profile")
+    @classmethod
+    def validate_investor_profile(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v_upper = v.strip().upper()
+        if v_upper not in {"CONSERVATIVE", "MODERATE", "AGGRESSIVE"}:
+            raise ValueError("El perfil del inversor debe ser CONSERVATIVE, MODERATE o AGGRESSIVE.")
+        return v_upper
 
 
 class PortfolioListItemResponse(BaseModel):
