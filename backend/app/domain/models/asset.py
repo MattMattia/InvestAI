@@ -13,12 +13,7 @@ class AssetType(str, Enum):
     CASH = "CASH"                          # Liquid cash balance
 
 
-class Currency(str, Enum):
-    """Trading and settlement currencies."""
-    ARS = "ARS"                            # Argentine Peso
-    USD = "USD"                            # US Dollar (Cash / General)
-    USD_CCL = "USD_CCL"                    # Contado con Liquidación (Cable)
-    USD_MEP = "USD_MEP"                    # Dólar Bolsa / MEP
+from app.domain.models.fx import Currency
 
 
 class Sector(str, Enum):

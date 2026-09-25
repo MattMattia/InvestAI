@@ -1,4 +1,4 @@
-﻿# Web Framework & Server
+# Web Framework & Server
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
 python-multipart==0.0.9
@@ -25,6 +25,7 @@ cryptography==42.0.8
 pandas==2.2.2
 openpyxl==3.1.5
 numpy==1.26.4
+scipy>=1.12.0
 
 # HTTP Client & Utilities
 httpx==0.27.0
