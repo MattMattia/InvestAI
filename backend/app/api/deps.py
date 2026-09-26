@@ -1,4 +1,4 @@
-﻿from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

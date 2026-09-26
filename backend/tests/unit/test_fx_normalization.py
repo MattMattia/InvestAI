@@ -1,4 +1,3 @@
-import math
 import unittest
 from datetime import datetime, timezone
 
@@ -6,7 +5,6 @@ from app.domain.models.financial_statements import (
     BalanceSheetStandard,
     CashFlowStandard,
     IncomeStatementStandard,
-    KeyMetricsStandard,
     clean_financial_float,
     compute_standard_metrics,
     safe_divide,

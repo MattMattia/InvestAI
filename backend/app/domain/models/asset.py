@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+from app.domain.models.fx import Currency
+
 
 class AssetType(str, Enum):
     """Classification of financial instruments supported by InvestAI."""
@@ -11,9 +13,6 @@ class AssetType(str, Enum):
     BOND_CORPORATE = "BOND_CORPORATE"      # Corporate Bonds / Obligaciones Negociables (ONs)
     TREASURY_BILL = "TREASURY_BILL"        # Short-term Treasury Bills (LECAPs, BONCAPs)
     CASH = "CASH"                          # Liquid cash balance
-
-
-from app.domain.models.fx import Currency
 
 
 class Sector(str, Enum):

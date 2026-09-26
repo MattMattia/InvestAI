@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Tuple
 import numpy as np
 from scipy.optimize import minimize
 
@@ -16,6 +16,8 @@ def minimum_variance_portfolio(cov_matrix: np.ndarray) -> np.ndarray:
         1D array of optimal weights of length N, strictly non-negative and summing to 1.0.
     """
     cov = np.asarray(cov_matrix, dtype=np.float64)
+    if np.isnan(cov).any() or np.isinf(cov).any():
+        raise ValueError("cov_matrix contiene valores NaN o Infinitos.")
     if cov.ndim != 2 or cov.shape[0] != cov.shape[1]:
         raise ValueError(f"cov_matrix debe ser una matriz cuadrada (N, N). Forma recibida: {cov.shape}")
 
@@ -90,6 +92,8 @@ def risk_parity_portfolio(
         1D array of Risk Parity weights of length N, summing to 1.0.
     """
     cov = np.asarray(cov_matrix, dtype=np.float64)
+    if np.isnan(cov).any() or np.isinf(cov).any():
+        raise ValueError("cov_matrix contiene valores NaN o Infinitos.")
     if cov.ndim != 2 or cov.shape[0] != cov.shape[1]:
         raise ValueError(f"cov_matrix debe ser una matriz cuadrada (N, N). Forma recibida: {cov.shape}")
 

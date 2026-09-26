@@ -1,6 +1,6 @@
 from enum import Enum
 import math
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 import numpy as np
 
 
@@ -66,7 +66,7 @@ class MarkovRegimeModel:
         Uses Laplace add-one smoothing to prevent zero transition probabilities.
         """
         arr = np.asarray(returns, dtype=np.float64).flatten()
-        arr = arr[~np.isnan(arr)]
+        arr = arr[~np.isnan(arr) & ~np.isinf(arr)]
 
         if len(arr) < rolling_window + 2:
             return cls(annualized_vol_threshold=annualized_vol_threshold)
@@ -105,7 +105,7 @@ class MarkovRegimeModel:
         Classifies current regime based on recent return volatility relative to threshold.
         """
         arr = np.asarray(returns, dtype=np.float64).flatten()
-        arr = arr[~np.isnan(arr)]
+        arr = arr[~np.isnan(arr) & ~np.isinf(arr)]
 
         if len(arr) < 2:
             return MarketRegime.LOW_VOLATILITY

@@ -3,7 +3,6 @@ from app.domain.models.asset import Asset, AssetType, Currency, Sector
 from app.domain.models.portfolio import Holding, InvestorProfile, Portfolio
 from app.domain.rules.rebalancing import (
     OrderSide,
-    RebalancePlan,
     TargetAllocation,
     ToleranceBandRebalancer,
 )

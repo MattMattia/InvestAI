@@ -3,8 +3,6 @@ from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.models.fx import Currency
-
 
 class MarketExchange(str, Enum):
     """Supported market exchanges for dual-listed instruments."""

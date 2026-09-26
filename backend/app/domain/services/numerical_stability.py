@@ -1,5 +1,4 @@
 import math
-from typing import Optional, Tuple
 import numpy as np
 
 
@@ -27,6 +26,8 @@ def safe_cholesky(
         Lower-triangular matrix L of shape (N, N) such that L @ L.T is strictly positive definite.
     """
     arr = np.asarray(cov_matrix, dtype=np.float64)
+    if np.isnan(arr).any() or np.isinf(arr).any():
+        raise ValueError("cov_matrix contiene valores NaN o Infinitos.")
     if arr.ndim != 2 or arr.shape[0] != arr.shape[1]:
         raise ValueError(f"cov_matrix debe ser cuadrada (N, N). Dimensiones dadas: {arr.shape}")
 
@@ -93,6 +94,8 @@ def safe_pinv(
         Pseudoinverse array of shape (N, M).
     """
     arr = np.asarray(matrix, dtype=np.float64)
+    if np.isnan(arr).any() or np.isinf(arr).any():
+        raise ValueError("matrix contiene valores NaN o Infinitos.")
     if arr.ndim != 2:
         raise ValueError(f"matrix debe ser 2D (M, N). Dimensiones dadas: {arr.ndim}")
 

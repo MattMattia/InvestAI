@@ -1,6 +1,6 @@
 from datetime import datetime
 import math
-from typing import Any, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 

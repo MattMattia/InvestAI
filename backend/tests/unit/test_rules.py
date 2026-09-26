@@ -1,7 +1,7 @@
 import unittest
 from app.domain.models.asset import Asset, AssetType, Currency, Sector
 from app.domain.models.portfolio import Holding, InvestorProfile, Portfolio
-from app.domain.models.valuation import ValuationMetrics, ValuationStatus
+from app.domain.models.valuation import ValuationMetrics
 from app.domain.rules.base import Severity
 from app.domain.rules.concentration import (
     MaxAssetConcentrationRule,

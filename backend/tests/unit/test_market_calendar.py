@@ -1,5 +1,5 @@
 import unittest
-from datetime import date, datetime
+from datetime import date
 
 from app.domain.models.calendar import MarketExchange, QuoteState
 from app.domain.services.calendar_service import MarketCalendarService

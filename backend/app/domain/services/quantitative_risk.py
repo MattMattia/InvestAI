@@ -1,6 +1,5 @@
-import math
 from statistics import NormalDist
-from typing import Optional, Tuple, Union
+from typing import Union
 import numpy as np
 
 
@@ -20,6 +19,8 @@ def ledoit_wolf_covariance(returns: np.ndarray) -> np.ndarray:
         A positive-definite (N, N) covariance matrix.
     """
     arr = np.asarray(returns, dtype=np.float64)
+    if np.isnan(arr).any() or np.isinf(arr).any():
+        raise ValueError("La matriz de retornos contiene valores NaN o Infinitos.")
     if arr.ndim != 2:
         raise ValueError(f"returns debe ser una matriz 2D de dimensiones (T, N). Dimensiones dadas: {arr.ndim}")
 
