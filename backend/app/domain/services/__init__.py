@@ -1,6 +1,25 @@
-"""Domain Services Package for Quantitative Financial Operations"""
+from app.domain.services.backtest_engine import BacktestEngine
+from app.domain.services.backtest_metrics import (
+    calculate_annualized_volatility,
+    calculate_cagr,
+    calculate_calmar_ratio,
+    calculate_daily_returns,
+    calculate_drawdown_series,
+    calculate_max_drawdown,
+    calculate_performance_metrics,
+    calculate_sharpe_ratio,
+    calculate_sortino_ratio,
+    calculate_total_return,
+)
 from app.domain.services.calendar_service import MarketCalendarService
 from app.domain.services.fx_service import FXService
+from app.domain.services.market_frictions import (
+    ExecutionCostBreakdown,
+    calculate_alyc_commission,
+    calculate_market_fees,
+    calculate_net_execution_cost,
+    calculate_slippage,
+)
 from app.domain.services.markov_regime import (
     MarkovRegimeModel,
     MarketRegime,
@@ -28,6 +47,7 @@ from app.domain.services.quantitative_risk import (
 )
 
 __all__ = [
+    "BacktestEngine",
     "MarketCalendarService",
     "FXService",
     "ledoit_wolf_covariance",
@@ -47,4 +67,19 @@ __all__ = [
     "MarketRegime",
     "MarkovRegimeModel",
     "get_dynamic_rebalance_band",
+    "ExecutionCostBreakdown",
+    "calculate_alyc_commission",
+    "calculate_market_fees",
+    "calculate_slippage",
+    "calculate_net_execution_cost",
+    "calculate_total_return",
+    "calculate_cagr",
+    "calculate_daily_returns",
+    "calculate_annualized_volatility",
+    "calculate_sharpe_ratio",
+    "calculate_sortino_ratio",
+    "calculate_drawdown_series",
+    "calculate_max_drawdown",
+    "calculate_calmar_ratio",
+    "calculate_performance_metrics",
 ]

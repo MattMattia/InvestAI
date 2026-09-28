@@ -205,4 +205,138 @@ InvestAI_Mattia_Risso/
 | **Pipeline de Ingesta Universal** | `backend/app/services/parsers/universal_parser.py` | ✅ | `UniversalHoldingParser` tolerante a fallos, soporte CSV/Excel, decimales latinos y mapping. |
 | **Modelos Relacionales ORM** | `backend/app/models/` | ✅ | Mapeo SQLAlchemy 2.0 Declarative: `users`, `assets`, `portfolios`, `holdings`, `risk_audit_snapshots`, `rebalance_orders`. |
 | **Control de Migraciones** | `backend/alembic/` | ✅ | Entorno de migraciones Alembic configurado y migración inicial `001_initial_schema.py`. |
-| **Suite Completa de Tests** | `backend/tests/unit/` | ✅ | **49 de 49 tests aprobados al 100%** (Dominio, Métricas, Reglas, Rebalanceo, Ingesta, Persistencia). |
+| **Suite Completa de Tests (Inicial)** | `backend/tests/unit/` | ✅ | **49 de 49 tests aprobados al 100%** (Dominio, Métricas, Reglas, Rebalanceo, Ingesta, Persistencia). |
+
+---
+
+## 🔬 8. Módulos Cuantitativos Avanzados (Módulos 1 al 5)
+
+### 8.1. Modelos Financieros y Valoración Fundamental Base
+- **Estados Financieros Canónicos (`backend/app/domain/models/financial_statements.py`):**
+  - Implementación inmutable bajo estándar OpenBB: `IncomeStatementStandard`, `BalanceSheetStandard`, `CashFlowStandard` y `KeyMetricsStandard`.
+  - Síntesis automática de Deuda Neta ($\text{Deuda Total} - \text{Caja}$) y Patrimonio Neto ($\text{Activos} - \text{Pasivos}$).
+  - Cálculo determinista de Free Cash Flow ($\text{FCF} = \text{Flujo Operativo} - |\text{CapEx}|$).
+  - Ratios contables calculados de forma segura con protección estricta contra división por cero (`safe_divide`): ROE, Current Ratio, Debt to Equity, EV/EBITDA, P/E, P/B y PEG.
+  - Saneamiento automático de entradas corruptas, valores `NaN`, `Inf` y cadenas con formatos monetarios (`clean_financial_float`).
+  - Tratamiento formal de empresas con pérdidas: cuando $EPS \le 0$, los múltiplos basados en beneficios se clasifican formalmente bajo `ValuationStatus.INDETERMINATE`.
+
+### 8.2. Módulo 1: Estandarización Canónica, Bimoneda y Calendarios Bursátiles
+- **Normalización Bimonetaria y Dólar Implícito (`backend/app/domain/services/fx_service.py`):**
+  - Modelado de divisas canónicas: `Currency.ARS`, `Currency.USD`, `Currency.USD_MEP`, `Currency.USD_CCL`.
+  - Cálculo determinista de tipo de cambio implícito para instrumentos dual-listed (CEDEARs):
+    $$\text{CCL}_{\text{implícito}} = \frac{\text{Precio CEDEAR (ARS)} \times \text{Ratio de Conversión}}{\text{Precio Subyacente (USD)}}$$
+  - Conversión canónica entre cualquier par de monedas con normalización cruzada.
+- **Sincronización de Calendarios Bursátiles (`backend/app/domain/services/calendar_service.py`):**
+  - Detección de sesiones activas y feriados bancarios/bursátiles para BYMA (Buenos Aires) y NYSE/NASDAQ (Estados Unidos) para el período 2024–2027.
+  - Algoritmo de **Forward-Fill determinista**: ante feriados asimétricos entre plazas, preserva el último precio conocido, marca el estado `QuoteState.STALE_MARKET_CLOSED` con explicación auditable y recalcula el CCL implícito resultante.
+
+### 8.3. Módulo 2: Optimización Matemática de Carteras y Riesgo de Cola
+- **Estimación de Covarianza Robusta (`backend/app/domain/services/quantitative_risk.py`):**
+  - Contracción analítica de Ledoit-Wolf (2004) hacia matriz identidad escalada ($F = \mu I_N$):
+    $$\boldsymbol{\Sigma}^* = (1 - \delta^*) \mathbf{S} + \delta^* \mathbf{F}, \quad \delta^* \in [0, 1]$$
+  - Garantiza matrices simétricas, bien condicionadas y **estrictamente definidas positivas e invertibles** aun bajo rangos deficientes ($T < N$) o activos fuertemente colineales.
+- **Algoritmos de Optimización de Asignación (`backend/app/domain/services/portfolio_optimizer.py`):**
+  - **Global Minimum Variance (GMV):** Minimización cuadrática SLSQP de volatilidad de cartera sujeta a restricciones long-only ($\sum w_i = 1, w_i \ge 0$).
+  - **Risk Parity / Equal Risk Contribution (ERC):** Igualación de la contribución marginal de riesgo de cada activo ($RC_i = \sigma_p / N$), resuelto mediante la formulación estrictamente convexa de Spinu (2013) con gradiente analítico $\boldsymbol{\Sigma} \mathbf{y} - \mathbf{y}^{-1}$.
+  - **Ratio de Diversificación (Choueifaty & Coignard, 2008):**
+    $$DR(\mathbf{w}) = \frac{\sum_{i=1}^N w_i \sigma_i}{\sqrt{\mathbf{w}^\mathsf{T} \boldsymbol{\Sigma} \mathbf{w}}} \ge 1.0$$
+- **Métricas de Distribución y Riesgo de Cola:**
+  - Asimetría (Skewness) y Exceso de Curtosis para cuantificar leptocurtosis y riesgo de caídas asimétricas.
+  - Value at Risk (VaR) histórico y paramétrico gaussiano a niveles de confianza parametrizables ($\alpha = 0.95, 0.99$).
+  - Conditional Value at Risk / Expected Shortfall (CVaR) con garantía teórica $\text{CVaR}_\alpha \ge \text{VaR}_\alpha$.
+- **Endpoints REST (`backend/app/api/v1/endpoints/optimization.py`):**
+  - `POST /api/v1/portfolios/{id}/optimize/minimum-variance`: Optimización GMV sobre tenencias reales o matriz de retornos.
+  - `POST /api/v1/portfolios/{id}/optimize/risk-parity`: Optimización ERC equilibrando presupuesto de riesgo por activo.
+  - `POST /api/v1/portfolios/{id}/tail-risk`: Auditoría de momentos estadísticos y pérdidas de cola de la cartera actual.
+
+### 8.4. Módulo 3: Estabilidad Numérica Avanzada y Cadenas de Markov
+- **Álgebra Lineal Robusta (`backend/app/domain/services/numerical_stability.py`):**
+  - `safe_cholesky`: Descomposición de Cholesky $\mathbf{L}$ ($\mathbf{A} = \mathbf{L} \mathbf{L}^\mathsf{T}$) con regularización diagonal iterativa (*jitter*) y proyección espectral de Higham (1988/2002) ante matrices singulares o no definidas positivas.
+  - `safe_pinv`: Pseudoinversa de Moore-Penrose estable mediante descomposición SVD truncada con tolerancia numérica `rcond`.
+  - `nearest_positive_definite` y `matrix_condition_number` ($\kappa(A) = \sigma_{\max}/\sigma_{\min}$).
+  - Validación defensiva temprana contra valores `NaN` e `Infinitos` en todas las operaciones tensoriales.
+- **Modelado de Regímenes de Mercado con Cadenas de Markov (`backend/app/domain/services/markov_regime.py`):**
+  - Modelo de cambio de régimen de 2 estados:
+    - Estado 0: `LOW_VOLATILITY` (Régimen de Expansión / Estabilidad).
+    - Estado 1: `HIGH_VOLATILITY` (Régimen de Turbulencia / Crisis).
+  - Matriz de transición estocástica ($P_{ij}$), calibración por máxima verosimilitud con suavizado de Laplace y distribución ergódica estacionaria.
+  - **Bandas Dinámicas de Rebalanceo (`get_dynamic_rebalance_band`):**
+    - En **Baja Volatilidad:** Estrecha la banda al $85\%$ ($0.85\times$) del valor base para un seguimiento ceñido con fricción mínima.
+    - En **Alta Volatilidad / Crisis:** Amplía la banda al $175\%$ ($1.75\times$) para evitar *whipsaw* y costos transaccionales excesivos ante ruido transitorio.
+
+### 8.5. Módulo 4: FSM de Órdenes y Fricciones de Mercado
+- **Máquina de Estados Finitos (FSM) de Órdenes (`backend/app/domain/models/order.py`):**
+  - Estados formales (`OrderState`): `CREATED`, `VALIDATED`, `SUBMITTED`, `FILLED`, `CANCELLED`, `REJECTED`.
+  - Grafo estricto de transiciones:
+    $$\text{CREATED} \longrightarrow \text{VALIDATED} \longrightarrow \text{SUBMITTED} \longrightarrow \text{FILLED}$$
+    con derivaciones a `CANCELLED` y `REJECTED`, e inmutabilidad estricta de estados terminales (`InvalidOrderStateTransitionError`).
+  - Entidad `Order` (Pydantic v2) con validación cruzada: las órdenes `LIMIT` exigen precio positivo obligatorio, con normalización automática de tickers.
+- **Motor Cuantitativo de Fricciones de Mercado (`backend/app/domain/services/market_frictions.py`):**
+  - `calculate_alyc_commission`: Comisión de ALyC sobre volumen efectivo con arancel mínimo e IVA ($21\%$).
+  - `calculate_market_fees`: Derechos de mercado y aranceles de compensación BYMA/CNV (default $0.09\%$).
+  - `calculate_slippage`: Deslizamiento asimétrico según el sentido de la orden (precio adverso al alza en `BUY`, precio adverso a la baja en `SELL`).
+  - `calculate_net_execution_cost`: Desglose completo en `ExecutionCostBreakdown`:
+    - Compras (`BUY`): $\text{Desembolso Neto} = \text{Monto Efectivo} + \text{Comisiones} + \text{IVA} + \text{Aranceles}$
+    - Ventas (`SELL`): $\text{Fondos Netos Recibidos} = \text{Monto Efectivo} - (\text{Comisiones} + \text{IVA} + \text{Aranceles})$
+    - Cálculo de precio neto por acción y porcentaje total de fricción.
+
+### 8.6. Módulo 5: Motor de Backtesting Histórico y Simulación Vectorizada
+- **Esquemas Canónicos e Inmutables (`backend/app/schemas/backtest.py`):**
+  - Frecuencias de rebalanceo (`RebalanceFrequency`): `DAILY`, `WEEKLY`, `MONTHLY`, `QUARTERLY`.
+  - Configuración y solicitud (`BacktestConfig`, `BacktestRunRequest`): Capital inicial, tickers normalizados, fechas de inicio/fin, tasa libre de riesgo y configuración detallada de fricciones de intermediación (`BacktestFrictionConfig`).
+  - Snapshots diarios inmutables (`DailySnapshot`): Registro diario de NAV, caja disponible, nominales por especie, retorno porcentual diario y *drawdown* relativo acumulado.
+  - Resultados consolidados (`BacktestPerformanceMetrics`, `BacktestResult`): Métricas de rendimiento ajustado por riesgo, serie temporal completa y auditoría de órdenes ejecutadas.
+- **Servicio Cuantitativo de Métricas Financieras (`backend/app/domain/services/backtest_metrics.py`):**
+  - Programación defensiva con saneamiento preventivo ante valores `NaN`, `Inf` o divisiones por cero.
+  - Retorno Total acumulado y CAGR:
+    $$\text{CAGR} = \left(\frac{V_N}{V_0}\right)^{\frac{252}{N}} - 1$$
+  - Volatilidad realizada anualizada ($\sigma_{\text{diaria}} \times \sqrt{252}$).
+  - Ratios de Sharpe y Sortino anualizados: evaluación rigurosa del desvío bajista (*downside deviation*) respecto al umbral diario de la tasa libre de riesgo $\tau = r_f / 252$.
+  - Serie temporal de *drawdowns* ($DD_t = (V_t - \text{Peak}_t) / \text{Peak}_t \le 0.0$) y Máximo Drawdown en magnitud absoluta ($\text{MDD} \ge 0.0$).
+  - Ratio de Calmar determinista ($\text{Calmar} = \text{CAGR} / |\text{MDD}|$) con protección total ante ausencias de caídas pico a valle.
+- **Motor de Simulación Temporal (`backend/app/domain/services/backtest_engine.py`):**
+  - Bucle de simulación día a día sincronizado con el calendario bursátil de días hábiles.
+  - Rebalanceo periódico por frecuencia con asignación de cartera inicial obligatoria en $t=0$.
+  - Optimización de cartera (GMV vía `minimum_variance_portfolio` o ERC vía `risk_parity_portfolio`) sobre ventana móvil (`lookback_window=60`) con contracción de covarianza de Ledoit-Wolf (`ledoit_wolf_covariance`), y *fallback* a equiponderación ($1/N$).
+  - Prioridad de liquidez: ejecución de ventas en primer término para acreditar efectivo, seguido de compras con restricción estricta de saldo de caja para absorber comisiones y costos.
+  - Integración total con la Máquina de Estados Finitos (FSM) de órdenes (`CREATED` $\to$ `VALIDATED` $\to$ `SUBMITTED` $\to$ `FILLED`) y cálculo determinista de fricciones netas con `calculate_net_execution_cost`.
+- **Endpoint REST Institucional (`backend/app/api/v1/endpoints/backtest.py`):**
+  - `POST /api/v1/backtest/run`: Ejecución integral de backtesting desde el cliente o frontend.
+  - Generador estocástico continuo de Movimiento Browniano Geométrico (GBM):
+    $$dS_t = \mu S_t dt + \sigma S_t dW_t$$
+    con factor de correlación sistémica de mercado ($\rho = 0.35$) y dinámicas empíricas parametrizadas por tipo de especie (bonos soberanos, renta variable local y CEDEARs).
+  - Soporte bimodal: síntesis autónoma sobre el rango de fechas o ingesta de cotizaciones históricas provistas por el usuario.
+
+---
+
+## 🛡️ 9. Calidad de Software, Ingeniería y Testing
+
+- **Pydantic v2 Estricto:** Todos los modelos usan `ConfigDict(frozen=True)` o `ConfigDict(from_attributes=True)` y validadores `@field_validator` / `@model_validator`.
+- **Saneamiento Completo de Código Fuente:** El 100% de los archivos del backend carecen de caracteres BOM (`\xef\xbb\xbf`), código muerto o importaciones huérfanas, verificado por análisis de árbol sintáctico (AST).
+- **Aislamiento Arquitectónico:** Los modelos de dominio puro nunca dependen de SQLAlchemy ni de la infraestructura web.
+- **Suite de Pruebas Automatizadas (100% Passing):**
+  ```powershell
+  $env:PYTHONPATH = "backend"; python -m unittest discover -s backend/tests/unit
+  $env:PYTHONPATH = "backend"; python -m unittest discover -s backend/tests/integration
+  ```
+  - **121 pruebas unitarias** (Modelos de Dominio, Reglas, Métricas, Rebalanceo, Persistencia, Ingesta, Bimoneda, Calendarios, Optimización, Markov, Estabilidad Numérica, FSM/Fricciones y Métricas de Backtest).
+  - **16 pruebas de integración** (Base de datos relacional, endpoints REST, motor de simulación temporal BacktestEngine y endpoint /backtest/run).
+  - **Total: 137 pruebas ejecutadas con éxito en ~2.2 segundos.**
+
+---
+
+## 🔮 10. Roadmap de Expansión (Próximas Etapas)
+
+- **Módulo 5 — Motor de Backtesting Histórico y Simulación:** ✅ **Completado al 100%**
+  - Fase 1: Esquemas de configuración, snapshots y servicio cuantitativo de métricas financieras.
+  - Fase 2: Motor de simulación cronológica (`BacktestEngine`) con bucle de rebalanceo, optimización Ledoit-Wolf, FSM y fricciones.
+  - Fase 3: Endpoint REST `/api/v1/backtest/run` con simulación por Movimiento Browniano Geométrico (GBM).
+- **Módulo 6 — Conectores de Datos en Vivo e Ingesta de Mercado:**
+  - Integración de feeds de mercado en tiempo real (Matba Rofex / Primary API, BYMA DMA, OpenBB / Yahoo Finance).
+  - Cache distribuido en Redis con TTL adaptativo para evitar sobreconsultas a proveedores de cotización.
+- **Módulo 7 — Orquestación Multi-Agent y LLMOps:**
+  - Implementación de agentes de IA especializados con llamadas a funciones (`function calling`) deterministas sobre los servicios cuantitativos ya construidos.
+  - Agente Asesor de Asignación, Agente Auditor de Compliance y Agente Analista Fundamental con generación automatizada de informes en PDF.
+- **Módulo 8 — Dashboard Frontend Institucional:**
+  - Visualización avanzada de superficies de volatilidad, curvas de rendimiento, simulador de rebalanceo interactivo y matriz de correlación en tiempo real en React/Vite.
+

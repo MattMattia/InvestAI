@@ -15,6 +15,13 @@ from app.domain.models.financial_statements import (
     safe_divide,
 )
 from app.domain.models.fx import Currency, FXQuote
+from app.domain.models.order import (
+    InvalidOrderStateTransitionError,
+    Order,
+    OrderSide,
+    OrderState,
+    OrderType,
+)
 from app.domain.models.portfolio import Holding, InvestorProfile, Portfolio
 from app.domain.models.valuation import ValuationMetrics
 
@@ -38,4 +45,9 @@ __all__ = [
     "Portfolio",
     "InvestorProfile",
     "ValuationMetrics",
+    "OrderState",
+    "OrderSide",
+    "OrderType",
+    "Order",
+    "InvalidOrderStateTransitionError",
 ]
