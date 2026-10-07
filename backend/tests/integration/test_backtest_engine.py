@@ -208,6 +208,28 @@ class TestBacktestEngineIntegration(unittest.TestCase):
         self.assertEqual(len(res.snapshots), len(self.trading_dates))
         self.assertTrue(np.isfinite(res.metrics.total_return))
 
+    def test_asynchronous_asset_inception_does_not_degrade_window(self):
+        """[DEFENSE: NUM-03] Valida que un activo nuevo (historia corta) no colapse la ventana de cálculo."""
+        asymmetric_prices = {
+            "AAPL": dict(self.prices_data["AAPL"]),
+            "NEW_STOCK": {},
+        }
+        # NEW_STOCK solo tiene cotización en los últimos 10 días
+        for d in self.trading_dates[-10:]:
+            asymmetric_prices["NEW_STOCK"][d] = 100.0
+
+        config = BacktestConfig(
+            initial_capital=100_000.0,
+            tickers=["AAPL", "NEW_STOCK"],
+            start_date=self.start_date,
+            end_date=self.end_date,
+            rebalance_frequency=RebalanceFrequency.MONTHLY,
+            optimization_method="MINIMUM_VARIANCE",
+        )
+        res = BacktestEngine(config).run(asymmetric_prices)
+        self.assertEqual(len(res.snapshots), len(self.trading_dates))
+        self.assertTrue(np.isfinite(res.metrics.total_return))
+
 
 if __name__ == "__main__":
     unittest.main()

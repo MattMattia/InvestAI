@@ -34,24 +34,70 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
                 except Exception:
                     await session.rollback()
                     raise
+                finally:
+                    await session.close()
 
         fastapi_app.dependency_overrides[get_db_session] = _override_get_db
         self.transport = httpx.ASGITransport(app=fastapi_app)
         self.client = httpx.AsyncClient(transport=self.transport, base_url="http://test")
 
     async def asyncTearDown(self) -> None:
-        await self.client.aclose()
+        if hasattr(self, "client") and self.client is not None:
+            await self.client.aclose()
         fastapi_app.dependency_overrides.clear()
-        await self.engine.dispose()
+        if hasattr(self, "engine") and self.engine is not None:
+            await self.engine.dispose()
 
     async def test_health_and_root(self) -> None:
         root_res = await self.client.get("/")
         self.assertEqual(root_res.status_code, 200)
         self.assertEqual(root_res.json()["status"], "online")
+        self.assertIn("X-Request-ID", root_res.headers)
+        self.assertIn("X-Execution-Time-Ms", root_res.headers)
 
         health_res = await self.client.get("/health")
         self.assertEqual(health_res.status_code, 200)
         self.assertEqual(health_res.json()["status"], "healthy")
+        self.assertEqual(health_res.json()["database"], "connected")
+        self.assertIn("X-Request-ID", health_res.headers)
+        self.assertIn("X-Execution-Time-Ms", health_res.headers)
+
+    async def test_trace_middleware_correlation_headers(self) -> None:
+        """Valida la inyección y preservación de X-Request-ID y X-Execution-Time-Ms (OBS-01)."""
+        # Caso 1: Header suministrado externamente
+        custom_id = "trace-client-correl-987"
+        res_custom = await self.client.get("/", headers={"X-Request-ID": custom_id})
+        self.assertEqual(res_custom.status_code, 200)
+        self.assertEqual(res_custom.headers["X-Request-ID"], custom_id)
+        self.assertIn("X-Execution-Time-Ms", res_custom.headers)
+        self.assertGreaterEqual(float(res_custom.headers["X-Execution-Time-Ms"]), 0.0)
+
+        # Caso 2: Header omitido -> generación automática de UUIDv4
+        res_auto = await self.client.get("/")
+        self.assertEqual(res_auto.status_code, 200)
+        auto_id = res_auto.headers.get("X-Request-ID")
+        self.assertIsNotNone(auto_id)
+        self.assertGreater(len(auto_id), 10)
+        self.assertIn("X-Execution-Time-Ms", res_auto.headers)
+
+    async def test_semantic_health_probes(self) -> None:
+        """Valida los endpoints semánticos de observabilidad liveness y readiness (OBS-02)."""
+        # 1. Liveness probe (sin I/O)
+        res_live = await self.client.get("/health/liveness")
+        self.assertEqual(res_live.status_code, 200)
+        self.assertEqual(res_live.json(), {"status": "alive"})
+        self.assertIn("X-Request-ID", res_live.headers)
+
+        # 2. Readiness probe (validación real de base de datos)
+        res_ready = await self.client.get("/health/readiness")
+        self.assertEqual(res_ready.status_code, 200)
+        data = res_ready.json()
+        self.assertEqual(data["status"], "ready")
+        self.assertEqual(data["database"]["status"], "up")
+        self.assertGreaterEqual(data["database"]["latency_ms"], 0.0)
+        self.assertIn("timestamp", data)
+        self.assertIn("environment", data)
+        self.assertIn("X-Request-ID", res_ready.headers)
 
     async def test_portfolio_crud_lifecycle(self) -> None:
         # 1. Create Portfolio with initial holdings
@@ -291,6 +337,27 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(patch_res2.status_code, 200)
         self.assertEqual(patch_res2.json()["investor_profile"], "AGGRESSIVE")
+
+    async def test_validation_error_envelope_integration(self) -> None:
+        """Valida que los errores de validación 422 retornen el envelope canónico APIErrorResponse (ARQ-02)."""
+        bad_payload = {
+            "name": "Cartera Inválida",
+            "forbidden_extra_attribute": "hack",
+        }
+        res = await self.client.post(
+            "/api/v1/portfolios",
+            json=bad_payload,
+            headers={"X-Request-ID": "req-trace-422-test"},
+        )
+        self.assertEqual(res.status_code, 422)
+        body = res.json()
+        self.assertFalse(body["success"])
+        self.assertEqual(body["error"]["code"], "VALIDATION_ERROR")
+        self.assertIn("Error de validación", body["error"]["message"])
+        self.assertEqual(body["meta"]["request_id"], "req-trace-422-test")
+        self.assertIn("timestamp", body["meta"])
+        self.assertTrue(len(body["error"]["details"]) > 0)
+        self.assertTrue(any("forbidden_extra_attribute" in str(d.get("field")) for d in body["error"]["details"]))
 
 
 if __name__ == "__main__":

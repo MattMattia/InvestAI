@@ -1,9 +1,12 @@
 import unittest
+from pydantic import ValidationError
 from app.domain.models.asset import Asset, AssetType, Currency, Sector
 from app.domain.models.portfolio import Holding, InvestorProfile, Portfolio
 from app.domain.models.valuation import ValuationMetrics, ValuationStatus
 from app.domain.rules.base import BaseRiskRule, RuleResult, Severity
 from app.domain.rules.engine import ComplianceStatus, RiskEngine
+from app.schemas.backtest import BacktestRunRequest
+from app.schemas.portfolio import PortfolioCreate
 
 
 class MockConcentrationRule(BaseRiskRule):
@@ -147,6 +150,27 @@ class TestDomainModels(unittest.TestCase):
         self.assertEqual(report.failed_rules_count, 1)
         self.assertEqual(report.critical_alerts_count, 1)
         self.assertEqual(report.compliance_status, ComplianceStatus.NON_COMPLIANT)
+
+    def test_portfolio_create_forbids_extra_fields(self):
+        """Verifica que PortfolioCreate rechaza campos no autorizados (ARQ-01 / SEC-01)."""
+        with self.assertRaises(ValidationError) as ctx:
+            PortfolioCreate(
+                name="Test Portfolio",
+                unauthorized_injection_field="malicious_payload",
+            )
+        self.assertIn("extra_forbidden", str(ctx.exception))
+
+    def test_backtest_run_request_forbids_extra_fields(self):
+        """Verifica que BacktestRunRequest rechaza campos no autorizados (ARQ-01 / SEC-01)."""
+        with self.assertRaises(ValidationError) as ctx:
+            BacktestRunRequest(
+                initial_capital=100000.0,
+                tickers=["AAPL"],
+                start_date="2024-01-01",
+                end_date="2024-06-01",
+                malicious_field=12345,
+            )
+        self.assertIn("extra_forbidden", str(ctx.exception))
 
 
 if __name__ == "__main__":

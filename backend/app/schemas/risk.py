@@ -45,7 +45,7 @@ class RiskAuditSnapshotResponse(BaseModel):
 
 
 class TargetAllocationInput(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     ticker: str = Field(..., description="Ticker del activo")
     target_weight: float = Field(..., ge=0.0, le=100.0, description="Ponderación objetivo % (0-100)")
@@ -58,6 +58,8 @@ class TargetAllocationInput(BaseModel):
 
 
 class RebalanceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     targets: List[TargetAllocationInput] = Field(..., description="Lista de asignaciones objetivo")
     custom_prices: Optional[Dict[str, float]] = Field(default=None, description="Precios de mercado opcionales")
     fx_ccl: float = Field(default=1300.0, gt=0.0, description="Dólar CCL de referencia")

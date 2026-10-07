@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class RawHoldingRecord(BaseModel):
-    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+    model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
     ticker: str = Field(..., description="Símbolo o ticker bursátil del activo")
     quantity: float = Field(..., description="Cantidad nominal de títulos en cartera (estrictamente positiva)")
@@ -48,7 +48,7 @@ class RawHoldingRecord(BaseModel):
 
 
 class IngestionBatchPayload(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     user_id: str = Field(..., description="Identificador del usuario propietario")
     portfolio_name: str = Field(..., description="Nombre del portafolio destino")

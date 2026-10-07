@@ -22,7 +22,7 @@ class TailRiskMetrics(BaseModel):
 
 class OptimizationRequest(BaseModel):
     """Parámetros de configuración para la optimización cuantitativa de cartera."""
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     method: Optional[OptimizationMethod] = Field(
         default=OptimizationMethod.MINIMUM_VARIANCE,

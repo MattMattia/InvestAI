@@ -131,6 +131,24 @@ class TestApiBacktestIntegration(unittest.TestCase):
         response = self.client.post("/api/v1/backtest/run", json=payload)
         self.assertEqual(response.status_code, 422)
 
+    def test_run_backtest_extra_fields_returns_422(self):
+        """Valida que enviar campos no autorizados retorne error de validación 422 bajo APIErrorResponse (SEC-01 / ARQ-01 / ARQ-02)."""
+        payload = {
+            "initial_capital": 100_000.0,
+            "tickers": ["AAPL"],
+            "start_date": "2024-01-01",
+            "end_date": "2024-12-31",
+            "unauthorized_extra_field": "hacker_payload",
+        }
+        response = self.client.post("/api/v1/backtest/run", json=payload)
+        self.assertEqual(response.status_code, 422)
+        data = response.json()
+        self.assertFalse(data["success"])
+        self.assertEqual(data["error"]["code"], "VALIDATION_ERROR")
+        self.assertIn("meta", data)
+        self.assertIn("request_id", data["meta"])
+        self.assertTrue(any("unauthorized_extra_field" in str(d.get("field")) for d in data["error"]["details"]))
+
 
 if __name__ == "__main__":
     unittest.main()

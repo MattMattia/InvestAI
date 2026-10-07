@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import MagicMock, patch
 import numpy as np
 
 from app.domain.services.portfolio_optimizer import (
@@ -191,6 +192,53 @@ class TestPortfolioOptimizer(unittest.TestCase):
         w_rp = risk_parity_portfolio(cov_1)
         self.assertEqual(list(w_gmv), [1.0])
         self.assertEqual(list(w_rp), [1.0])
+
+    def test_risk_parity_with_zero_variance_asset(self) -> None:
+        """[DEFENSE: NUM-01] Valida que activos de varianza cero se aíslen sin divergencia de gradiente -1/y."""
+        # Matriz 3x3 donde el activo 2 tiene varianza nula (ej. efectivo sin riesgo)
+        cov_zero = np.array([
+            [0.04, 0.01, 0.0],
+            [0.01, 0.09, 0.0],
+            [0.0,  0.0,  0.0],
+        ])
+        weights = risk_parity_portfolio(cov_zero)
+        self.assertAlmostEqual(float(np.sum(weights)), 1.0, places=5)
+        self.assertTrue(np.all(np.isfinite(weights)))
+        self.assertEqual(weights[2], 0.0)  # Activo sin volatilidad recibe peso 0.0
+        self.assertGreater(weights[0], 0.0)
+        self.assertGreater(weights[1], 0.0)
+
+    def test_risk_parity_all_zero_variance(self) -> None:
+        """[DEFENSE: NUM-01] Valida fallback seguro a equiponderación si todos los activos tienen varianza nula."""
+        cov_all_zero = np.zeros((3, 3))
+        weights = risk_parity_portfolio(cov_all_zero)
+        self.assertTrue(np.all(np.isfinite(weights)))
+        np.testing.assert_allclose(weights, [1/3, 1/3, 1/3], atol=1e-5)
+
+    def test_minimum_variance_solver_failure_fallback_on_nan(self) -> None:
+        """[DEFENSE: NUM-02] Valida fallback a 1/N si el solver SLSQP devuelve NaNs o falla."""
+        fake_result = MagicMock()
+        fake_result.success = False
+        fake_result.x = np.array([np.nan, 0.5, 0.5])
+
+        with patch("app.domain.services.portfolio_optimizer.minimize", return_value=fake_result):
+            weights = minimum_variance_portfolio(self.cov)
+            self.assertTrue(np.all(np.isfinite(weights)))
+            np.testing.assert_allclose(weights, [1/3, 1/3, 1/3], atol=1e-5)
+
+    def test_risk_parity_solver_failure_fallback_on_nan(self) -> None:
+        """[DEFENSE: NUM-02] Valida fallback a volatilidad inversa si L-BFGS-B devuelve NaNs o falla."""
+        fake_result = MagicMock()
+        fake_result.success = False
+        fake_result.x = np.array([np.nan, np.nan, np.nan])
+
+        with patch("app.domain.services.portfolio_optimizer.minimize", return_value=fake_result):
+            weights = risk_parity_portfolio(self.cov)
+            self.assertTrue(np.all(np.isfinite(weights)))
+            self.assertAlmostEqual(float(np.sum(weights)), 1.0, places=5)
+            # Volatilidades: activo 0 (40%) > activo 1 (20%) > activo 2 (10%) -> w2 > w1 > w0
+            self.assertGreater(weights[2], weights[1])
+            self.assertGreater(weights[1], weights[0])
 
 
 class TestOptimizationSchemas(unittest.TestCase):

@@ -15,7 +15,7 @@ class RebalanceFrequency(str, Enum):
 
 class BacktestFrictionConfig(BaseModel):
     """Parámetros de fricción de mercado y costos de intermediación."""
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     alyc_commission_rate: float = Field(
         default=0.005,
@@ -53,7 +53,7 @@ class BacktestFrictionConfig(BaseModel):
 
 class BacktestConfig(BaseModel):
     """Configuración determinista para la simulación histórica de cartera."""
-    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+    model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
     initial_capital: float = Field(
         default=100_000.0,
@@ -99,6 +99,8 @@ class BacktestConfig(BaseModel):
 
 class BacktestRunRequest(BacktestConfig):
     """Esquema de solicitud de ejecución de backtest con soporte de precios personalizados opcionales."""
+    model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
+
     custom_prices: Optional[Dict[str, Dict[str, float]]] = Field(
         default=None,
         description="Diccionario opcional de precios {ticker: {YYYY-MM-DD: precio}}. Si se omite, se generan mediante Movimiento Browniano Geométrico.",

@@ -1,6 +1,8 @@
+import datetime as dt
 import unittest
 import numpy as np
 
+from app.domain.services.market_simulation import generate_gbm_market_prices
 from app.domain.services.markov_regime import (
     MarkovRegimeModel,
     MarketRegime,
@@ -216,6 +218,29 @@ class TestMarkovRegime(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             get_dynamic_rebalance_band("LOW_VOLATILITY", 0.0)
+
+
+class TestMarketSimulation(unittest.TestCase):
+    def test_generate_gbm_market_prices_determinism(self) -> None:
+        start_d = dt.date(2024, 1, 2)
+        end_d = dt.date(2024, 1, 15)
+        tickers = ["AAPL", "GGAL", "AL30"]
+
+        sim1 = generate_gbm_market_prices(tickers, start_d, end_d, seed=42)
+        sim2 = generate_gbm_market_prices(tickers, start_d, end_d, seed=42)
+
+        self.assertEqual(set(sim1.keys()), set(tickers))
+        for t in tickers:
+            self.assertEqual(sim1[t], sim2[t])
+            for p in sim1[t].values():
+                self.assertGreater(p, 0.0)
+
+    def test_generate_gbm_market_prices_insufficient_days(self) -> None:
+        # Fin de semana: no hay días hábiles suficientes
+        start_d = dt.date(2024, 1, 6)
+        end_d = dt.date(2024, 1, 7)
+        with self.assertRaises(ValueError):
+            generate_gbm_market_prices(["AAPL"], start_d, end_d)
 
 
 if __name__ == "__main__":

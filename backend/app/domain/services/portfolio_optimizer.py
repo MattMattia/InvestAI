@@ -52,16 +52,20 @@ def minimum_variance_portfolio(cov_matrix: np.ndarray) -> np.ndarray:
         options={"ftol": 1e-13, "maxiter": 200, "disp": False},
     )
 
-    if not result.success and result.x is None:
-        raise RuntimeError(f"La optimización de mínima varianza no convergió: {result.message}")
+    # [DEFENSE: NUM-02] Verify solver convergence and output integrity; fallback to 1/N on failure or NaNs
+    if (not result.success) or (result.x is None) or (not np.all(np.isfinite(result.x))):
+        return w0
 
     raw_weights = np.maximum(0.0, result.x)
     sum_w = float(np.sum(raw_weights))
-    if sum_w <= 0:
+    if sum_w <= 0.0 or not np.isfinite(sum_w):
         return w0
 
     # Guarantee sum(w) == 1.0 exactly
     normalized_weights = raw_weights / sum_w
+    if not np.all(np.isfinite(normalized_weights)):
+        return w0
+
     return np.round(normalized_weights, 6)
 
 
@@ -103,16 +107,53 @@ def risk_parity_portfolio(
     if n_assets == 1:
         return np.array([1.0], dtype=np.float64)
 
-    # Initial guess y0 = 1 / sqrt(diag(cov))
+    # [DEFENSE: NUM-01] Isolate zero-variance assets to prevent analytical gradient -1/y explosion
     variances = np.diag(cov)
-    y0 = 1.0 / np.sqrt(np.maximum(variances, 1e-8))
+    pos_mask = variances > 1e-12
+    n_pos = int(np.sum(pos_mask))
+
+    def inverse_vol_fallback() -> np.ndarray:
+        vols = np.sqrt(np.maximum(variances, 0.0))
+        inv_v = np.zeros(n_assets, dtype=np.float64)
+        if n_pos > 0:
+            inv_v[pos_mask] = 1.0 / vols[pos_mask]
+            s = float(np.sum(inv_v))
+            if s > 0.0 and np.isfinite(s):
+                return np.round(inv_v / s, 6)
+        return np.full(n_assets, 1.0 / n_assets, dtype=np.float64)
+
+    # If all assets have near-zero variance, fallback to equal weights
+    if n_pos == 0:
+        return np.full(n_assets, 1.0 / n_assets, dtype=np.float64)
+
+    # If only 1 asset has positive variance, it absorbs all risk allocation
+    if n_pos == 1:
+        w = np.zeros(n_assets, dtype=np.float64)
+        w[pos_mask] = 1.0
+        return w
+
+    # If a subset of assets has zero variance, isolate and solve on the strictly positive submatrix
+    if n_pos < n_assets:
+        cov_sub = cov[np.ix_(pos_mask, pos_mask)]
+        sub_weights = risk_parity_portfolio(cov_sub, max_iter=max_iter, tol=tol)
+        w = np.zeros(n_assets, dtype=np.float64)
+        w[pos_mask] = sub_weights
+        return np.round(w, 6)
+
+    # Symmetrize and regularize strictly positive-definite property to guarantee Spinu convexity
+    sym_cov = 0.5 * (cov + cov.T)
+    min_eig = float(np.min(np.linalg.eigvalsh(sym_cov)))
+    if min_eig < 1e-8:
+        sym_cov = sym_cov + (abs(min_eig) + 1e-6) * np.eye(n_assets, dtype=np.float64)
+
+    # Initial guess y0 = 1 / sqrt(diag(sym_cov))
+    y0 = 1.0 / np.sqrt(np.maximum(np.diag(sym_cov), 1e-8))
     y0 = y0 / np.sum(y0)
 
     def objective_and_grad(y: np.ndarray) -> Tuple[float, np.ndarray]:
-        # Guard against zero/negative components
         y_safe = np.maximum(y, 1e-12)
-        val = 0.5 * float(y_safe.T @ cov @ y_safe) - float(np.sum(np.log(y_safe)))
-        grad = (cov @ y_safe) - (1.0 / y_safe)
+        val = 0.5 * float(y_safe.T @ sym_cov @ y_safe) - float(np.sum(np.log(y_safe)))
+        grad = (sym_cov @ y_safe) - (1.0 / y_safe)
         return val, grad
 
     bounds = [(1e-8, None) for _ in range(n_assets)]
@@ -126,17 +167,19 @@ def risk_parity_portfolio(
         options={"maxiter": max_iter, "ftol": tol, "gtol": tol},
     )
 
-    if not result.success and result.x is None:
-        # Fallback to inverse volatility weights if optimization fails
-        inv_vol = 1.0 / np.sqrt(np.maximum(np.diag(cov), 1e-8))
-        return inv_vol / np.sum(inv_vol)
+    # [DEFENSE: NUM-02] Explicit verification: do not trust result.x if solver failed or output is invalid
+    if (not result.success) or (result.x is None) or (not np.all(np.isfinite(result.x))):
+        return inverse_vol_fallback()
 
     y_opt = np.maximum(0.0, result.x)
     sum_y = float(np.sum(y_opt))
-    if sum_y <= 0:
-        return np.full(n_assets, 1.0 / n_assets, dtype=np.float64)
+    if sum_y <= 0.0 or not np.isfinite(sum_y):
+        return inverse_vol_fallback()
 
     w = y_opt / sum_y
+    if not np.all(np.isfinite(w)):
+        return inverse_vol_fallback()
+
     return np.round(w, 6)
 
 

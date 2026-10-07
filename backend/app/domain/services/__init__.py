@@ -13,6 +13,7 @@ from app.domain.services.backtest_metrics import (
 )
 from app.domain.services.calendar_service import MarketCalendarService
 from app.domain.services.fx_service import FXService
+from app.domain.services.market_simulation import generate_gbm_market_prices
 from app.domain.services.market_frictions import (
     ExecutionCostBreakdown,
     calculate_alyc_commission,
@@ -82,4 +83,5 @@ __all__ = [
     "calculate_max_drawdown",
     "calculate_calmar_ratio",
     "calculate_performance_metrics",
+    "generate_gbm_market_prices",
 ]

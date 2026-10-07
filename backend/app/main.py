@@ -1,14 +1,25 @@
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from fastapi import FastAPI, Request, status
+import logging
+import time
+import uuid
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_db_session
+from app.api.middleware.trace import RequestTraceMiddleware, get_current_request_id
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import async_engine, init_db
+from app.schemas.envelope import APIErrorResponse, ErrorDetail, ResponseMeta, SubErrorDetail
+
+logger = logging.getLogger("investai.api")
 
 
 @asynccontextmanager
@@ -34,63 +45,158 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS Middleware configuration - allows Vite frontend on port 5173
+# Trace and latency measurement middleware (OBS-01)
+app.add_middleware(RequestTraceMiddleware)
+
+# Strict CORS configuration for authorized frontend origins (SEC-01)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "X-Execution-Time-Ms"],
 )
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-    """Custom structured response for Pydantic validation errors."""
+    """Custom structured response conforming to APIErrorResponse for Pydantic validation errors (ARQ-02)."""
+    request_id = get_current_request_id() or request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    sub_errors = [
+        SubErrorDetail(
+            field=".".join(str(loc) for loc in err.get("loc", [])) if err.get("loc") else None,
+            issue=str(err.get("msg", "Validation error")),
+        )
+        for err in exc.errors()
+    ]
+    error_payload = APIErrorResponse(
+        success=False,
+        error=ErrorDetail(
+            code="VALIDATION_ERROR",
+            message="Error de validación en los datos de entrada.",
+            details=sub_errors,
+        ),
+        meta=ResponseMeta(request_id=request_id),
+    )
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "error_type": "VALIDATION_ERROR",
-            "message": "Error de validación en los datos de entrada.",
-            "details": jsonable_encoder(exc.errors()),
-        },
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content=error_payload.model_dump(mode="json"),
     )
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Unhandled internal server errors."""
+    """Unhandled internal server errors with internal logging, sanitized client output and APIErrorResponse envelope (SEC-02, ARQ-02)."""
+    request_id = get_current_request_id() or request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    logger.exception(f"Unhandled server error [req_id={request_id}] on {request.method} {request.url.path}: {exc}")
+    error_payload = APIErrorResponse(
+        success=False,
+        error=ErrorDetail(
+            code="INTERNAL_SERVER_ERROR",
+            message="An internal server error occurred.",
+            details=[],
+        ),
+        meta=ResponseMeta(request_id=request_id),
+    )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "error_type": "INTERNAL_SERVER_ERROR",
-            "message": "Se produjo un error interno en el servidor.",
-            "detail": str(exc),
-        },
+        content=error_payload.model_dump(mode="json"),
     )
 
 
 @app.get("/", tags=["Health"])
 async def root() -> dict:
-    """Root entrypoint providing service status and metadata."""
+    """Root entrypoint providing sanitized service status and metadata (SEC-02)."""
     return {
         "app": settings.PROJECT_NAME,
         "version": "1.0.0",
         "status": "online",
-        "database_uri": settings.ASYNC_DATABASE_URI.split("@")[-1] if "@" in settings.ASYNC_DATABASE_URI else settings.ASYNC_DATABASE_URI,
         "docs": "/docs",
         "api_v1": settings.API_V1_STR,
     }
 
 
+@app.get("/health/liveness", tags=["Health"])
+async def liveness_probe() -> dict:
+    """Liveness probe to confirm that the event loop is active and responsive without I/O (OBS-02)."""
+    return {"status": "alive"}
+
+
+@app.get("/health/readiness", tags=["Health"])
+async def readiness_probe(
+    db: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Readiness probe evaluating database dependency connectivity with strict timeout (OBS-02)."""
+    t0 = time.perf_counter()
+    try:
+        await asyncio.wait_for(db.execute(text("SELECT 1")), timeout=1.5)
+        latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "status": "ready",
+                "database": {
+                    "status": "up",
+                    "latency_ms": latency_ms,
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "environment": settings.ENVIRONMENT,
+            },
+        )
+    except Exception as exc:
+        latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+        logger.error(f"Readiness check failed after {latency_ms}ms: {exc}")
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "not_ready",
+                "database": {
+                    "status": "down",
+                    "latency_ms": latency_ms,
+                    "error": "Database connectivity check failed or timed out.",
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "environment": settings.ENVIRONMENT,
+            },
+        )
+
+
 @app.get("/health", tags=["Health"])
-async def health_check() -> dict:
-    """Health check endpoint for liveness and readiness probes."""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "environment": settings.ENVIRONMENT,
-    }
+async def health_check(
+    db: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Health check endpoint preserving backward compatibility with readiness validation."""
+    t0 = time.perf_counter()
+    try:
+        await asyncio.wait_for(db.execute(text("SELECT 1")), timeout=1.5)
+        latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "status": "healthy",
+                "database": "connected",
+                "latency_ms": latency_ms,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "environment": settings.ENVIRONMENT,
+            },
+        )
+    except Exception as exc:
+        logger.error(f"Health check failed: {exc}")
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "unhealthy",
+                "database": "disconnected",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "environment": settings.ENVIRONMENT,
+            },
+        )
 
 
 # Register Version 1 Routers

@@ -18,7 +18,7 @@ class AssetResponse(BaseModel):
 
 
 class HoldingCreate(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     ticker: str = Field(..., description="Ticker o código de especie")
     quantity: float = Field(..., description="Cantidad nominal de títulos")
@@ -69,7 +69,7 @@ class HoldingResponse(BaseModel):
 
 
 class PortfolioCreate(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     name: str = Field(default="Mi Cartera Principal", min_length=1, max_length=255)
     investor_profile: str = Field(default="MODERATE", description="Perfil del inversor: CONSERVATIVE, MODERATE, AGGRESSIVE")
@@ -87,7 +87,7 @@ class PortfolioCreate(BaseModel):
 
 
 class PortfolioUpdate(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     investor_profile: Optional[str] = Field(default=None, description="Perfil del inversor: CONSERVATIVE, MODERATE, AGGRESSIVE")

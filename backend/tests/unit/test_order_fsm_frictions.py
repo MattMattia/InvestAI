@@ -281,6 +281,20 @@ class TestMarketFrictions(unittest.TestCase):
         self.assertAlmostEqual(breakdown.effective_net_price_per_share, 992.057, places=3)
         self.assertAlmostEqual(breakdown.friction_pct, 0.7943, places=3)
 
+    def test_net_execution_cost_sell_extreme_fees_does_not_drain_cash(self) -> None:
+        """[DEFENSE: NUM-04] Verifica que si los costos fijos superan el valor de venta, el neto no sea negativo."""
+        # Venta de penny stock: 1 share @ $1 ARS, pero comisión fija mínima de $50 ARS
+        breakdown = calculate_net_execution_cost(
+            quantity=1.0,
+            price=1.0,
+            side=OrderSide.SELL,
+            min_alyc_fee=50.0,
+            include_vat=True,
+        )
+        self.assertEqual(breakdown.side, OrderSide.SELL)
+        self.assertGreaterEqual(breakdown.net_total_amount, 0.0)
+        self.assertEqual(breakdown.net_total_amount, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

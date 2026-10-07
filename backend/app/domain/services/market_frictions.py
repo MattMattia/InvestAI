@@ -187,7 +187,9 @@ def calculate_net_execution_cost(
     if side_enum == OrderSide.BUY:
         net_total = round(effective_amount + alyc_comm + alyc_vat + market_fees, 4)
     else:
-        net_total = round(effective_amount - (alyc_comm + alyc_vat + market_fees), 4)
+        # [DEFENSE: NUM-04] For SELL orders, net proceeds cannot be negative (broker fees cannot exceed sale value)
+        net_proceeds = effective_amount - (alyc_comm + alyc_vat + market_fees)
+        net_total = round(max(0.0, net_proceeds), 4)
 
     effective_net_price = round(net_total / quantity, 4)
     friction_pct = round((total_frictions / nominal_amount) * 100.0, 4) if nominal_amount > 0 else 0.0

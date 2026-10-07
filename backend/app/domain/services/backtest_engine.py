@@ -245,29 +245,50 @@ class BacktestEngine:
         if n_assets == 1:
             return {tickers[0]: 1.0}
 
-        # Extraer fechas comunes ordenadas en la ventana de lookback
-        common_dates = set.intersection(*[set(price_history[t].keys()) for t in tickers])
-        sorted_dates = sorted([d for d in common_dates if d <= current_date])
+        # [DEFENSE: NUM-03] Extract union of all observed trading dates across tickers
+        # to prevent a newly listed asset with short history from collapsing the lookback window of mature assets.
+        all_dates_set: Set[dt.date] = set()
+        for t in tickers:
+            all_dates_set.update(price_history[t].keys())
+
+        sorted_dates = sorted([d for d in all_dates_set if d <= current_date])
 
         if len(sorted_dates) > lookback_window:
             sorted_dates = sorted_dates[-lookback_window:]
 
-        # Si no hay observaciones suficientes para estimar covarianza robusta, fallback a 1/N
+        # Si no hay observaciones suficientes en el mercado general, fallback a 1/N
         if len(sorted_dates) < min_observations:
             equal_weight = 1.0 / n_assets
             return {t: equal_weight for t in tickers}
 
-        # Construir matriz de retornos (T x N)
-        price_matrix = np.array([
-            [price_history[t][d] for t in tickers]
-            for d in sorted_dates
-        ], dtype=np.float64)
+        # Construir matriz de precios alineada con forward-fill y zero-imputation previa a la fecha de inicio
+        n_periods = len(sorted_dates)
+        aligned_prices = np.zeros((n_periods, n_assets), dtype=np.float64)
 
-        # Retornos discretos R_t = (P_t - P_{t-1}) / P_{t-1}
-        returns_matrix = (price_matrix[1:] - price_matrix[:-1]) / price_matrix[:-1]
+        for col_idx, t in enumerate(tickers):
+            history_t = price_history[t]
+            t_dates = sorted([d for d in history_t.keys() if d in all_dates_set and d <= current_date])
+            first_known_price = history_t[t_dates[0]] if t_dates else 100.0
+            last_price = first_known_price
+
+            for row_idx, d in enumerate(sorted_dates):
+                if d in history_t and history_t[d] > 0.0:
+                    last_price = history_t[d]
+                aligned_prices[row_idx, col_idx] = last_price
+
+        # Retornos discretos R_t = (P_t - P_{t-1}) / P_{t-1} con protección contra denominador nulo
+        denom = aligned_prices[:-1]
+        valid_denom = denom > 0.0
+        returns_matrix = np.zeros((n_periods - 1, n_assets), dtype=np.float64)
+        np.divide(
+            aligned_prices[1:] - denom,
+            denom,
+            out=returns_matrix,
+            where=valid_denom,
+        )
 
         # Validar estabilidad numérica de los retornos
-        if not np.all(np.isfinite(returns_matrix)) or returns_matrix.shape[0] < 5:
+        if not np.all(np.isfinite(returns_matrix)) or returns_matrix.shape[0] < min_observations - 1:
             return {t: 1.0 / n_assets for t in tickers}
 
         try:
@@ -295,7 +316,7 @@ class BacktestEngine:
         latest_prices: Dict[str, float],
         target_weights: Dict[str, float],
         total_frictions: float,
-    ) -> Tuple[float, Dict[str, float], float, List[Dict[str, Any]]]:
+    ) -> tuple[float, Dict[str, float], float, List[Dict[str, Any]]]:
         """
         Ejecuta las operaciones de compra y venta requeridas para alcanzar las ponderaciones objetivo,
         gestionando el ciclo de órdenes con la FSM y aplicando fricciones de mercado.
@@ -356,7 +377,8 @@ class BacktestEngine:
             # FSM: SUBMITTED -> FILLED
             order.fill(filled_qty=qty_to_sell, filled_price=breakdown.effective_price)
 
-            cash += breakdown.net_total_amount
+            # [DEFENSE: NUM-04] Ensure cash never decreases on liquidation of residual positions
+            cash += max(0.0, breakdown.net_total_amount)
             updated_holdings[t] -= qty_to_sell
             total_frictions += breakdown.total_frictions
             executed_orders.append(order.model_dump(mode="json"))
