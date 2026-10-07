@@ -311,17 +311,46 @@ InvestAI_Mattia_Risso/
 
 ## 🛡️ 9. Calidad de Software, Ingeniería y Testing
 
+### 9.1. Convenciones y Aislamiento Arquitectónico
 - **Pydantic v2 Estricto:** Todos los modelos usan `ConfigDict(frozen=True)` o `ConfigDict(from_attributes=True)` y validadores `@field_validator` / `@model_validator`.
 - **Saneamiento Completo de Código Fuente:** El 100% de los archivos del backend carecen de caracteres BOM (`\xef\xbb\xbf`), código muerto o importaciones huérfanas, verificado por análisis de árbol sintáctico (AST).
 - **Aislamiento Arquitectónico:** Los modelos de dominio puro nunca dependen de SQLAlchemy ni de la infraestructura web.
-- **Suite de Pruebas Automatizadas (100% Passing):**
-  ```powershell
-  $env:PYTHONPATH = "backend"; python -m unittest discover -s backend/tests/unit
-  $env:PYTHONPATH = "backend"; python -m unittest discover -s backend/tests/integration
-  ```
-  - **121 pruebas unitarias** (Modelos de Dominio, Reglas, Métricas, Rebalanceo, Persistencia, Ingesta, Bimoneda, Calendarios, Optimización, Markov, Estabilidad Numérica, FSM/Fricciones y Métricas de Backtest).
-  - **16 pruebas de integración** (Base de datos relacional, endpoints REST, motor de simulación temporal BacktestEngine y endpoint /backtest/run).
-  - **Total: 137 pruebas ejecutadas con éxito en ~2.2 segundos.**
+
+### 9.2. Bitácora de Ingeniería: Post-Mortems Técnicos & Gotchas Resueltos
+A lo largo del desarrollo de los motores cuantitativos, de simulación y de la API, se identificaron y resolvieron diversos incidentes y *gotchas* críticos de arquitectura y bajo nivel:
+
+1. **Colisión de Nombres en Evaluación Diferida de Tipos (Python 3.14 / PEP 649):**
+   - *Incidente:* En `DailySnapshot`, la anotación `date: Union[date, str]` con la importación `from datetime import date` provocó que el campo `date` sombreara el tipo global en el espacio de nombres de la clase. Al evaluarse de forma diferida, Pydantic v2 arrojó `PydanticSchemaGenerationError: Unable to generate schema for FieldInfo(annotation=NoneType)`.
+   - *Resolución:* Calificación explícita de tipos a nivel de módulo (`import datetime as dt` $\rightarrow$ `Union[dt.date, str]`), desacoplando el identificador del campo del tipo importado.
+
+2. **Resolución de Anotaciones Huérfanas (`ForwardRef` en Pydantic v2):**
+   - *Incidente:* En `BacktestRunRequest`, utilizar `Optional[Dict[...]]` sin haber importado explícitamente `Optional` desde `typing` generaba un `ForwardRef` no resuelto que hacía fallar a `TypeAdapter` con `PydanticUserError` en tiempo de instanciación del request body de FastAPI.
+   - *Resolución:* Saneamiento estricto del preludio de dependencias y verificación estática previa de tipos.
+
+3. **Serialización Segura de Excepciones Nativas en FastAPI (`RequestValidationError`):**
+   - *Incidente:* El manejador global de validación intentaba serializar directamente `exc.errors()`. Cuando un `@field_validator` lanzaba un `ValueError`, Pydantic v2 inyectaba la instancia del error en `ctx['error']`, provocando un `TypeError: Object of type ValueError is not JSON serializable` que transformaba errores 422 en 500 no capturados.
+   - *Resolución:* Envoltura estructurada con `jsonable_encoder(exc.errors())` en `backend/app/main.py` para garantizar la conversión recursiva y segura de excepciones nativas a strings JSON.
+
+4. **Corrupción por Caracteres BOM (`\xef\xbb\xbf`) en Windows PowerShell:**
+   - *Incidente:* Ediciones previas en entornos Windows crearon cabeceras con Byte Order Mark (BOM UTF-8), impidiendo la carga del árbol sintáctico (AST) en Python con errores de tipo `SyntaxError: invalid non-printable character U+FEFF`.
+   - *Resolución:* Pipeline de escaneo a bajo nivel binario y reescritura forzada a UTF-8 estándar sin BOM en los 6 módulos afectados.
+
+5. **Inestabilidad Numérica y Matrices Singulares ($N > T$ o Activos Colineales):**
+   - *Incidente:* Las descomposiciones clásicas de Cholesky y la inversión de matrices de covarianza fallaban ante activos altamente correlacionados o muestras breves, causando detenciones por `LinAlgError` o matrices no definidas positivas.
+   - *Resolución:* Implementación de `safe_cholesky` con *jitter* diagonal adaptativo ($10^{-6}$ a $10^{-2}$), proyección espectral de Higham (1988/2002) para forzar la matriz definida positiva más cercana, pseudoinversa de Moore-Penrose truncada (`safe_pinv`), y contracción de covarianza de Ledoit-Wolf (2004) hacia la identidad escalada.
+
+6. **Indeterminación Contable de Empresas con Pérdidas ($EPS \le 0$):**
+   - *Incidente:* Las fórmulas convencionales de ratios contables ($P/E, PEG$) generaban divisiones por cero o arrojaban múltiplos negativos absurdos ante compañías en fases tempranas o con resultados netos negativos.
+   - *Resolución:* Creación de la función pura `safe_divide` y tipado formal bajo el estado canónico `ValuationStatus.INDETERMINATE`, evitando distorsiones en los filtros de valuación.
+
+### 9.3. Suite de Pruebas Automatizadas (100% Passing)
+```powershell
+$env:PYTHONPATH = "backend"; python -m unittest discover -s backend/tests/unit
+$env:PYTHONPATH = "backend"; python -m unittest discover -s backend/tests/integration
+```
+- **121 pruebas unitarias** (Modelos de Dominio, Reglas, Métricas, Rebalanceo, Persistencia, Ingesta, Bimoneda, Calendarios, Optimización, Markov, Estabilidad Numérica, FSM/Fricciones y Métricas de Backtest).
+- **16 pruebas de integración** (Base de datos relacional, endpoints REST, motor de simulación temporal BacktestEngine y endpoint /backtest/run).
+- **Total: 137 pruebas ejecutadas con éxito en ~2.2 segundos.**
 
 ---
 
