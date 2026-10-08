@@ -18,6 +18,7 @@ from app.schemas.backtest import (
     DailySnapshot,
     RebalanceFrequency,
 )
+from app.schemas.market_data import MarketBarDTO
 
 
 def _parse_date(d: Union[dt.date, dt.datetime, str]) -> dt.date:
@@ -441,3 +442,29 @@ class BacktestEngine:
                 executed_orders.append(order.model_dump(mode="json"))
 
         return cash, updated_holdings, total_frictions, executed_orders
+
+
+def bars_to_price_history(
+    bars_by_ticker: Dict[str, List[MarketBarDTO]],
+) -> Dict[str, Dict[dt.date, float]]:
+    """
+    Convierte series históricas de barras canónicas (MarketBarDTO) a la estructura
+    matricial de precios de cierre requerida por el motor de backtesting (BacktestEngine.run).
+
+    Parámetros:
+    -----------
+    bars_by_ticker: Mapeo de símbolo (ticker) a lista de barras canónicas OHLCV.
+
+    Retorna:
+    --------
+    Dict[str, Dict[dt.date, float]]: Estructura {ticker: {fecha: precio_cierre_float}}.
+    """
+    price_history: Dict[str, Dict[dt.date, float]] = {}
+    for raw_ticker, bars in bars_by_ticker.items():
+        ticker = raw_ticker.strip().upper()
+        ticker_prices: Dict[dt.date, float] = {}
+        for bar in bars:
+            d = bar.timestamp.date() if hasattr(bar.timestamp, "date") else bar.timestamp
+            ticker_prices[d] = float(bar.close)
+        price_history[ticker] = ticker_prices
+    return price_history

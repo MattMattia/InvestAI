@@ -8,6 +8,13 @@ from app.schemas.envelope import (
     ResponseMeta,
     SubErrorDetail,
 )
+from app.schemas.market_data import (
+    FXRateDTO,
+    FXType,
+    MarketBarDTO,
+    MarketQuoteDTO,
+    Timeframe,
+)
 
 __all__ = [
     "BaseSchema",
@@ -16,4 +23,9 @@ __all__ = [
     "SubErrorDetail",
     "ErrorDetail",
     "APIErrorResponse",
+    "Timeframe",
+    "FXType",
+    "MarketQuoteDTO",
+    "MarketBarDTO",
+    "FXRateDTO",
 ]

@@ -1,4 +1,4 @@
-from app.domain.services.backtest_engine import BacktestEngine
+from app.domain.services.backtest_engine import BacktestEngine, bars_to_price_history
 from app.domain.services.backtest_metrics import (
     calculate_annualized_volatility,
     calculate_cagr,
@@ -13,6 +13,21 @@ from app.domain.services.backtest_metrics import (
 )
 from app.domain.services.calendar_service import MarketCalendarService
 from app.domain.services.fx_service import FXService
+from app.domain.services.fx_calculator import (
+    FXCalculatorError,
+    InvalidMarketPriceError,
+    ZeroPriceDivisionError,
+    calculate_ccl_rate,
+    calculate_mep_rate,
+)
+from app.domain.services.market_connector import (
+    BaseMarketConnector,
+    MarketDataConnectorError,
+    RateLimitExceededError,
+    SecuritySSRFViolationError,
+    TickerNotFoundError,
+)
+from app.domain.services.market_history_service import MarketHistoryService
 from app.domain.services.market_simulation import generate_gbm_market_prices
 from app.domain.services.market_frictions import (
     ExecutionCostBreakdown,
@@ -84,4 +99,16 @@ __all__ = [
     "calculate_calmar_ratio",
     "calculate_performance_metrics",
     "generate_gbm_market_prices",
+    "calculate_mep_rate",
+    "calculate_ccl_rate",
+    "FXCalculatorError",
+    "InvalidMarketPriceError",
+    "ZeroPriceDivisionError",
+    "BaseMarketConnector",
+    "MarketDataConnectorError",
+    "TickerNotFoundError",
+    "RateLimitExceededError",
+    "SecuritySSRFViolationError",
+    "MarketHistoryService",
+    "bars_to_price_history",
 ]

@@ -3,6 +3,7 @@ from app.api.v1.endpoints import (
     backtest,
     holdings,
     imports,
+    market,
     optimization,
     portfolios,
     rebalancing,
@@ -18,4 +19,5 @@ api_router.include_router(risk.router, prefix="/portfolios", tags=["Risk Engine"
 api_router.include_router(rebalancing.router, prefix="/portfolios", tags=["Rebalancing"])
 api_router.include_router(optimization.router, prefix="/portfolios", tags=["Optimization & Tail Risk"])
 api_router.include_router(backtest.router, prefix="/backtest", tags=["Backtesting Engine"])
+api_router.include_router(market.router, prefix="/market", tags=["Market Data & FX"])
 

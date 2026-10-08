@@ -100,6 +100,7 @@ class Settings(BaseSettings):
 
     # Market Data Caching TTL in seconds
     MARKET_DATA_CACHE_TTL_SECONDS: int = 60
+    MARKET_DATA_BASE_URL: str = "https://api.investai.market"
 
     @property
     def is_postgres_available(self) -> bool:
