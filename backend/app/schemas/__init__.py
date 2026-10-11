@@ -16,6 +16,7 @@ from app.schemas.market_data import (
     Timeframe,
 )
 from app.schemas.token import (
+    RefreshTokenRequest,
     TokenPayload,
     TokenResponse,
     TokenType,
@@ -46,4 +47,5 @@ __all__ = [
     "TokenType",
     "TokenPayload",
     "TokenResponse",
+    "RefreshTokenRequest",
 ]

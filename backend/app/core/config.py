@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: SecretStr = SecretStr("investai-insecure-dev-secret-key-change-in-production-min-32-bytes-length-xyz")
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     @field_validator("JWT_SECRET_KEY", mode="after")
     @classmethod
@@ -68,6 +69,13 @@ class Settings(BaseSettings):
         raw = v.get_secret_value()
         if len(raw.encode("utf-8")) < 32:
             raise ValueError("JWT_SECRET_KEY must be at least 32 bytes (256 bits)")
+        return v
+
+    @field_validator("REFRESH_TOKEN_EXPIRE_DAYS", mode="after")
+    @classmethod
+    def validate_refresh_token_expire_days(cls, v: int) -> int:
+        if not (1 <= v <= 90):
+            raise ValueError("REFRESH_TOKEN_EXPIRE_DAYS must be between 1 and 90")
         return v
 
     # PostgreSQL Database Connection

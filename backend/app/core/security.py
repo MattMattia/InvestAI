@@ -1,8 +1,8 @@
 """
 Servicio criptográfico defensivo, gestión de secretos y motor de tokens JWT (Módulo 5.1 & Módulo 5.2).
 Implementación directa sobre bcrypt nativo (hashing) y PyJWT (RFC 7519 / HS256),
-con soporte para pydantic.SecretStr, mitigación de ataques DoS, verificación en tiempo constante
-y validación estricta de claims tipados.
+con soporte para pydantic.SecretStr, mitigación de ataques DoS, verificación en tiempo constante,
+emisión atómica de pares de tokens (access/refresh) y validación estricta de claims tipados.
 """
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
@@ -13,7 +13,7 @@ import jwt
 from pydantic import SecretStr, ValidationError
 
 from app.core.config import settings
-from app.schemas.token import TokenPayload, TokenType
+from app.schemas.token import TokenPayload, TokenResponse, TokenType
 from app.schemas.user import UserRole
 
 __all__ = [
@@ -24,6 +24,8 @@ __all__ = [
     "get_password_hash",
     "verify_password",
     "create_access_token",
+    "create_refresh_token",
+    "create_token_pair",
     "decode_token",
 ]
 
@@ -165,6 +167,94 @@ def create_access_token(
     )
 
 
+def create_refresh_token(
+    subject: Union[str, uuid.UUID],
+    role: UserRole,
+    email: Optional[str] = None,
+    expires_delta: Optional[timedelta] = None,
+    jti: Optional[str] = None,
+) -> str:
+    """
+    Genera y firma criptográficamente un Refresh Token JWT de ciclo extendido conforme a RFC 7519.
+
+    Claims inyectados:
+    - sub: Identificador del sujeto/usuario normalizado a string.
+    - role: Rol RBAC del usuario.
+    - type: Tipo canónico de token ('refresh').
+    - iat / nbf: Marca de tiempo de emisión y validez (UTC epoch).
+    - exp: Expiración acotada en días (default settings.REFRESH_TOKEN_EXPIRE_DAYS).
+    - jti: Identificador único global independiente para revocación granular.
+    - email: Opcional, normalizado en minúsculas.
+    """
+    sub_str = str(subject).strip()
+    if not sub_str:
+        raise ValueError("Subject (sub) cannot be empty")
+
+    now = datetime.now(timezone.utc)
+    expire_duration = (
+        expires_delta
+        if expires_delta is not None
+        else timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    )
+
+    payload = {
+        "sub": sub_str,
+        "role": role.value if isinstance(role, UserRole) else str(role),
+        "type": TokenType.REFRESH.value,
+        "iat": int(now.timestamp()),
+        "nbf": int(now.timestamp()),
+        "exp": int((now + expire_duration).timestamp()),
+        "jti": jti or str(uuid.uuid4()),
+    }
+
+    if email:
+        payload["email"] = email.strip().lower()
+
+    return jwt.encode(
+        payload,
+        settings.JWT_SECRET_KEY.get_secret_value(),
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+
+def create_token_pair(
+    subject: Union[str, uuid.UUID],
+    role: UserRole,
+    email: Optional[str] = None,
+    access_expires_delta: Optional[timedelta] = None,
+    refresh_expires_delta: Optional[timedelta] = None,
+) -> TokenResponse:
+    """
+    Emisión atómica y coordinada de un par de tokens (Access Token + Refresh Token).
+    Garantiza que ambos tokens posean identificadores criptográficos JTI independientes.
+    """
+    access_token = create_access_token(
+        subject=subject,
+        role=role,
+        email=email,
+        expires_delta=access_expires_delta,
+    )
+    refresh_token = create_refresh_token(
+        subject=subject,
+        role=role,
+        email=email,
+        expires_delta=refresh_expires_delta,
+    )
+
+    expires_in_seconds = (
+        int(access_expires_delta.total_seconds())
+        if access_expires_delta is not None
+        else settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=expires_in_seconds,
+    )
+
+
 def decode_token(
     token: str,
     expected_type: Optional[TokenType] = TokenType.ACCESS,
@@ -177,7 +267,7 @@ def decode_token(
     - Valida presencia mandatoria de claims esenciales ('exp', 'iat', 'sub', 'type', 'jti').
     - Incorpora tolerancia de reloj (leeway=10 segundos).
     - Mapea de forma segura excepciones a tipos canónicos (ExpiredTokenError, InvalidTokenError).
-    - Valida coincidencia de propósito/tipo de token (ej. TokenType.ACCESS).
+    - Valida coincidencia de propósito/tipo de token (ej. TokenType.ACCESS o TokenType.REFRESH).
     """
     if not token or not isinstance(token, str) or not token.strip():
         raise InvalidTokenError("Token must be a non-empty string")

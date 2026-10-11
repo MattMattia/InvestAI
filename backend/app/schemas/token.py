@@ -1,7 +1,7 @@
 """
-Contratos canónicos de Token y Payload JWT (Módulo 5.2 - Fase 1).
+Contratos canónicos de Token y Payload JWT (Módulo 5.2 - Fases 1 & 2).
 DTOs inmutables basados en Pydantic v2 para la representación, transporte y
-deserialización estricta de claims de seguridad según RFC 7519.
+deserialización estricta de claims de seguridad según RFC 7519, incluyendo ciclo de vida de refresh tokens.
 """
 from datetime import datetime, timezone
 import enum
@@ -69,11 +69,15 @@ class TokenPayload(BaseSchema):
 
 class TokenResponse(BaseSchema):
     """
-    Respuesta canónica de transporte para emisión de tokens de acceso (OAuth2 Bearer).
+    Respuesta canónica de transporte para emisión de tokens de acceso y refresh (OAuth2 Bearer).
     """
 
     access_token: str = Field(
         description="Token de acceso JWT codificado y firmado criptográficamente",
+    )
+    refresh_token: Optional[str] = Field(
+        default=None,
+        description="Token de actualización (Refresh Token) para extender la sesión (opcional)",
     )
     token_type: str = Field(
         default="bearer",
@@ -83,3 +87,14 @@ class TokenResponse(BaseSchema):
         description="Vida útil del token expresada en segundos (ej. 1800 para 30 minutos)",
     )
 
+
+class RefreshTokenRequest(BaseSchema):
+    """
+    Solicitud de renovación de sesión mediante Refresh Token.
+    """
+
+    refresh_token: str = Field(
+        min_length=1,
+        max_length=4096,
+        description="Refresh token criptográfico emitido previamente para renovación de sesión",
+    )

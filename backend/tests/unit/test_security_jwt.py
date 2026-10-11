@@ -1,7 +1,8 @@
 """
-Suite de pruebas unitarias herméticas para el motor criptográfico de tokens JWT (Módulo 5.2 - Fase 1).
+Suite de pruebas unitarias herméticas para el motor criptográfico de tokens JWT (Módulo 5.2 - Fases 1 & 2).
 Verifica generación, firma, verificación de claims RFC 7519, expiración, detección de tampering,
-mitigación de Algorithm Confusion, tolerancia de reloj (leeway) y validación de tipos de token.
+mitigación de Algorithm Confusion, tolerancia de reloj (leeway), validación de tipos de token (access y refresh),
+factoría atómica create_token_pair, contratos RefreshTokenRequest y prevención de Token Confusion.
 """
 from datetime import datetime, timedelta, timezone
 import unittest
@@ -17,15 +18,22 @@ from app.core.security import (
     SecurityError,
     TokenSecurityError,
     create_access_token,
+    create_refresh_token,
+    create_token_pair,
     decode_token,
 )
-from app.schemas.token import TokenPayload, TokenResponse, TokenType
+from app.schemas.token import (
+    RefreshTokenRequest,
+    TokenPayload,
+    TokenResponse,
+    TokenType,
+)
 from app.schemas.user import UserRole
 
 
 @pytest.mark.unit
 class TestSecurityJWT(unittest.TestCase):
-    """Pruebas unitarias para creación, firma y decodificación de tokens JWT."""
+    """Pruebas unitarias para creación, firma, refresh y decodificación de tokens JWT."""
 
     def test_create_and_decode_access_token_success(self):
         """Valida emisión y decodificación completa de un access token con UUID y UserRole.TRADER."""
@@ -52,10 +60,145 @@ class TestSecurityJWT(unittest.TestCase):
         self.assertEqual(payload.iat.tzinfo, timezone.utc)
         self.assertTrue(payload.exp > payload.iat)
 
+    def test_create_and_decode_refresh_token_success(self):
+        """Valida emisión y decodificación exitosa de un refresh token con claims y duración en días."""
+        user_id = uuid.uuid4()
+        email = "investor@investai.com"
+
+        token = create_refresh_token(
+            subject=user_id,
+            role=UserRole.VIEWER,
+            email=email,
+        )
+
+        self.assertIsInstance(token, str)
+        payload = decode_token(token, expected_type=TokenType.REFRESH)
+
+        self.assertEqual(payload.sub, str(user_id))
+        self.assertEqual(payload.role, UserRole.VIEWER)
+        self.assertEqual(payload.type, TokenType.REFRESH)
+        self.assertEqual(payload.email, email)
+        self.assertTrue(len(payload.jti) > 10)
+
+        # Verificar duración aproximada en días (default REFRESH_TOKEN_EXPIRE_DAYS = 7)
+        delta_seconds = (payload.exp - payload.iat).total_seconds()
+        expected_seconds = settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400
+        self.assertAlmostEqual(delta_seconds, expected_seconds, delta=10)
+
+    def test_token_confusion_cross_validation_mitigation(self):
+        """
+        Valida que un refresh token sea rechazado al esperar access,
+        y que un access token sea rechazado al esperar refresh (mitigación de Token Confusion).
+        """
+        user_id = "test_user_confusion"
+        access_tok = create_access_token(subject=user_id, role=UserRole.TRADER)
+        refresh_tok = create_refresh_token(subject=user_id, role=UserRole.TRADER)
+
+        # 1. Refresh token presentado como Access token
+        with self.assertRaises(InvalidTokenError) as ctx_1:
+            decode_token(refresh_tok, expected_type=TokenType.ACCESS)
+        self.assertIn("Invalid token type: expected access, got refresh", str(ctx_1.exception))
+
+        # 2. Access token presentado como Refresh token
+        with self.assertRaises(InvalidTokenError) as ctx_2:
+            decode_token(access_tok, expected_type=TokenType.REFRESH)
+        self.assertIn("Invalid token type: expected refresh, got access", str(ctx_2.exception))
+
+    def test_create_token_pair_atomic_factory(self):
+        """
+        Valida la emisión atómica del par (access + refresh) garantizando
+        identificadores JTI independientes, claims esperados y cálculo de expiración.
+        """
+        user_id = uuid.uuid4()
+        email = "pair.tester@investai.com"
+
+        pair = create_token_pair(
+            subject=user_id,
+            role=UserRole.ADMIN,
+            email=email,
+        )
+
+        self.assertIsInstance(pair, TokenResponse)
+        self.assertIsNotNone(pair.access_token)
+        self.assertIsNotNone(pair.refresh_token)
+        self.assertEqual(pair.token_type, "bearer")
+        self.assertEqual(pair.expires_in, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+
+        # Decodificar ambos tokens
+        access_payload = decode_token(pair.access_token, expected_type=TokenType.ACCESS)
+        refresh_payload = decode_token(pair.refresh_token, expected_type=TokenType.REFRESH)
+
+        self.assertEqual(access_payload.type, TokenType.ACCESS)
+        self.assertEqual(refresh_payload.type, TokenType.REFRESH)
+        self.assertEqual(access_payload.sub, str(user_id))
+        self.assertEqual(refresh_payload.sub, str(user_id))
+
+        # JTI estrictamente independientes para aislamiento de revocación
+        self.assertNotEqual(access_payload.jti, refresh_payload.jti)
+
+        # Con deltas personalizados
+        custom_pair = create_token_pair(
+            subject=user_id,
+            role=UserRole.ADMIN,
+            access_expires_delta=timedelta(minutes=15),
+            refresh_expires_delta=timedelta(days=14),
+        )
+        self.assertEqual(custom_pair.expires_in, 900)
+
+    def test_refresh_token_expiration_raises_expired_token_error(self):
+        """Valida que un refresh token emitido en el pasado arroje ExpiredTokenError."""
+        user_id = "expired_refresh_user"
+        expired_refresh = create_refresh_token(
+            subject=user_id,
+            role=UserRole.VIEWER,
+            expires_delta=timedelta(days=-1),
+        )
+
+        with self.assertRaises(ExpiredTokenError) as ctx:
+            decode_token(expired_refresh, expected_type=TokenType.REFRESH)
+
+        self.assertIn("Token has expired", str(ctx.exception))
+
+    def test_refresh_token_request_schema_validation(self):
+        """Valida el contrato de petición RefreshTokenRequest con límites y extra='forbid'."""
+        valid_raw = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy.signature"
+        req = RefreshTokenRequest(refresh_token=valid_raw)
+        self.assertEqual(req.refresh_token, valid_raw)
+
+        # Rechazo de token vacío o de solo espacios
+        with self.assertRaises(ValidationError):
+            RefreshTokenRequest(refresh_token="")
+
+        with self.assertRaises(ValidationError):
+            RefreshTokenRequest(refresh_token="   ")
+
+        # Rechazo de token que exceda 4096 caracteres
+        oversized = "x" * 4097
+        with self.assertRaises(ValidationError):
+            RefreshTokenRequest(refresh_token=oversized)
+
+        # Aceptación en frontera de 4096 caracteres
+        boundary_4096 = "y" * 4096
+        req_boundary = RefreshTokenRequest(refresh_token=boundary_4096)
+        self.assertEqual(len(req_boundary.refresh_token), 4096)
+
+        # Extra forbidden
+        with self.assertRaises(ValidationError):
+            RefreshTokenRequest(
+                refresh_token=valid_raw,
+                unauthorized_extra="payload",
+            )
+
+    def test_create_refresh_token_empty_subject_rejected(self):
+        """Valida que create_refresh_token rechace sujetos vacíos o solo espacios."""
+        for bad_sub in ["", "   "]:
+            with self.assertRaises(ValueError) as ctx:
+                create_refresh_token(subject=bad_sub, role=UserRole.VIEWER)
+            self.assertEqual(str(ctx.exception), "Subject (sub) cannot be empty")
+
     def test_token_expiration_raises_expired_token_error(self):
-        """Valida que un token expirado en el pasado arroje ExpiredTokenError (subclase de TokenSecurityError)."""
+        """Valida que un access token expirado en el pasado arroje ExpiredTokenError."""
         user_id = str(uuid.uuid4())
-        # Emitir con delta negativo en el pasado (-30 segundos)
         expired_token = create_access_token(
             subject=user_id,
             role=UserRole.VIEWER,
@@ -76,7 +219,6 @@ class TestSecurityJWT(unittest.TestCase):
             role=UserRole.VIEWER,
         )
 
-        # Alterar los últimos caracteres de la firma
         tampered_token = token[:-4] + "wxyz"
 
         with self.assertRaises(InvalidTokenError) as ctx:
@@ -116,7 +258,6 @@ class TestSecurityJWT(unittest.TestCase):
             "exp": int((now + timedelta(minutes=30)).timestamp()),
             "jti": str(uuid.uuid4()),
         }
-        # Intentar crear token sin firma (alg="none")
         unsecured_token = jwt.encode(payload, key="", algorithm="none")
 
         with self.assertRaises(InvalidTokenError) as ctx:
@@ -127,7 +268,6 @@ class TestSecurityJWT(unittest.TestCase):
     def test_clock_leeway_tolerance(self):
         """Valida que pequeñas asimetrías de reloj (leeway de 10s) en nbf/iat no fallen."""
         now = datetime.now(timezone.utc)
-        # Token emitido 5 segundos en el futuro (dentro del leeway de 10s)
         future_skew_payload = {
             "sub": "skewed_user",
             "role": "VIEWER",
@@ -143,12 +283,11 @@ class TestSecurityJWT(unittest.TestCase):
             algorithm=settings.JWT_ALGORITHM,
         )
 
-        # Debe decodificar exitosamente gracias a leeway=10
         payload = decode_token(skewed_token)
         self.assertEqual(payload.sub, "skewed_user")
 
     def test_token_type_validation(self):
-        """Valida que un token con type='refresh' sea rechazado al esperar TokenType.ACCESS."""
+        """Valida que la decodificación respete expected_type."""
         now = datetime.now(timezone.utc)
         refresh_payload = {
             "sub": "user_id_123",
@@ -164,15 +303,6 @@ class TestSecurityJWT(unittest.TestCase):
             settings.JWT_SECRET_KEY.get_secret_value(),
             algorithm=settings.JWT_ALGORITHM,
         )
-
-        # Esperando ACCESS: debe fallar con InvalidTokenError
-        with self.assertRaises(InvalidTokenError) as ctx:
-            decode_token(refresh_token, expected_type=TokenType.ACCESS)
-        self.assertIn("Invalid token type: expected access, got refresh", str(ctx.exception))
-
-        # Esperando REFRESH: debe decodificar exitosamente
-        decoded_refresh = decode_token(refresh_token, expected_type=TokenType.REFRESH)
-        self.assertEqual(decoded_refresh.type, TokenType.REFRESH)
 
         # Sin restricción de tipo (expected_type=None)
         decoded_agnostic = decode_token(refresh_token, expected_type=None)
@@ -190,7 +320,6 @@ class TestSecurityJWT(unittest.TestCase):
         incomplete_payload = {
             "sub": "user_without_jti",
             "role": "VIEWER",
-            # Faltan exp, iat, jti, type
         }
         incomplete_token = jwt.encode(
             incomplete_payload,
@@ -211,7 +340,7 @@ class TestSecurityJWT(unittest.TestCase):
             self.assertEqual(str(ctx.exception), "Subject (sub) cannot be empty")
 
     def test_token_payload_and_response_schemas_immutability(self):
-        """Valida inmutabilidad (frozen), rechazo de campos extras y serialización de contratos de token."""
+        """Valida inmutabilidad (frozen), rechazo de campos extras y serialización de contratos de token con y sin refresh."""
         now = datetime.now(timezone.utc)
         payload = TokenPayload(
             sub="user_abc",
@@ -238,8 +367,8 @@ class TestSecurityJWT(unittest.TestCase):
                 unauthorized_claim="malicious",
             )
 
-        # TokenResponse serialization
-        token_str = "eyJhbGciOiJIUzI1NiJ9.sample.signature"
+        # TokenResponse serialization sin refresh_token
+        token_str = "eyJhbGciOiJIUzI1NiJ9.sample.access"
         resp = TokenResponse(
             access_token=token_str,
             token_type="bearer",
@@ -247,10 +376,22 @@ class TestSecurityJWT(unittest.TestCase):
         )
         dumped = resp.model_dump()
         self.assertEqual(dumped["access_token"], token_str)
+        self.assertIsNone(dumped["refresh_token"])
         self.assertEqual(dumped["token_type"], "bearer")
         self.assertEqual(dumped["expires_in"], 1800)
+
+        # TokenResponse serialization con refresh_token
+        refresh_str = "eyJhbGciOiJIUzI1NiJ9.sample.refresh"
+        resp_with_refresh = TokenResponse(
+            access_token=token_str,
+            refresh_token=refresh_str,
+            token_type="bearer",
+            expires_in=1800,
+        )
+        dumped_with_refresh = resp_with_refresh.model_dump()
+        self.assertEqual(dumped_with_refresh["access_token"], token_str)
+        self.assertEqual(dumped_with_refresh["refresh_token"], refresh_str)
 
 
 if __name__ == "__main__":
     unittest.main()
-
