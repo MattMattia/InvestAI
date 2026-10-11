@@ -13,10 +13,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from pydantic import SecretStr
+
 import app.models  # Asegura registro de modelos relacionales
 from app.core.database import Base
+from app.core.security import get_password_hash, verify_password
 from app.infrastructure.db.models.user import UserModel
-from app.schemas.user import UserResponse, UserRole
+from app.schemas.user import UserCreate, UserResponse, UserRole
 
 
 @pytest.mark.integration
@@ -174,6 +177,49 @@ class TestUserPersistenceIntegration(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(updated.role, UserRole.ADMIN)
             self.assertEqual(updated.full_name, "Super Admin User")
+
+    async def test_user_registration_and_password_verification_lifecycle(self) -> None:
+        """
+        Valida el flujo integral E2E de registro con UserCreate (SecretStr),
+        hashing criptográfico con bcrypt, persistencia en base de datos
+        y verificación de contraseña positiva y negativa.
+        """
+        user_create = UserCreate(
+            email="crypto.trader@investai.com",
+            full_name="Crypto Trader Pro",
+            password=SecretStr("StrongP@ssw0rd2026!"),
+            role=UserRole.TRADER,
+        )
+
+        # Generar hash mediante get_password_hash
+        hashed = get_password_hash(user_create.password)
+
+        async with self.SessionLocal() as session:
+            user_model = UserModel(
+                email=user_create.email,
+                hashed_password=hashed,
+                full_name=user_create.full_name,
+                role=user_create.role,
+                is_active=user_create.is_active,
+            )
+            session.add(user_model)
+            await session.commit()
+            user_id = user_model.id
+
+        # Recuperar el usuario de la base de datos y verificar credenciales
+        async with self.SessionLocal() as session:
+            stmt = select(UserModel).where(UserModel.id == user_id)
+            result = await session.execute(stmt)
+            retrieved_user = result.scalar_one_or_none()
+
+            self.assertIsNotNone(retrieved_user)
+            self.assertEqual(retrieved_user.email, "crypto.trader@investai.com")
+
+            # Verificación positiva con la contraseña original (SecretStr)
+            self.assertTrue(verify_password(user_create.password, retrieved_user.hashed_password))
+
+            # Verificación negativa con contraseña errónea
+            self.assertFalse(verify_password("wrong_password", retrieved_user.hashed_password))
 
 
 if __name__ == "__main__":
