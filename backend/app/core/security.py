@@ -1,17 +1,55 @@
 """
-Servicio criptográfico defensivo y gestión de secretos (Módulo 5.1 - Fase 2).
-Implementación directa sobre la biblioteca nativa `bcrypt` (sin passlib),
-con soporte para pydantic.SecretStr, mitigación de ataques DoS (límite 72 bytes),
-rechazo de bytes nulos y verificación en tiempo constante.
+Servicio criptográfico defensivo, gestión de secretos y motor de tokens JWT (Módulo 5.1 & Módulo 5.2).
+Implementación directa sobre bcrypt nativo (hashing) y PyJWT (RFC 7519 / HS256),
+con soporte para pydantic.SecretStr, mitigación de ataques DoS, verificación en tiempo constante
+y validación estricta de claims tipados.
 """
-from typing import Union
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Union
+import uuid
+
 import bcrypt
-from pydantic import SecretStr
+import jwt
+from pydantic import SecretStr, ValidationError
+
+from app.core.config import settings
+from app.schemas.token import TokenPayload, TokenType
+from app.schemas.user import UserRole
 
 __all__ = [
+    "SecurityError",
+    "TokenSecurityError",
+    "InvalidTokenError",
+    "ExpiredTokenError",
     "get_password_hash",
     "verify_password",
+    "create_access_token",
+    "decode_token",
 ]
+
+
+class SecurityError(Exception):
+    """Clase base para excepciones de seguridad en InvestAI."""
+
+    pass
+
+
+class TokenSecurityError(SecurityError):
+    """Clase base para errores de procesamiento o validación de tokens."""
+
+    pass
+
+
+class InvalidTokenError(TokenSecurityError):
+    """Arrojada cuando un token es inválido, manipulado, corrupto o malformado."""
+
+    pass
+
+
+class ExpiredTokenError(TokenSecurityError):
+    """Arrojada cuando un token criptográfico ha expirado."""
+
+    pass
 
 
 def get_password_hash(password: Union[str, SecretStr], rounds: int = 12) -> str:
@@ -76,3 +114,103 @@ def verify_password(plain_password: Union[str, SecretStr], hashed_password: str)
     except Exception:
         return False
 
+
+def create_access_token(
+    subject: Union[str, uuid.UUID],
+    role: UserRole,
+    email: Optional[str] = None,
+    expires_delta: Optional[timedelta] = None,
+    jti: Optional[str] = None,
+) -> str:
+    """
+    Genera y firma criptográficamente un Access Token JWT conforme a RFC 7519.
+
+    Claims inyectados:
+    - sub: Identificador del sujeto/usuario normalizado a string.
+    - role: Rol RBAC del usuario.
+    - type: Tipo canónico de token ('access').
+    - iat / nbf: Marca de tiempo de emisión y validez (UTC epoch).
+    - exp: Expiración acotada según configuración o delta específico.
+    - jti: Identificador único global del token para trazabilidad y mitigación de repetición.
+    - email: Opcional, normalizado en minúsculas.
+    """
+    sub_str = str(subject).strip()
+    if not sub_str:
+        raise ValueError("Subject (sub) cannot be empty")
+
+    now = datetime.now(timezone.utc)
+    expire_duration = (
+        expires_delta
+        if expires_delta is not None
+        else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
+    payload = {
+        "sub": sub_str,
+        "role": role.value if isinstance(role, UserRole) else str(role),
+        "type": TokenType.ACCESS.value,
+        "iat": int(now.timestamp()),
+        "nbf": int(now.timestamp()),
+        "exp": int((now + expire_duration).timestamp()),
+        "jti": jti or str(uuid.uuid4()),
+    }
+
+    if email:
+        payload["email"] = email.strip().lower()
+
+    return jwt.encode(
+        payload,
+        settings.JWT_SECRET_KEY.get_secret_value(),
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+
+def decode_token(
+    token: str,
+    expected_type: Optional[TokenType] = TokenType.ACCESS,
+) -> TokenPayload:
+    """
+    Decodifica, valida criptográficamente y mapea un token JWT a un DTO TokenPayload.
+
+    Garantías de seguridad:
+    - Mitiga Algorithm Confusion exigiendo algoritmos explícitos (`[settings.JWT_ALGORITHM]`).
+    - Valida presencia mandatoria de claims esenciales ('exp', 'iat', 'sub', 'type', 'jti').
+    - Incorpora tolerancia de reloj (leeway=10 segundos).
+    - Mapea de forma segura excepciones a tipos canónicos (ExpiredTokenError, InvalidTokenError).
+    - Valida coincidencia de propósito/tipo de token (ej. TokenType.ACCESS).
+    """
+    if not token or not isinstance(token, str) or not token.strip():
+        raise InvalidTokenError("Token must be a non-empty string")
+
+    try:
+        decoded = jwt.decode(
+            token.strip(),
+            settings.JWT_SECRET_KEY.get_secret_value(),
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"require": ["exp", "iat", "sub", "type", "jti"]},
+            leeway=10,
+        )
+    except jwt.ExpiredSignatureError as e:
+        raise ExpiredTokenError("Token has expired") from e
+    except jwt.PyJWTError as e:
+        raise InvalidTokenError("Token is invalid or corrupted") from e
+
+    try:
+        payload = TokenPayload(
+            sub=decoded["sub"],
+            role=decoded["role"],
+            type=decoded["type"],
+            exp=datetime.fromtimestamp(decoded["exp"], tz=timezone.utc),
+            iat=datetime.fromtimestamp(decoded["iat"], tz=timezone.utc),
+            jti=decoded["jti"],
+            email=decoded.get("email"),
+        )
+    except (ValidationError, ValueError, KeyError) as e:
+        raise InvalidTokenError("Token payload claims are malformed") from e
+
+    if expected_type is not None and payload.type != expected_type:
+        raise InvalidTokenError(
+            f"Invalid token type: expected {expected_type.value}, got {payload.type.value}"
+        )
+
+    return payload

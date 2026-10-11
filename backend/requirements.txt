@@ -18,7 +18,7 @@ alembic==1.13.2
 # Security & Authentication
 passlib[bcrypt]==1.7.4
 bcrypt==4.1.3
-pyjwt==2.8.0
+pyjwt>=2.8.0
 cryptography==42.0.8
 
 # Data Analysis & Excel / CSV Parsing (Balanz)

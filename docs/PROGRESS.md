@@ -1,10 +1,10 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 15 de 26 Módulos Completados (57.7%) — Módulo 5.1 completado  
+> **Progreso Consolidado:** 15 de 26 Módulos Completados (57.7%) — Módulo 5.2 en curso  
 > **Capítulos Implementados:** Capítulos 1, 2, 3 y 4 (100% completados)  
 > **Capítulos Pendientes / En Progreso:** Capítulos 5 (En Curso), 6, 7, 8 y 9  
-> **Calidad y Suite de Pruebas:** **232 tests pasando al 100% en verde (186 unitarios + 46 de integración)**  
+> **Calidad y Suite de Pruebas:** **243 tests pasando al 100% en verde (197 unitarios + 46 de integración)**  
 > **Última Actualización:** 2026-10-11
 
 ---
@@ -23,7 +23,7 @@
 | **Capítulo 2** | Auditoría Integral y Diagnóstico Técnico (`AUDIT_REPORT.md`) | 2 / 2 | 6 / 6 | **COMPLETADO** | Informe formal emitido |
 | **Capítulo 3** | Remediación Técnica y Hardening Post-Auditoría | 5 / 5 | 17 / 17 | **COMPLETADO** | 159 tests (+22) |
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
-| **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 1 / 4 (M5.1 completado) | 2 / 9 | **EN PROGRESO** | 232 tests (+27) |
+| **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 1 / 4 (M5.2 en curso) | 3 / 9 | **EN PROGRESO** | 243 tests (+38) |
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
@@ -119,7 +119,7 @@
   - [x] Fase 1: Contratos Canónicos de Identidad y Modelo Relacional de Usuario (`backend/app/schemas/user.py`, `backend/app/infrastructure/db/models/user.py`, `backend/tests/unit/test_user_contracts.py`, `backend/tests/integration/test_user_persistence.py`)
   - [x] Fase 2: Servicio de Hashing Defensivo (Bcrypt nativo con `SecretStr` en `core/security.py`, `backend/tests/unit/test_security_crypto.py`)
 - [ ] **Módulo 5.2: Motor de Tokens Criptográficos (JWT / OAuth2 Bearer)**
-  - [ ] Fase 1: Generación y Firma de Tokens JWT (HMAC-SHA256 con claims canónicos `sub`, `exp`, `role`, `jti`)
+  - [x] Fase 1: Contratos de Token, Configuración Criptográfica y Motor de Access Tokens JWT (`backend/app/schemas/token.py`, `backend/app/core/security.py`, `backend/tests/unit/test_security_jwt.py`)
   - [ ] Fase 2: Flujo de Refresco de Tokens (Refresh Tokens con persistencia y rotación)
 - [ ] **Módulo 5.3: Dependencias de Seguridad, RBAC y Aislamiento Anti-IDOR (SEC-03)**
   - [ ] Fase 1: Extracción y Validación del Token Bearer (`get_current_user` con `OAuth2PasswordBearer`)
@@ -195,13 +195,12 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 5 - MÓDULO 5.2: Motor de Tokens Criptográficos (JWT / OAuth2 Bearer)**  
-> **Prioridad:** Alta (Eliminación de cabecera insegura X-User-Id y autenticación basada en estándares)  
-> **Objetivo:** Implementar la generación, firma y verificación de tokens de acceso JWT (HMAC-SHA256 con claims canónicos `sub`, `exp`, `role`, `jti`) y el esquema de rotación de Refresh Tokens con persistencia y revocación.
+> **Foco Actual:** **CAPÍTULO 5 - MÓDULO 5.2: FASE 2 - Refresh Tokens y Ciclo de Renovación Criptográfica**  
+> **Prioridad:** Alta (Manejo de sesiones de larga duración con rotación segura y revocación)  
+> **Objetivo:** Implementar el modelo de persistencia y rotación de Refresh Tokens (hashing con bcrypt/SHA-256, expiración prolongada de 7 días, revocación al uso y detección de reúso fraudulento) y sus contratos de renovación.
 
 ### Hoja de Ruta Inmediata para el Capítulo 5:
-1. **Módulo 5.2 (Fase 1)**: Implementar generación y firma de Access Tokens JWT con claims estándar y configuración centralizada de expiración y secretos en `backend/app/core/security.py` / `config.py`.
-2. **Módulo 5.2 (Fase 2)**: Flujo de persistencia y rotación de Refresh Tokens para renovación de sesión.
-3. **Módulo 5.3**: Reemplazar `get_current_user` en `deps.py` integrando `OAuth2PasswordBearer`, implementar `RoleChecker` y blindar los endpoints de portafolios (`/portfolios/*`) para filtrar estrictamente por el `user_id` autenticado.
-4. **Módulo 5.4**: Exponer endpoints `/api/v1/auth/register`, `/api/v1/auth/login` y `/api/v1/auth/refresh` bajo `APIResponse[T]`, y desarrollar la suite de tests en `backend/tests/integration/test_auth_and_rbac.py`.
+1. **Módulo 5.2 (Fase 2)**: Flujo de persistencia y rotación de Refresh Tokens para renovación de sesión, detección de reuso y revocación.
+2. **Módulo 5.3**: Reemplazar `get_current_user` en `deps.py` integrando `OAuth2PasswordBearer`, implementar `RoleChecker` y blindar los endpoints de portafolios (`/portfolios/*`) para filtrar estrictamente por el `user_id` autenticado.
+3. **Módulo 5.4**: Exponer endpoints `/api/v1/auth/register`, `/api/v1/auth/login` y `/api/v1/auth/refresh` bajo `APIResponse[T]`, y desarrollar la suite de tests en `backend/tests/integration/test_auth_and_rbac.py`.
 

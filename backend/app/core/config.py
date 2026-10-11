@@ -2,7 +2,7 @@ import asyncio
 import logging
 import socket
 from typing import List, Optional, Union
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger("investai.config")
@@ -58,7 +58,17 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "InvestAI Portfolio & Risk Platform"
     API_V1_STR: str = "/api/v1"
     SECRET_KEY: str = "change_this_to_a_secure_random_secret_in_production_32_chars_min"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
+    JWT_SECRET_KEY: SecretStr = SecretStr("investai-insecure-dev-secret-key-change-in-production-min-32-bytes-length-xyz")
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    @field_validator("JWT_SECRET_KEY", mode="after")
+    @classmethod
+    def validate_jwt_secret_key(cls, v: SecretStr) -> SecretStr:
+        raw = v.get_secret_value()
+        if len(raw.encode("utf-8")) < 32:
+            raise ValueError("JWT_SECRET_KEY must be at least 32 bytes (256 bits)")
+        return v
 
     # PostgreSQL Database Connection
     POSTGRES_SERVER: str = "localhost"
