@@ -15,6 +15,12 @@ from app.schemas.market_data import (
     MarketQuoteDTO,
     Timeframe,
 )
+from app.schemas.user import (
+    UserBase,
+    UserCreate,
+    UserResponse,
+    UserRole,
+)
 
 __all__ = [
     "BaseSchema",
@@ -28,4 +34,8 @@ __all__ = [
     "MarketQuoteDTO",
     "MarketBarDTO",
     "FXRateDTO",
+    "UserRole",
+    "UserBase",
+    "UserCreate",
+    "UserResponse",
 ]

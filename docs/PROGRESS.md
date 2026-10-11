@@ -1,10 +1,10 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 14 de 26 Módulos Completados (53.8%)  
+> **Progreso Consolidado:** 14 de 26 Módulos Completados (53.8%) — Módulo 5.1 en desarrollo  
 > **Capítulos Implementados:** Capítulos 1, 2, 3 y 4 (100% completados)  
-> **Capítulos Pendientes:** Capítulos 5, 6, 7, 8 y 9  
-> **Calidad y Suite de Pruebas:** **205 tests pasando al 100% en verde (165 unitarios + 40 de integración)**  
+> **Capítulos Pendientes / En Progreso:** Capítulos 5 (En Curso), 6, 7, 8 y 9  
+> **Calidad y Suite de Pruebas:** **220 tests pasando al 100% en verde (175 unitarios + 45 de integración)**  
 > **Última Actualización:** 2026-10-10
 
 ---
@@ -23,7 +23,7 @@
 | **Capítulo 2** | Auditoría Integral y Diagnóstico Técnico (`AUDIT_REPORT.md`) | 2 / 2 | 6 / 6 | **COMPLETADO** | Informe formal emitido |
 | **Capítulo 3** | Remediación Técnica y Hardening Post-Auditoría | 5 / 5 | 17 / 17 | **COMPLETADO** | 159 tests (+22) |
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
-| **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 0 / 4 | 0 / 9 | **PENDIENTE (Inmediato)** | Próximo sprint |
+| **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 0 / 4 (M5.1 en curso) | 1 / 9 | **EN PROGRESO** | 220 tests (+15) |
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
@@ -116,7 +116,7 @@
 
 ### CAPÍTULO 5: Seguridad Criptográfica, Autenticación y Control de Acceso (SEC-03)
 - [ ] **Módulo 5.1: Modelo de Identidad, Hashing Criptográfico y Gestión de Secretos**
-  - [ ] Fase 1: Modelo Relacional de Usuario (`UserModel` en `infrastructure/db/models/user.py`)
+  - [x] Fase 1: Contratos Canónicos de Identidad y Modelo Relacional de Usuario (`backend/app/schemas/user.py`, `backend/app/infrastructure/db/models/user.py`, `backend/tests/unit/test_user_contracts.py`, `backend/tests/integration/test_user_persistence.py`)
   - [ ] Fase 2: Servicio de Hashing Defensivo (Argon2id/Bcrypt con `SecretStr` en `core/security.py`)
 - [ ] **Módulo 5.2: Motor de Tokens Criptográficos (JWT / OAuth2 Bearer)**
   - [ ] Fase 1: Generación y Firma de Tokens JWT (HMAC-SHA256 con claims canónicos `sub`, `exp`, `role`, `jti`)
@@ -195,12 +195,12 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 5: Seguridad Criptográfica, Autenticación y Control de Acceso (SEC-03)**  
-> **Prioridad:** Alta (Vulnerabilidad crítica perimetral heredada de la auditoría)  
-> **Objetivo:** Erradicar de manera definitiva la lectura no autenticada de `X-User-Id` en `backend/app/api/deps.py`, implementando un modelo relacional de usuarios, hashing Argon2id/Bcrypt con `SecretStr`, tokens JWT / OAuth2 Bearer y autorización RBAC con aislamiento multitenant estricto para mitigar vectores IDOR/BOLA.
+> **Foco Actual:** **CAPÍTULO 5 - MÓDULO 5.1: FASE 2 - Servicio de Hashing Defensivo y Criptografía de Contraseñas**  
+> **Prioridad:** Alta (Seguridad de credenciales y mitigación DoS/Timing attacks)  
+> **Objetivo:** Implementar `backend/app/core/security.py` con derivación segura de claves (Argon2id/Bcrypt), soporte para `SecretStr`, verificación temporal constante y límites de longitud para neutralizar vectores DoS, complementando con su suite de pruebas unitarias criptográficas.
 
-### Hoja de Ruta para el Capítulo 5:
-1. **Módulo 5.1**: Crear `backend/app/infrastructure/db/models/user.py` con `UserModel` (UUIDv4, email indexado, rol `UserRole`), e implementar `backend/app/core/security.py` con derivación de claves Argon2id/Bcrypt y `SecretStr`.
+### Hoja de Ruta Inmediata para el Capítulo 5:
+1. **Módulo 5.1 (Fase 2)**: Desarrollar `backend/app/core/security.py` con funciones `get_password_hash` y `verify_password` basadas en `SecretStr`, más tests unitarios en `backend/tests/unit/test_security_crypto.py`.
 2. **Módulo 5.2**: Implementar generación y validación de tokens JWT con claims estándar (`sub`, `exp`, `role`, `jti`) y flujo de refresh tokens.
 3. **Módulo 5.3**: Reemplazar `get_current_user` en `deps.py` integrando `OAuth2PasswordBearer`, implementar `RoleChecker` y blindar los endpoints de portafolios (`/portfolios/*`) para filtrar estrictamente por el `user_id` autenticado.
 4. **Módulo 5.4**: Exponer endpoints `/api/v1/auth/register`, `/api/v1/auth/login` y `/api/v1/auth/refresh` bajo `APIResponse[T]`, y desarrollar la suite de tests en `backend/tests/integration/test_auth_and_rbac.py`.
