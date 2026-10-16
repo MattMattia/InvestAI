@@ -1,16 +1,29 @@
-from typing import AsyncGenerator, Optional
-from fastapi import Depends, Header, HTTPException, status
+"""
+Módulo central de inyección de dependencias para la API de InvestAI.
+Garantiza gestión de sesiones asíncronas de base de datos, extracción y validación
+estricta de tokens OAuth2 Bearer, resolución de identidad de usuario y control de acceso RBAC.
+"""
+from typing import Annotated, AsyncGenerator, Sequence
+import uuid
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, ensure_db_ready
-from app.models.user import UserModel
-from app.domain.models.portfolio import InvestorProfile
+from app.core.security import (
+    ExpiredTokenError,
+    InvalidTokenError,
+    decode_token,
+)
 from app.domain.services.market_history_service import MarketHistoryService
 from app.infrastructure.market_data.http_connector import HttpMarketConnector
 from app.infrastructure.market_data.quote_cache import InMemoryQuoteCache
-
+from app.models.user import UserModel
+from app.schemas.token import TokenPayload, TokenType
+from app.schemas.user import UserRole
 
 # Instancia global en memoria con TTL de 30 segundos para cotizaciones en tiempo real
 global_quote_cache = InMemoryQuoteCache(ttl_seconds=30.0)
@@ -28,32 +41,118 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
+# Alias canónico de sesión de base de datos según contratos de seguridad y FastAPI
+get_db = get_db_session
+
+
+# Esquema OAuth2 oficial estricto para extracción de Bearer Tokens (RFC 6750)
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/api/v1/auth/login",
+    auto_error=True,
+)
+
+
+async def get_current_token_payload(
+    token: Annotated[str, Depends(oauth2_scheme)],
+) -> TokenPayload:
+    """
+    Extrae, valida y decodifica criptográficamente el Access Token JWT de la cabecera Authorization.
+    Mapea excepciones de seguridad a códigos HTTP 401 estructurados con cabeceras WWW-Authenticate.
+    """
+    try:
+        return decode_token(token, expected_type=TokenType.ACCESS)
+    except ExpiredTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={
+                "WWW-Authenticate": (
+                    'Bearer error="invalid_token", error_description="The token has expired"'
+                )
+            },
+        )
+    except InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+        )
+
+
 async def get_current_user(
-    db: AsyncSession = Depends(get_db_session),
-    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    payload: Annotated[TokenPayload, Depends(get_current_token_payload)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserModel:
     """
-    Dependency providing the current authenticated user context.
-    For Stage 1, provides seamless deterministic mock authentication.
-    Guarantees user persistence for relational foreign-key integrity.
+    Resuelve la entidad UserModel en la base de datos a partir del payload del Access Token verificado.
+    Soporta coerción defensiva de ID tanto para UUID nativo como strings legados.
+    Arroja estrictamente HTTP 401 si el usuario no existe en la tabla users.
     """
-    user_id = x_user_id or "default_user_001"
+    try:
+        user_id = uuid.UUID(payload.sub)
+    except (ValueError, AttributeError):
+        user_id = payload.sub
 
     stmt = select(UserModel).where(UserModel.id == user_id)
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
 
-    if not user:
-        user = UserModel(
-            id=user_id,
-            email=f"{user_id}@investai.internal",
-            hashed_password="mock_stage1_hashed_password",
-            investor_profile=InvestorProfile.MODERATE.value,
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-        db.add(user)
-        await db.flush()
 
     return user
+
+
+async def get_current_active_user(
+    current_user: Annotated[UserModel, Depends(get_current_user)],
+) -> UserModel:
+    """
+    Verifica que la cuenta del usuario autenticado se encuentre activa.
+    Deniega el acceso con HTTP 403 Forbidden si is_active es False.
+    """
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user account",
+        )
+    return current_user
+
+
+class RoleChecker:
+    """
+    Verificador de control de acceso basado en roles (RBAC).
+    Ejecución asíncrona dentro del event loop sin delegación a threadpool.
+    """
+
+    def __init__(self, allowed_roles: Sequence[UserRole] | set[UserRole]) -> None:
+        self.allowed_roles = {
+            r.value if isinstance(r, UserRole) else str(r) for r in allowed_roles
+        }
+
+    async def __call__(
+        self,
+        current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    ) -> UserModel:
+        user_role_val = (
+            current_user.role.value
+            if isinstance(current_user.role, UserRole)
+            else str(current_user.role)
+        )
+        if user_role_val not in self.allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Operation not permitted. Insufficient permissions",
+            )
+        return current_user
+
+
+# Alias declarativos de seguridad para control de acceso jerárquico
+require_trader_or_admin = RoleChecker([UserRole.TRADER, UserRole.ADMIN])
+require_admin = RoleChecker([UserRole.ADMIN])
 
 
 def get_market_service(
@@ -75,3 +174,18 @@ def get_market_service(
         session=db,
         cache=global_quote_cache,
     )
+
+
+__all__ = [
+    "global_quote_cache",
+    "get_db_session",
+    "get_db",
+    "oauth2_scheme",
+    "get_current_token_payload",
+    "get_current_user",
+    "get_current_active_user",
+    "RoleChecker",
+    "require_trader_or_admin",
+    "require_admin",
+    "get_market_service",
+]

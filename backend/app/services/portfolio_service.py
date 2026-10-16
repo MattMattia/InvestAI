@@ -1,4 +1,5 @@
-from typing import List, Optional
+from typing import List, Optional, Union
+import uuid
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -9,29 +10,57 @@ from app.domain.models.portfolio import Holding, InvestorProfile, Portfolio
 from app.models.asset import AssetModel
 from app.models.holding import HoldingModel
 from app.models.portfolio import PortfolioModel
+from app.models.user import UserModel
 from app.schemas.portfolio import AssetResponse, HoldingResponse, PortfolioResponse
+from app.schemas.user import UserRole
 
 
 async def get_user_portfolio_or_404(
     portfolio_id: str,
-    user_id: str,
+    user_or_id: Union[UserModel, uuid.UUID, str],
     db: AsyncSession,
+    is_admin: bool = False,
 ) -> PortfolioModel:
-    """Fetches a portfolio belonging to the user with eager-loaded holdings and assets."""
+    """
+    Fetches a portfolio with eager-loaded holdings and assets, enforcing strict
+    multi-tenant ownership isolation (anti-IDOR/BOLA).
+    Allows cross-tenant visibility exclusively for UserRole.ADMIN.
+    Raises HTTP 404 ("Portfolio not found") if missing or owned by another tenant
+    to prevent resource enumeration.
+    """
+    if isinstance(user_or_id, UserModel):
+        uid_str = str(user_or_id.id)
+        role_val = (
+            user_or_id.role.value
+            if isinstance(user_or_id.role, UserRole)
+            else str(user_or_id.role)
+        )
+        is_admin = is_admin or (role_val == UserRole.ADMIN.value)
+    else:
+        uid_str = str(user_or_id)
+
     stmt = (
         select(PortfolioModel)
-        .where(PortfolioModel.id == portfolio_id, PortfolioModel.user_id == user_id)
+        .where(PortfolioModel.id == str(portfolio_id))
         .options(
             selectinload(PortfolioModel.holdings).selectinload(HoldingModel.asset)
         )
     )
     result = await db.execute(stmt)
     portfolio = result.scalar_one_or_none()
+
     if not portfolio:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Portafolio con id '{portfolio_id}' no encontrado o no pertenece al usuario.",
+            detail="Portfolio not found",
         )
+
+    if not is_admin and str(portfolio.user_id) != uid_str:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Portfolio not found",
+        )
+
     return portfolio
 
 
@@ -197,8 +226,8 @@ def build_portfolio_response(
             h_dto.weight_pct = 0.0
 
     return PortfolioResponse(
-        id=p_model.id,
-        user_id=p_model.user_id,
+        id=str(p_model.id),
+        user_id=str(p_model.user_id),
         name=p_model.name,
         investor_profile=getattr(p_model, "investor_profile", "MODERATE"),
         cash_balance_ars=p_model.cash_balance_ars,

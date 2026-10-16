@@ -1,11 +1,11 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 16 de 26 Módulos Completados (61.5%) — Módulos 5.1 y 5.2 completados  
+> **Progreso Consolidado:** 17 de 26 Módulos Completados (65.4%) — Módulos 5.1, 5.2 y 5.3 completados  
 > **Capítulos Implementados:** Capítulos 1, 2, 3 y 4 (100% completados)  
 > **Capítulos Pendientes / En Progreso:** Capítulos 5 (En Curso), 6, 7, 8 y 9  
-> **Calidad y Suite de Pruebas:** **249 tests pasando al 100% en verde (203 unitarios + 46 de integración)**  
-> **Última Actualización:** 2026-10-11
+> **Calidad y Suite de Pruebas:** **267 tests pasando al 100% en verde (216 unitarios + 51 de integración)**  
+> **Última Actualización:** 2026-10-16
 
 ---
 
@@ -23,7 +23,7 @@
 | **Capítulo 2** | Auditoría Integral y Diagnóstico Técnico (`AUDIT_REPORT.md`) | 2 / 2 | 6 / 6 | **COMPLETADO** | Informe formal emitido |
 | **Capítulo 3** | Remediación Técnica y Hardening Post-Auditoría | 5 / 5 | 17 / 17 | **COMPLETADO** | 159 tests (+22) |
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
-| **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 2 / 4 (M5.1 y M5.2 completados) | 4 / 9 | **EN PROGRESO** | 249 tests (+44) |
+| **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 3 / 4 (M5.1, M5.2 y M5.3 completados) | 7 / 9 | **EN PROGRESO** | 267 tests (+62) |
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
@@ -121,11 +121,11 @@
 - [x] **Módulo 5.2: Motor de Tokens Criptográficos (JWT / OAuth2 Bearer)**
   - [x] Fase 1: Contratos de Token, Configuración Criptográfica y Motor de Access Tokens JWT (`backend/app/schemas/token.py`, `backend/app/core/security.py`, `backend/tests/unit/test_security_jwt.py`)
   - [x] Fase 2: Flujo de Refresco de Tokens (Refresh Tokens con ciclo de renovación y token pair) (`backend/app/schemas/token.py`, `backend/app/core/security.py`, `backend/tests/unit/test_security_jwt.py`)
-- [ ] **Módulo 5.3: Dependencias de Seguridad, RBAC y Aislamiento Anti-IDOR (SEC-03)**
-  - [ ] Fase 1: Extracción y Validación del Token Bearer (`get_current_user` con `OAuth2PasswordBearer`)
-  - [ ] Fase 2: Control de Acceso Basado en Roles (`RoleChecker` para `VIEWER`, `TRADER`, `ADMIN`)
-  - [ ] Fase 3: Aislamiento Multitenant Estricto (Filtro mandatorio de `user_id` en endpoints de cartera)
-- [ ] **Módulo 5.4: Endpoints REST de Autenticación y Suite de Pruebas Herméticas**
+- [x] **Módulo 5.3: Dependencias de Seguridad, RBAC y Aislamiento Anti-IDOR (SEC-03)**
+  - [x] Fase 1: Dependencias de Seguridad, Inyección OAuth2 Bearer y Control de Acceso RBAC (`backend/app/api/deps.py`, `backend/app/api/__init__.py`, `backend/tests/unit/test_security_deps.py`)
+  - [x] Fase 2: Erradicación del Mock X-User-Id, Control de Propiedad Tenant y Aislamiento Anti-IDOR/BOLA (`backend/app/api/deps.py`, `backend/app/services/portfolio_service.py`, `backend/app/api/v1/endpoints/*`, `backend/tests/integration/test_api_endpoints.py`, `backend/tests/integration/test_api_backtest.py`)
+  - [x] Fase 3: Aislamiento Multitenant Estricto (Filtro mandatorio de `user_id` en endpoints de cartera, órdenes y backtest)
+- [ ] **Módulo 5.4: Controlador REST de Autenticación, Endpoints /auth y Rate Limiting Defensivo**
   - [ ] Fase 1: Endpoints REST (`/auth/register`, `/auth/login`, `/auth/refresh` bajo Universal Envelope)
   - [ ] Fase 2: Suite de Pruebas de Seguridad (fixtures autenticados, pruebas de penetración e IDOR)
 
@@ -195,13 +195,11 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 5 - MÓDULO 5.3: Dependencias de Seguridad, RBAC y Aislamiento Anti-IDOR/BOLA (SEC-03)**  
-> **Prioridad:** Alta (Erradicación definitiva de vulnerabilidad perimetral X-User-Id detectada en auditoría)  
-> **Objetivo:** Implementar la extracción y validación de Bearer Tokens en `backend/app/api/deps.py` mediante `OAuth2PasswordBearer`, el validador jerárquico de roles `RoleChecker` (VIEWER, TRADER, ADMIN) y el aislamiento multitenant estricto en los controladores patrimoniales.
+> **Foco Actual:** **CAPÍTULO 5 - MÓDULO 5.4: Controlador REST de Autenticación, Endpoints /auth y Rate Limiting Defensivo**  
+> **Prioridad:** Alta (Cierre del Capítulo 5 de Seguridad Criptográfica, Autenticación y RBAC)  
+> **Objetivo:** Exponer los endpoints REST de autenticación (`/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/me`) bajo el contrato canónico `APIResponse[T]`, incorporar protección defensiva de Rate Limiting contra fuerza bruta y consolidar la suite de pruebas de integración end-to-end del flujo de identidad.
 
 ### Hoja de Ruta Inmediata para el Capítulo 5:
-1. **Módulo 5.3 (Fase 1)**: Extracción y validación del token Bearer (`get_current_user` con `OAuth2PasswordBearer` y recuperación de usuario desde base de datos).
-2. **Módulo 5.3 (Fase 2)**: Control de Acceso Basado en Roles (`RoleChecker` para `VIEWER`, `TRADER`, `ADMIN`).
-3. **Módulo 5.3 (Fase 3)**: Aislamiento Multitenant Estricto (Filtro mandatorio de `user_id` en endpoints de cartera `/api/v1/portfolios/*` para erradicar IDOR/BOLA).
-4. **Módulo 5.4**: Exponer endpoints `/api/v1/auth/register`, `/api/v1/auth/login` y `/api/v1/auth/refresh` bajo `APIResponse[T]`, y desarrollar la suite de tests en `backend/tests/integration/test_auth_and_rbac.py`.
+1. **Módulo 5.4 (Fase 1)**: Implementar el controlador REST `/api/v1/auth/*` (`register`, `login`, `refresh`, `me`) con Universal Envelope y protección de Rate Limiting defensivo.
+2. **Módulo 5.4 (Fase 2)**: Desarrollar la suite hermética de pruebas de integración del flujo completo de autenticación y cierre del Capítulo 5.
 

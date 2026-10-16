@@ -1,7 +1,17 @@
+import asyncio
 import unittest
+import uuid
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
+import app.models  # noqa: F401
+from app.api.deps import get_db_session
+from app.core.database import Base
+from app.core.security import create_access_token, get_password_hash
 from app.main import app
+from app.models.user import UserModel
+from app.schemas.user import UserRole
 
 
 class TestApiBacktestIntegration(unittest.TestCase):
@@ -11,7 +21,75 @@ class TestApiBacktestIntegration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        cls.engine = create_async_engine(
+            "sqlite+aiosqlite:///:memory:",
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False},
+        )
+        cls.SessionLocal = async_sessionmaker(
+            bind=cls.engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+
+        async def _init_db_and_user():
+            async with cls.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+
+            user_id = uuid.uuid4()
+            async with cls.SessionLocal() as session:
+                trader = UserModel(
+                    id=user_id,
+                    email="backtest.trader@investai.internal",
+                    hashed_password=get_password_hash("StrongBacktestPass!123", rounds=4),
+                    full_name="Backtest Trader",
+                    role=UserRole.TRADER,
+                    is_active=True,
+                )
+                session.add(trader)
+                await session.commit()
+            return user_id
+
+        cls.trader_id = asyncio.run(_init_db_and_user())
+        cls.trader_token = create_access_token(
+            subject=cls.trader_id,
+            role=UserRole.TRADER,
+            email="backtest.trader@investai.internal",
+        )
+        cls.auth_headers = {"Authorization": f"Bearer {cls.trader_token}"}
+
+        async def _override_get_db():
+            async with cls.SessionLocal() as session:
+                try:
+                    yield session
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    raise
+                finally:
+                    await session.close()
+
+        app.dependency_overrides[get_db_session] = _override_get_db
         cls.client = TestClient(app)
+
+    @classmethod
+    def tearDownClass(cls):
+        app.dependency_overrides.pop(get_db_session, None)
+        asyncio.run(cls.engine.dispose())
+
+    def setUp(self):
+        async def _override_get_db():
+            async with self.SessionLocal() as session:
+                try:
+                    yield session
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    raise
+                finally:
+                    await session.close()
+
+        app.dependency_overrides[get_db_session] = _override_get_db
 
     def test_run_backtest_endpoint_success(self):
         """Valida la ejecución exitosa de un backtest con precios generados automáticamente (GBM)."""
@@ -33,7 +111,11 @@ class TestApiBacktestIntegration(unittest.TestCase):
             },
         }
 
-        response = self.client.post("/api/v1/backtest/run", json=payload)
+        response = self.client.post(
+            "/api/v1/backtest/run",
+            json=payload,
+            headers=self.auth_headers,
+        )
         self.assertEqual(response.status_code, 200)
 
         data = response.json()
@@ -100,7 +182,11 @@ class TestApiBacktestIntegration(unittest.TestCase):
             "custom_prices": custom_prices,
         }
 
-        response = self.client.post("/api/v1/backtest/run", json=payload)
+        response = self.client.post(
+            "/api/v1/backtest/run",
+            json=payload,
+            headers=self.auth_headers,
+        )
         self.assertEqual(response.status_code, 200)
 
         data = response.json()
@@ -116,9 +202,15 @@ class TestApiBacktestIntegration(unittest.TestCase):
             "start_date": "2024-12-31",
             "end_date": "2024-01-01",
         }
-        response = self.client.post("/api/v1/backtest/run", json=payload)
+        response = self.client.post(
+            "/api/v1/backtest/run",
+            json=payload,
+            headers=self.auth_headers,
+        )
         self.assertEqual(response.status_code, 400)
-        self.assertIn("debe ser estrictamente anterior", response.json()["detail"])
+        body = response.json()
+        msg = body.get("detail") or body.get("error", {}).get("message", "")
+        self.assertIn("debe ser estrictamente anterior", msg)
 
     def test_run_backtest_empty_tickers_returns_422(self):
         """Valida que tickers vacíos o inválidos retornen error de validación 422."""
@@ -128,7 +220,11 @@ class TestApiBacktestIntegration(unittest.TestCase):
             "start_date": "2024-01-01",
             "end_date": "2024-12-31",
         }
-        response = self.client.post("/api/v1/backtest/run", json=payload)
+        response = self.client.post(
+            "/api/v1/backtest/run",
+            json=payload,
+            headers=self.auth_headers,
+        )
         self.assertEqual(response.status_code, 422)
 
     def test_run_backtest_extra_fields_returns_422(self):
@@ -140,7 +236,11 @@ class TestApiBacktestIntegration(unittest.TestCase):
             "end_date": "2024-12-31",
             "unauthorized_extra_field": "hacker_payload",
         }
-        response = self.client.post("/api/v1/backtest/run", json=payload)
+        response = self.client.post(
+            "/api/v1/backtest/run",
+            json=payload,
+            headers=self.auth_headers,
+        )
         self.assertEqual(response.status_code, 422)
         data = response.json()
         self.assertFalse(data["success"])

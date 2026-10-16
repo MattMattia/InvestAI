@@ -1,8 +1,9 @@
+from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db_session
+from app.api.deps import get_db_session, require_trader_or_admin
 from app.models.holding import HoldingModel
 from app.models.user import UserModel
 from app.schemas.ingestion import IngestionUploadResponse
@@ -15,16 +16,17 @@ router = APIRouter()
 @router.post("/{id}/upload", response_model=IngestionUploadResponse, status_code=status.HTTP_200_OK)
 async def upload_portfolio_file(
     id: str,
+    current_user: Annotated[UserModel, Depends(require_trader_or_admin)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(get_current_user),
 ) -> IngestionUploadResponse:
     """
     Broker-agnostic universal file ingestion endpoint.
     Parses CSV or Excel reports (including Balanz exports), sanitizes tabular data,
     persists valid holdings into the portfolio, and returns an execution report.
+    Enforces RBAC (TRADER or ADMIN) and anti-IDOR/BOLA tenant isolation.
     """
-    portfolio = await get_user_portfolio_or_404(id, current_user.id, db)
+    portfolio = await get_user_portfolio_or_404(id, current_user, db)
 
     filename = file.filename or "holdings.csv"
     ext = filename.split(".")[-1].lower() if "." in filename else "csv"

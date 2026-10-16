@@ -1,8 +1,8 @@
-from typing import List
+from typing import Annotated, List
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db_session
+from app.api.deps import get_db_session, require_trader_or_admin
 from app.domain.rules.rebalancing import (
     RebalancePlan,
     TargetAllocation,
@@ -27,16 +27,17 @@ router = APIRouter()
 async def generate_portfolio_rebalance(
     id: str,
     payload: RebalanceRequest,
-    db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(get_current_user),
+    current_user: Annotated[UserModel, Depends(require_trader_or_admin)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> RebalancePlanResponse:
     """
     Executes the deterministic Tolerance-Band Rebalancer against target allocations.
     Generates actionable integer BUY/SELL orders only when asset weights breach
     the allowed tolerance band, ensuring cash liquidity conservation.
     Persists pending execution orders in the database.
+    Enforces RBAC (TRADER or ADMIN) and anti-IDOR/BOLA tenant isolation.
     """
-    portfolio_model = await get_user_portfolio_or_404(id, current_user.id, db)
+    portfolio_model = await get_user_portfolio_or_404(id, current_user, db)
     domain_portfolio = orm_to_domain_portfolio(portfolio_model, fx_ccl=payload.fx_ccl)
 
     domain_targets: List[TargetAllocation] = [

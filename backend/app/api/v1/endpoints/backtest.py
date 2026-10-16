@@ -1,9 +1,15 @@
 import datetime as dt
-from fastapi import APIRouter, HTTPException, status
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_active_user, get_db_session
 from app.domain.services.backtest_engine import BacktestEngine
 from app.domain.services.market_simulation import generate_gbm_market_prices
+from app.models.user import UserModel
 from app.schemas.backtest import BacktestConfig, BacktestResult, BacktestRunRequest
+from app.services.portfolio_service import get_user_portfolio_or_404
 
 router = APIRouter()
 
@@ -15,13 +21,19 @@ router = APIRouter()
     summary="Ejecutar motor de backtesting histórico",
     description="Simula la evolución de cartera con rebalanceo periódico, optimización cuantitativa, FSM y fricciones.",
 )
-def run_backtest_simulation(
+async def run_backtest_simulation(
     request: BacktestRunRequest,
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> BacktestResult:
     """
     Ejecuta una simulación completa de backtesting histórico sobre el universo y parámetros dados.
+    Exige usuario autenticado activo y valida aislamiento tenant si se suministra portfolio_id.
     """
     try:
+        if request.portfolio_id is not None:
+            await get_user_portfolio_or_404(request.portfolio_id, current_user, db)
+
         start_d = (
             dt.datetime.strptime(str(request.start_date)[:10], "%Y-%m-%d").date()
             if isinstance(request.start_date, str)

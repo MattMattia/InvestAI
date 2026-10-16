@@ -1,7 +1,8 @@
+from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db_session
+from app.api.deps import get_current_active_user, get_db_session
 from app.domain.rules.concentration import (
     MaxAssetConcentrationRule,
     MaxSectorConcentrationRule,
@@ -27,9 +28,9 @@ router = APIRouter()
 @router.get("/{id}/evaluate", response_model=RiskAssessmentReportResponse, status_code=status.HTTP_200_OK)
 async def evaluate_portfolio_risk(
     id: str,
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
     fx_ccl: float = Query(default=1300.0, gt=0.0, description="Dólar CCL de referencia"),
-    db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(get_current_user),
 ) -> RiskAssessmentReportResponse:
     """
     Evaluates a portfolio against the full suite of deterministic risk rules:
@@ -39,8 +40,9 @@ async def evaluate_portfolio_risk(
     - Implicit FX (CCL/MEP) divergence
 
     Persists an immutable audit snapshot into the database.
+    Enforces authentication and anti-IDOR/BOLA tenant isolation.
     """
-    portfolio_model = await get_user_portfolio_or_404(id, current_user.id, db)
+    portfolio_model = await get_user_portfolio_or_404(id, current_user, db)
     domain_portfolio = orm_to_domain_portfolio(portfolio_model, fx_ccl=fx_ccl)
 
     engine = RiskEngine(

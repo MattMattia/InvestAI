@@ -1,8 +1,9 @@
+from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db_session
+from app.api.deps import get_db_session, require_trader_or_admin
 from app.models.holding import HoldingModel
 from app.models.user import UserModel
 from app.schemas.portfolio import AssetResponse, HoldingCreate, HoldingResponse
@@ -15,11 +16,14 @@ router = APIRouter()
 async def add_or_update_holding(
     id: str,
     payload: HoldingCreate,
-    db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(get_current_user),
+    current_user: Annotated[UserModel, Depends(require_trader_or_admin)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> HoldingResponse:
-    """Adds a new holding or updates an existing position within the specified portfolio."""
-    portfolio = await get_user_portfolio_or_404(id, current_user.id, db)
+    """
+    Adds a new holding or updates an existing position within the specified portfolio.
+    Enforces RBAC (TRADER or ADMIN) and anti-IDOR/BOLA tenant isolation.
+    """
+    portfolio = await get_user_portfolio_or_404(id, current_user, db)
 
     asset = await ensure_asset(
         db=db,
@@ -88,11 +92,14 @@ async def add_or_update_holding(
 async def delete_holding(
     id: str,
     holding_id: int,
-    db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(get_current_user),
+    current_user: Annotated[UserModel, Depends(require_trader_or_admin)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> dict:
-    """Removes a holding from the portfolio."""
-    portfolio = await get_user_portfolio_or_404(id, current_user.id, db)
+    """
+    Removes a holding from the portfolio.
+    Enforces RBAC (TRADER or ADMIN) and anti-IDOR/BOLA tenant isolation.
+    """
+    portfolio = await get_user_portfolio_or_404(id, current_user, db)
 
     stmt = select(HoldingModel).where(
         HoldingModel.id == holding_id,

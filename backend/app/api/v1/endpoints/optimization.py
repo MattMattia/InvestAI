@@ -1,10 +1,10 @@
 import math
-from typing import List, Optional, Tuple
+from typing import Annotated, List, Optional, Tuple
 import numpy as np
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db_session
+from app.api.deps import get_current_active_user, get_db_session
 from app.domain.services.portfolio_optimizer import (
     calculate_diversification_ratio,
     calculate_portfolio_volatility,
@@ -188,15 +188,15 @@ def _compute_tail_metrics(
 )
 async def optimize_minimum_variance(
     id: str,
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
     request: Optional[OptimizationRequest] = Body(default=None),
-    db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(get_current_user),
 ) -> OptimizationResult:
     """
     Computes optimal asset allocation using the Global Minimum Variance (GMV) algorithm.
     Solves: min (1/2) * w^T * Sigma * w  subject to sum(w) = 1, w >= 0 (long-only).
     """
-    portfolio = await get_user_portfolio_or_404(id, current_user.id, db)
+    portfolio = await get_user_portfolio_or_404(id, current_user, db)
     req = request or OptimizationRequest()
 
     tickers, _, returns, cov = _prepare_quantitative_inputs(portfolio, req)
@@ -257,15 +257,15 @@ async def optimize_minimum_variance(
 )
 async def optimize_risk_parity(
     id: str,
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
     request: Optional[OptimizationRequest] = Body(default=None),
-    db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(get_current_user),
 ) -> OptimizationResult:
     """
     Computes Equal Risk Contribution (Risk Parity) optimal portfolio weights.
     Equalizes marginal risk contribution across all assets: RC_i = sigma_p / N.
     """
-    portfolio = await get_user_portfolio_or_404(id, current_user.id, db)
+    portfolio = await get_user_portfolio_or_404(id, current_user, db)
     req = request or OptimizationRequest()
 
     tickers, _, returns, cov = _prepare_quantitative_inputs(portfolio, req)
@@ -326,16 +326,16 @@ async def optimize_risk_parity(
 )
 async def evaluate_tail_risk(
     id: str,
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
     request: Optional[OptimizationRequest] = Body(default=None),
-    db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(get_current_user),
 ) -> TailRiskMetrics:
     """
     Evaluates distribution moments (Skewness, Kurtosis) and tail losses
     (Historical VaR, Parametric VaR, CVaR / Expected Shortfall) for the
     current portfolio allocation.
     """
-    portfolio = await get_user_portfolio_or_404(id, current_user.id, db)
+    portfolio = await get_user_portfolio_or_404(id, current_user, db)
     req = request or OptimizationRequest()
 
     tickers, current_weights, returns, _ = _prepare_quantitative_inputs(portfolio, req)

@@ -1,5 +1,6 @@
 import io
 import unittest
+import uuid
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
@@ -7,7 +8,11 @@ from sqlalchemy.pool import StaticPool
 import app.models  # Registers all declarative tables first
 from app.api.deps import get_db_session
 from app.core.database import Base
+from app.core.security import create_access_token, get_password_hash
 from app.main import app as fastapi_app
+from app.models.portfolio import PortfolioModel
+from app.models.user import UserModel
+from app.schemas.user import UserRole
 
 
 class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
@@ -25,6 +30,64 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
             class_=AsyncSession,
             expire_on_commit=False,
         )
+
+        # Seed real users with explicit RBAC roles (TRADER A, TRADER B, VIEWER, ADMIN)
+        pw_hash = get_password_hash("IntegrationTestPass!2026", rounds=4)
+        self.trader_a = UserModel(
+            id=uuid.uuid4(),
+            email="trader.a@investai.internal",
+            hashed_password=pw_hash,
+            full_name="Trader Alpha",
+            role=UserRole.TRADER,
+            is_active=True,
+        )
+        self.trader_b = UserModel(
+            id=uuid.uuid4(),
+            email="trader.b@investai.internal",
+            hashed_password=pw_hash,
+            full_name="Trader Beta",
+            role=UserRole.TRADER,
+            is_active=True,
+        )
+        self.viewer_user = UserModel(
+            id=uuid.uuid4(),
+            email="viewer@investai.internal",
+            hashed_password=pw_hash,
+            full_name="Viewer User",
+            role=UserRole.VIEWER,
+            is_active=True,
+        )
+        self.admin_user = UserModel(
+            id=uuid.uuid4(),
+            email="admin@investai.internal",
+            hashed_password=pw_hash,
+            full_name="Admin Institutional",
+            role=UserRole.ADMIN,
+            is_active=True,
+        )
+
+        async with self.SessionLocal() as session:
+            session.add_all([self.trader_a, self.trader_b, self.viewer_user, self.admin_user])
+            await session.commit()
+
+        # Generate legitimate JWT access tokens
+        self.trader_a_token = create_access_token(
+            self.trader_a.id, self.trader_a.role, email=self.trader_a.email
+        )
+        self.trader_b_token = create_access_token(
+            self.trader_b.id, self.trader_b.role, email=self.trader_b.email
+        )
+        self.viewer_token = create_access_token(
+            self.viewer_user.id, self.viewer_user.role, email=self.viewer_user.email
+        )
+        self.admin_token = create_access_token(
+            self.admin_user.id, self.admin_user.role, email=self.admin_user.email
+        )
+
+        self.auth_headers = {"Authorization": f"Bearer {self.trader_a_token}"}
+        self.trader_b_headers = {"Authorization": f"Bearer {self.trader_b_token}"}
+        self.viewer_headers = {"Authorization": f"Bearer {self.viewer_token}"}
+        self.admin_headers = {"Authorization": f"Bearer {self.admin_token}"}
 
         async def _override_get_db():
             async with self.SessionLocal() as session:
@@ -126,35 +189,46 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
                 },
             ],
         }
-        res_create = await self.client.post("/api/v1/portfolios", json=payload)
+        res_create = await self.client.post(
+            "/api/v1/portfolios", json=payload, headers=self.auth_headers
+        )
         self.assertEqual(res_create.status_code, 201)
         data = res_create.json()
         port_id = data["id"]
         self.assertEqual(data["name"], "Cartera Crecimiento 2026")
+        self.assertEqual(data["user_id"], str(self.trader_a.id))
         self.assertEqual(data["holdings_count"], 2)
         self.assertGreater(data["total_market_value_ars"], 0)
 
         # 2. List Portfolios
-        res_list = await self.client.get("/api/v1/portfolios")
+        res_list = await self.client.get(
+            "/api/v1/portfolios", headers=self.auth_headers
+        )
         self.assertEqual(res_list.status_code, 200)
         port_list = res_list.json()
         self.assertEqual(len(port_list), 1)
         self.assertEqual(port_list[0]["id"], port_id)
 
         # 3. Get Details
-        res_get = await self.client.get(f"/api/v1/portfolios/{port_id}")
+        res_get = await self.client.get(
+            f"/api/v1/portfolios/{port_id}", headers=self.auth_headers
+        )
         self.assertEqual(res_get.status_code, 200)
         port_details = res_get.json()
         self.assertEqual(len(port_details["holdings"]), 2)
         self.assertIn("weight_pct", port_details["holdings"][0])
 
         # 4. Delete Portfolio
-        res_del = await self.client.delete(f"/api/v1/portfolios/{port_id}")
+        res_del = await self.client.delete(
+            f"/api/v1/portfolios/{port_id}", headers=self.auth_headers
+        )
         self.assertEqual(res_del.status_code, 200)
         self.assertEqual(res_del.json()["status"], "deleted")
 
         # 5. Verify 404
-        res_not_found = await self.client.get(f"/api/v1/portfolios/{port_id}")
+        res_not_found = await self.client.get(
+            f"/api/v1/portfolios/{port_id}", headers=self.auth_headers
+        )
         self.assertEqual(res_not_found.status_code, 404)
 
     async def test_holdings_endpoints(self) -> None:
@@ -162,6 +236,7 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         p_res = await self.client.post(
             "/api/v1/portfolios",
             json={"name": "Cartera Trading", "cash_balance_ars": 200000.0},
+            headers=self.auth_headers,
         )
         port_id = p_res.json()["id"]
 
@@ -176,7 +251,9 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
             "sector": "FINANCIAL_SERVICES",
         }
         res_add = await self.client.post(
-            f"/api/v1/portfolios/{port_id}/holdings", json=holding_payload
+            f"/api/v1/portfolios/{port_id}/holdings",
+            json=holding_payload,
+            headers=self.auth_headers,
         )
         self.assertEqual(res_add.status_code, 201)
         h_data = res_add.json()
@@ -187,19 +264,23 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
 
         # Delete Holding
         res_del_h = await self.client.delete(
-            f"/api/v1/portfolios/{port_id}/holdings/{holding_id}"
+            f"/api/v1/portfolios/{port_id}/holdings/{holding_id}",
+            headers=self.auth_headers,
         )
         self.assertEqual(res_del_h.status_code, 200)
         self.assertEqual(res_del_h.json()["status"], "deleted")
 
         # Verify holding removed
-        p_updated = await self.client.get(f"/api/v1/portfolios/{port_id}")
+        p_updated = await self.client.get(
+            f"/api/v1/portfolios/{port_id}", headers=self.auth_headers
+        )
         self.assertEqual(p_updated.json()["holdings_count"], 0)
 
     async def test_csv_upload_import(self) -> None:
         p_res = await self.client.post(
             "/api/v1/portfolios",
             json={"name": "Cartera Ingesta", "cash_balance_ars": 50000.0},
+            headers=self.auth_headers,
         )
         port_id = p_res.json()["id"]
 
@@ -212,7 +293,9 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
             "file": ("balanz_reporte.csv", io.BytesIO(csv_content.encode("utf-8")), "text/csv")
         }
         upload_res = await self.client.post(
-            f"/api/v1/portfolios/{port_id}/upload", files=files
+            f"/api/v1/portfolios/{port_id}/upload",
+            files=files,
+            headers=self.auth_headers,
         )
         self.assertEqual(upload_res.status_code, 200)
         report_data = upload_res.json()
@@ -222,7 +305,9 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(report_data["is_successful"])
 
         # Check that holdings were persisted
-        port_get = await self.client.get(f"/api/v1/portfolios/{port_id}")
+        port_get = await self.client.get(
+            f"/api/v1/portfolios/{port_id}", headers=self.auth_headers
+        )
         port_data = port_get.json()
         self.assertEqual(port_data["holdings_count"], 2)
         tickers = [h["asset_ticker"] for h in port_data["holdings"]]
@@ -248,10 +333,14 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
                     }
                 ],
             },
+            headers=self.auth_headers,
         )
         port_id = p_res.json()["id"]
 
-        res_eval = await self.client.get(f"/api/v1/portfolios/{port_id}/evaluate?fx_ccl=1300.0")
+        res_eval = await self.client.get(
+            f"/api/v1/portfolios/{port_id}/evaluate?fx_ccl=1300.0",
+            headers=self.auth_headers,
+        )
         self.assertEqual(res_eval.status_code, 200)
         eval_data = res_eval.json()
 
@@ -279,6 +368,7 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
                     }
                 ],
             },
+            headers=self.auth_headers,
         )
         port_id = p_res.json()["id"]
 
@@ -294,7 +384,9 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
             "fx_ccl": 1300.0,
         }
         res_rebalance = await self.client.post(
-            f"/api/v1/portfolios/{port_id}/rebalance", json=rebalance_payload
+            f"/api/v1/portfolios/{port_id}/rebalance",
+            json=rebalance_payload,
+            headers=self.auth_headers,
         )
         self.assertEqual(res_rebalance.status_code, 200)
         plan_data = res_rebalance.json()
@@ -312,6 +404,7 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         p_res = await self.client.post(
             "/api/v1/portfolios",
             json={"name": "Cartera Perfil Test", "investor_profile": "MODERATE"},
+            headers=self.auth_headers,
         )
         self.assertEqual(p_res.status_code, 201)
         port_id = p_res.json()["id"]
@@ -321,12 +414,15 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         patch_res = await self.client.patch(
             f"/api/v1/portfolios/{port_id}",
             json={"investor_profile": "CONSERVATIVE"},
+            headers=self.auth_headers,
         )
         self.assertEqual(patch_res.status_code, 200)
         self.assertEqual(patch_res.json()["investor_profile"], "CONSERVATIVE")
 
         # Verify persistence with GET
-        get_res = await self.client.get(f"/api/v1/portfolios/{port_id}")
+        get_res = await self.client.get(
+            f"/api/v1/portfolios/{port_id}", headers=self.auth_headers
+        )
         self.assertEqual(get_res.status_code, 200)
         self.assertEqual(get_res.json()["investor_profile"], "CONSERVATIVE")
 
@@ -334,6 +430,7 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         patch_res2 = await self.client.patch(
             f"/api/v1/portfolios/{port_id}",
             json={"investor_profile": "AGGRESSIVE"},
+            headers=self.auth_headers,
         )
         self.assertEqual(patch_res2.status_code, 200)
         self.assertEqual(patch_res2.json()["investor_profile"], "AGGRESSIVE")
@@ -347,7 +444,7 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         res = await self.client.post(
             "/api/v1/portfolios",
             json=bad_payload,
-            headers={"X-Request-ID": "req-trace-422-test"},
+            headers={**self.auth_headers, "X-Request-ID": "req-trace-422-test"},
         )
         self.assertEqual(res.status_code, 422)
         body = res.json()
@@ -358,6 +455,250 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIn("timestamp", body["meta"])
         self.assertTrue(len(body["error"]["details"]) > 0)
         self.assertTrue(any("forbidden_extra_attribute" in str(d.get("field")) for d in body["error"]["details"]))
+
+    # -------------------------------------------------------------------------
+    # Pruebas Adversariales de Seguridad, RBAC y Aislamiento Anti-IDOR/BOLA (SEC-03)
+    # -------------------------------------------------------------------------
+
+    async def test_unauthenticated_request_rejected_401(self) -> None:
+        """
+        Certifica que peticiones sin header Authorization (o solo con el obsoleto X-User-Id)
+        a /portfolios u /orders retornen 401 Unauthorized dentro del APIErrorResponse envelope.
+        """
+        res_portfolios = await self.client.get("/api/v1/portfolios")
+        self.assertEqual(res_portfolios.status_code, 401)
+        body_p = res_portfolios.json()
+        self.assertFalse(body_p["success"])
+        self.assertEqual(body_p["error"]["code"], "UNAUTHORIZED")
+        self.assertIn("Not authenticated", body_p["error"]["message"])
+        self.assertIn("request_id", body_p["meta"])
+
+        res_orders = await self.client.get("/api/v1/orders")
+        self.assertEqual(res_orders.status_code, 401)
+        body_o = res_orders.json()
+        self.assertFalse(body_o["success"])
+        self.assertEqual(body_o["error"]["code"], "UNAUTHORIZED")
+
+        # Verificar que enviar el obsoleto X-User-Id sin Bearer token sea igualmente rechazado con 401
+        res_legacy_spoof = await self.client.get(
+            "/api/v1/portfolios",
+            headers={"X-User-Id": str(self.trader_a.id)},
+        )
+        self.assertEqual(res_legacy_spoof.status_code, 401)
+
+    async def test_idor_bola_portfolio_isolation_404(self) -> None:
+        """
+        Certifica aislamiento Anti-IDOR/BOLA: Usuario B (TRADER) intenta leer, modificar,
+        eliminar o rebalancear la cartera creada por Usuario A (TRADER) y recibe 404 Not Found.
+        """
+        # Usuario A crea su cartera
+        create_res = await self.client.post(
+            "/api/v1/portfolios",
+            json={
+                "name": "Cartera Privada Trader A",
+                "cash_balance_ars": 500000.0,
+                "holdings": [
+                    {
+                        "ticker": "AAPL",
+                        "quantity": 50.0,
+                        "average_buy_price": 1500.0,
+                        "current_price": 1600.0,
+                        "currency": "ARS",
+                        "asset_type": "CEDEAR",
+                    }
+                ],
+            },
+            headers=self.auth_headers,
+        )
+        self.assertEqual(create_res.status_code, 201)
+        port_a_id = create_res.json()["id"]
+
+        # 1. Usuario B intenta leer la cartera de Usuario A -> 404 Not Found
+        res_get_b = await self.client.get(
+            f"/api/v1/portfolios/{port_a_id}",
+            headers=self.trader_b_headers,
+        )
+        self.assertEqual(res_get_b.status_code, 404)
+        self.assertEqual(res_get_b.json()["error"]["message"], "Portfolio not found")
+
+        # 2. Usuario B intenta listar carteras -> no debe ver la de Usuario A
+        res_list_b = await self.client.get(
+            "/api/v1/portfolios",
+            headers=self.trader_b_headers,
+        )
+        self.assertEqual(res_list_b.status_code, 200)
+        self.assertEqual(len(res_list_b.json()), 0)
+
+        # 3. Usuario B intenta rebalancear la cartera de Usuario A -> 404 Not Found
+        res_reb_b = await self.client.post(
+            f"/api/v1/portfolios/{port_a_id}/rebalance",
+            json={
+                "targets": [{"ticker": "AAPL", "target_weight": 50.0, "tolerance_band": 5.0}],
+                "fx_ccl": 1300.0,
+            },
+            headers=self.trader_b_headers,
+        )
+        self.assertEqual(res_reb_b.status_code, 404)
+        self.assertEqual(res_reb_b.json()["error"]["message"], "Portfolio not found")
+
+        # 4. Usuario B intenta eliminar la cartera de Usuario A -> 404 Not Found
+        res_del_b = await self.client.delete(
+            f"/api/v1/portfolios/{port_a_id}",
+            headers=self.trader_b_headers,
+        )
+        self.assertEqual(res_del_b.status_code, 404)
+
+    async def test_idor_bola_order_submission_on_foreign_portfolio_404(self) -> None:
+        """
+        Certifica aislamiento Anti-IDOR/BOLA en órdenes: Usuario B (TRADER) intenta crear
+        o consultar una orden sobre el portfolio_id del Usuario A y recibe 404 Not Found.
+        """
+        # Usuario A crea su cartera
+        create_res = await self.client.post(
+            "/api/v1/portfolios",
+            json={"name": "Cartera Ordenes Trader A", "cash_balance_ars": 250000.0},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(create_res.status_code, 201)
+        port_a_id = create_res.json()["id"]
+
+        # Usuario B intenta enviar una orden sobre la cartera de Usuario A -> 404 Not Found
+        foreign_order_res = await self.client.post(
+            "/api/v1/orders",
+            json={
+                "portfolio_id": port_a_id,
+                "ticker": "GGAL",
+                "side": "BUY",
+                "order_type": "LIMIT",
+                "quantity": 100.0,
+                "price": 2100.0,
+                "currency": "ARS",
+            },
+            headers=self.trader_b_headers,
+        )
+        self.assertEqual(foreign_order_res.status_code, 404)
+        self.assertEqual(foreign_order_res.json()["error"]["message"], "Portfolio not found")
+
+        # Usuario A crea una orden legítima sobre su propia cartera -> 201 Created
+        own_order_res = await self.client.post(
+            "/api/v1/orders",
+            json={
+                "portfolio_id": port_a_id,
+                "ticker": "GGAL",
+                "side": "BUY",
+                "order_type": "LIMIT",
+                "quantity": 100.0,
+                "price": 2100.0,
+                "currency": "ARS",
+            },
+            headers=self.auth_headers,
+        )
+        self.assertEqual(own_order_res.status_code, 201)
+        order_id = own_order_res.json()["id"]
+
+        # Usuario B intenta consultar la orden de Usuario A -> 404 Not Found ("Order not found")
+        get_foreign_order = await self.client.get(
+            f"/api/v1/orders/{order_id}",
+            headers=self.trader_b_headers,
+        )
+        self.assertEqual(get_foreign_order.status_code, 404)
+        self.assertEqual(get_foreign_order.json()["error"]["message"], "Order not found")
+
+    async def test_rbac_viewer_blocked_from_mutations_403(self) -> None:
+        """
+        Certifica control RBAC: un usuario con rol VIEWER puede hacer GET de su cartera,
+        pero al intentar crear una cartera, enviar una orden o ejecutar un rebalanceo recibe 403 Forbidden.
+        """
+        # Sembrar una cartera asignada al usuario VIEWER para pruebas de lectura vs mutación
+        viewer_port_id = str(uuid.uuid4())
+        async with self.SessionLocal() as session:
+            viewer_portfolio = PortfolioModel(
+                id=viewer_port_id,
+                user_id=str(self.viewer_user.id),
+                name="Cartera Solo Lectura Viewer",
+                investor_profile="CONSERVATIVE",
+                cash_balance_ars=100000.0,
+                cash_balance_usd=0.0,
+            )
+            session.add(viewer_portfolio)
+            await session.commit()
+
+        # 1. VIEWER puede consultar (GET) su propia cartera -> 200 OK
+        res_get = await self.client.get(
+            f"/api/v1/portfolios/{viewer_port_id}",
+            headers=self.viewer_headers,
+        )
+        self.assertEqual(res_get.status_code, 200)
+        self.assertEqual(res_get.json()["id"], viewer_port_id)
+
+        # 2. VIEWER intenta crear una nueva cartera -> 403 Forbidden
+        res_create = await self.client.post(
+            "/api/v1/portfolios",
+            json={"name": "Intento Creacion Viewer", "cash_balance_ars": 10000.0},
+            headers=self.viewer_headers,
+        )
+        self.assertEqual(res_create.status_code, 403)
+        self.assertEqual(
+            res_create.json()["error"]["message"],
+            "Operation not permitted. Insufficient permissions",
+        )
+
+        # 3. VIEWER intenta enviar una orden -> 403 Forbidden
+        res_order = await self.client.post(
+            "/api/v1/orders",
+            json={
+                "portfolio_id": viewer_port_id,
+                "ticker": "AL30",
+                "side": "BUY",
+                "order_type": "MARKET",
+                "quantity": 10.0,
+            },
+            headers=self.viewer_headers,
+        )
+        self.assertEqual(res_order.status_code, 403)
+
+        # 4. VIEWER intenta ejecutar un rebalanceo -> 403 Forbidden
+        res_rebalance = await self.client.post(
+            f"/api/v1/portfolios/{viewer_port_id}/rebalance",
+            json={
+                "targets": [{"ticker": "AL30", "target_weight": 100.0, "tolerance_band": 5.0}],
+                "fx_ccl": 1300.0,
+            },
+            headers=self.viewer_headers,
+        )
+        self.assertEqual(res_rebalance.status_code, 403)
+
+    async def test_rbac_admin_cross_tenant_visibility(self) -> None:
+        """
+        Certifica visibilidad cross-tenant para rol ADMIN: puede consultar válidamente
+        la cartera creada por el Usuario A (TRADER).
+        """
+        create_res = await self.client.post(
+            "/api/v1/portfolios",
+            json={"name": "Cartera Auditada por Admin", "cash_balance_ars": 750000.0},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(create_res.status_code, 201)
+        port_a_id = create_res.json()["id"]
+
+        # ADMIN consulta la cartera de Trader A por ID -> 200 OK
+        res_admin_get = await self.client.get(
+            f"/api/v1/portfolios/{port_a_id}",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(res_admin_get.status_code, 200)
+        admin_view = res_admin_get.json()
+        self.assertEqual(admin_view["id"], port_a_id)
+        self.assertEqual(admin_view["user_id"], str(self.trader_a.id))
+
+        # ADMIN lista todas las carteras del sistema -> incluye la de Trader A
+        res_admin_list = await self.client.get(
+            "/api/v1/portfolios",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(res_admin_list.status_code, 200)
+        ids_in_list = [p["id"] for p in res_admin_list.json()]
+        self.assertIn(port_a_id, ids_in_list)
 
 
 if __name__ == "__main__":

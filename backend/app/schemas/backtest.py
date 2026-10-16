@@ -101,6 +101,10 @@ class BacktestRunRequest(BacktestConfig):
     """Esquema de solicitud de ejecución de backtest con soporte de precios personalizados opcionales."""
     model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
+    portfolio_id: Optional[str] = Field(
+        default=None,
+        description="ID opcional de cartera asociada para validación de aislamiento tenant",
+    )
     custom_prices: Optional[Dict[str, Dict[str, float]]] = Field(
         default=None,
         description="Diccionario opcional de precios {ticker: {YYYY-MM-DD: precio}}. Si se omite, se generan mediante Movimiento Browniano Geométrico.",

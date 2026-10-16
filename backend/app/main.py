@@ -64,6 +64,39 @@ app.add_middleware(
 )
 
 
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """Custom structured response conforming to APIErrorResponse for HTTP exceptions (ARQ-02, SEC-03)."""
+    request_id = get_current_request_id() or request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    status_code_map = {
+        status.HTTP_400_BAD_REQUEST: "BAD_REQUEST",
+        status.HTTP_401_UNAUTHORIZED: "UNAUTHORIZED",
+        status.HTTP_403_FORBIDDEN: "FORBIDDEN",
+        status.HTTP_404_NOT_FOUND: "NOT_FOUND",
+        status.HTTP_409_CONFLICT: "CONFLICT",
+        status.HTTP_422_UNPROCESSABLE_CONTENT: "VALIDATION_ERROR",
+        status.HTTP_429_TOO_MANY_REQUESTS: "RATE_LIMIT_EXCEEDED",
+    }
+    error_code = status_code_map.get(exc.status_code, f"HTTP_{exc.status_code}")
+    error_payload = APIErrorResponse(
+        success=False,
+        error=ErrorDetail(
+            code=error_code,
+            message=str(exc.detail),
+            details=[],
+        ),
+        meta=ResponseMeta(request_id=request_id),
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_payload.model_dump(mode="json"),
+        headers=getattr(exc, "headers", None),
+    )
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """Custom structured response conforming to APIErrorResponse for Pydantic validation errors (ARQ-02)."""
