@@ -1,5 +1,9 @@
 """Pydantic Schemas / DTOs Package"""
 
+from app.schemas.auth import (
+    LoginRequest,
+    RegisterRequest,
+)
 from app.schemas.envelope import (
     APIErrorResponse,
     APIResponse,
@@ -48,4 +52,7 @@ __all__ = [
     "TokenPayload",
     "TokenResponse",
     "RefreshTokenRequest",
+    "RegisterRequest",
+    "LoginRequest",
 ]
+

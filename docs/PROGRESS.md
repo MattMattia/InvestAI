@@ -1,10 +1,10 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 17 de 26 Módulos Completados (65.4%) — Módulos 5.1, 5.2 y 5.3 completados  
+> **Progreso Consolidado:** 17 de 26 Módulos Completados (65.4%) — Módulos 5.1, 5.2, 5.3 y 5.4 (Fase 1) completados  
 > **Capítulos Implementados:** Capítulos 1, 2, 3 y 4 (100% completados)  
 > **Capítulos Pendientes / En Progreso:** Capítulos 5 (En Curso), 6, 7, 8 y 9  
-> **Calidad y Suite de Pruebas:** **267 tests pasando al 100% en verde (216 unitarios + 51 de integración)**  
+> **Calidad y Suite de Pruebas:** **279 tests pasando al 100% en verde (216 unitarios + 63 de integración)**  
 > **Última Actualización:** 2026-10-16
 
 ---
@@ -23,7 +23,7 @@
 | **Capítulo 2** | Auditoría Integral y Diagnóstico Técnico (`AUDIT_REPORT.md`) | 2 / 2 | 6 / 6 | **COMPLETADO** | Informe formal emitido |
 | **Capítulo 3** | Remediación Técnica y Hardening Post-Auditoría | 5 / 5 | 17 / 17 | **COMPLETADO** | 159 tests (+22) |
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
-| **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 3 / 4 (M5.1, M5.2 y M5.3 completados) | 7 / 9 | **EN PROGRESO** | 267 tests (+62) |
+| **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 3 / 4 (M5.1, M5.2, M5.3 y M5.4 F1 completados) | 8 / 9 | **EN PROGRESO** | 279 tests (+74) |
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
@@ -126,8 +126,8 @@
   - [x] Fase 2: Erradicación del Mock X-User-Id, Control de Propiedad Tenant y Aislamiento Anti-IDOR/BOLA (`backend/app/api/deps.py`, `backend/app/services/portfolio_service.py`, `backend/app/api/v1/endpoints/*`, `backend/tests/integration/test_api_endpoints.py`, `backend/tests/integration/test_api_backtest.py`)
   - [x] Fase 3: Aislamiento Multitenant Estricto (Filtro mandatorio de `user_id` en endpoints de cartera, órdenes y backtest)
 - [ ] **Módulo 5.4: Controlador REST de Autenticación, Endpoints /auth y Rate Limiting Defensivo**
-  - [ ] Fase 1: Endpoints REST (`/auth/register`, `/auth/login`, `/auth/refresh` bajo Universal Envelope)
-  - [ ] Fase 2: Suite de Pruebas de Seguridad (fixtures autenticados, pruebas de penetración e IDOR)
+  - [x] Fase 1: Controlador REST de Autenticación, Endpoints `/auth` (`/register`, `/login`, `/refresh`, `/me` bajo Universal Envelope) y Suite de Integración (`backend/app/schemas/auth.py`, `backend/app/api/v1/endpoints/auth.py`, `backend/tests/integration/test_api_auth.py`)
+  - [ ] Fase 2: Rate Limiting Defensivo y Mitigación de Fuerza Bruta en `/auth`
 
 ---
 
@@ -195,11 +195,10 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 5 - MÓDULO 5.4: Controlador REST de Autenticación, Endpoints /auth y Rate Limiting Defensivo**  
+> **Foco Actual:** **CAPÍTULO 5 - MÓDULO 5.4: Controlador REST de Autenticación, Endpoints /auth y Rate Limiting Defensivo - FASE 2**  
 > **Prioridad:** Alta (Cierre del Capítulo 5 de Seguridad Criptográfica, Autenticación y RBAC)  
-> **Objetivo:** Exponer los endpoints REST de autenticación (`/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/me`) bajo el contrato canónico `APIResponse[T]`, incorporar protección defensiva de Rate Limiting contra fuerza bruta y consolidar la suite de pruebas de integración end-to-end del flujo de identidad.
+> **Objetivo:** Implementar el mecanismo de Rate Limiting Defensivo y mitigación de ataques de fuerza bruta / credential stuffing sobre los endpoints críticos de autenticación (`/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/refresh`), devolviendo respuestas HTTP 429 (`Too Many Requests`) con cabecera `Retry-After` bajo el contrato `APIErrorResponse`.
 
 ### Hoja de Ruta Inmediata para el Capítulo 5:
-1. **Módulo 5.4 (Fase 1)**: Implementar el controlador REST `/api/v1/auth/*` (`register`, `login`, `refresh`, `me`) con Universal Envelope y protección de Rate Limiting defensivo.
-2. **Módulo 5.4 (Fase 2)**: Desarrollar la suite hermética de pruebas de integración del flujo completo de autenticación y cierre del Capítulo 5.
+1. **Módulo 5.4 (Fase 2)**: Implementar Rate Limiting Defensivo y Mitigación de Fuerza Bruta en `/auth`, junto con su suite de pruebas unitarias y de integración, cerrando el Capítulo 5 al 100%.
 
