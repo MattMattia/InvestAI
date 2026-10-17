@@ -546,4 +546,254 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
             MAX_COLUMNS_TO_SCAN,
         )
 
+    async def test_alyc_balanz_layout_csv_and_xlsx(self) -> None:
+        """
+        Simulate a full Balanz Capital statement with 4 metadata banner lines,
+        coexisting 'Precio Promedio Compra (PPC)' and 'Último Precio', 4 holdings
+        (AL30, GGAL, YPFD, SPY), and a 'Total Cartera ARS' footer with non-empty quantity.
+        """
+        balanz_rows: list[list[object]] = [
+            ["Balanz Capital Valores S.A.U."],
+            ["Comitente: 445566"],
+            ["Fecha de emisión: 17/10/2026"],
+            ["Estado de Cartera Valorizada"],
+            [
+                "Especie",
+                "Descripción",
+                "Cantidad",
+                "Precio Promedio Compra (PPC)",
+                "Último Precio",
+                "Moneda Liquidación",
+                "Valuación",
+            ],
+            ["AL30", "Bono Rep. Argentina 2030", "10.000", "64.200,50", "68.900,00", "ARS", "6890000,00"],
+            ["GGAL", "Grupo Financiero Galicia", "1.500", "4.100,00", "4.550,00", "ARS", "6825000,00"],
+            ["YPFD", "YPF S.A. Clase D", "50", "29.500,00", "32.100,00", "ARS", "1605000,00"],
+            ["SPY", "CEDEAR SPDR S&P 500", "20", "23.100,00", "24.000,00", "ARS", "480000,00"],
+            ["Total Cartera ARS", "", "1000", "", "", "ARS", "15800000,00"],
+        ]
+
+        csv_text = "\n".join(";".join(str(c) for c in row) for row in balanz_rows)
+        csv_records = await CSVReportParser().parse_report(
+            csv_text.encode("utf-8"), "balanz_tenencias.csv"
+        )
+        self.assertEqual(len(csv_records), 4)
+        self.assertEqual(
+            [r.raw_ticker for r in csv_records], ["AL30", "GGAL", "YPFD", "SPY"]
+        )
+        self.assertEqual(csv_records[0].raw_avg_price, "64.200,50")
+        self.assertEqual(csv_records[1].raw_avg_price, "4.100,00")
+        self.assertEqual(csv_records[2].raw_avg_price, "29.500,00")
+        self.assertEqual(csv_records[3].raw_avg_price, "23.100,00")
+        self.assertEqual(csv_records[0].raw_currency, "ARS")
+
+        xlsx_bytes = _build_xlsx_bytes({"Tenencia Valorizada": balanz_rows})
+        xlsx_records = await ExcelReportParser().parse_report(
+            xlsx_bytes, "balanz_tenencias.xlsx"
+        )
+        self.assertEqual(len(xlsx_records), 4)
+        self.assertEqual(
+            [r.raw_ticker for r in xlsx_records], ["AL30", "GGAL", "YPFD", "SPY"]
+        )
+        self.assertEqual(xlsx_records[0].raw_avg_price, "64.200,50")
+        self.assertEqual(xlsx_records[3].raw_avg_price, "23.100,00")
+
+    async def test_alyc_iol_layout_with_dotted_ppc_header(self) -> None:
+        """
+        Simulate an InvertirOnline (IOL) statement with dotted 'P.P.C.' and 'V.N.'
+        acronyms, 'Cotización' market price column, comma decimals, and 'TOTAL' footer.
+        """
+        iol_csv = (
+            "Símbolo;Descripción;Cantidad;P.P.C.;Cotización;Monto Valorizado;Ganancia/Pérdida %\n"
+            "PAMP;Pampa Energía S.A.;350;1.450,75;1.620,00;567.000,00;+11,67%\n"
+            "TXAR;Ternium Argentina;1.200;890,25;910,00;1.092.000,00;+2,22%\n"
+            "TOTAL;;1.550;;;1.659.000,00;\n"
+        ).encode("utf-8")
+
+        records = await CSVReportParser().parse_report(iol_csv, "portafolio_iol.csv")
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].raw_ticker, "PAMP")
+        self.assertEqual(records[0].raw_quantity, "350")
+        self.assertEqual(records[0].raw_avg_price, "1.450,75")
+        self.assertIsNone(records[0].raw_currency)
+        self.assertEqual(records[0].raw_fields["Cotización"], "1.620,00")
+
+        self.assertEqual(records[1].raw_ticker, "TXAR")
+        self.assertEqual(records[1].raw_quantity, "1.200")
+        self.assertEqual(records[1].raw_avg_price, "890,25")
+
+        # Also verify dotted 'V.N.' maps to QUANTITY with score 1.0
+        vn_schema = SchemaDetector().detect_schema(["Especie", "V.N.", "P.P.C."])
+        self.assertTrue(vn_schema.has_required_fields())
+        self.assertEqual(
+            vn_schema.mappings[CanonicalReportField.QUANTITY].confidence_score, 1.0
+        )
+        self.assertEqual(
+            vn_schema.mappings[CanonicalReportField.AVG_PRICE].confidence_score, 1.0
+        )
+
+    async def test_alyc_ppi_layout_with_interleaved_category_subtotals(self) -> None:
+        """
+        Simulate a Portfolio Personal Inversiones (PPI) statement containing
+        interleaved category subtotal rows ('Subtotal Renta Fija', 'Subtotal Renta Variable').
+        """
+        ppi_rows: list[list[object]] = [
+            ["Instrumento", "Nominales", "Costo Promedio", "Moneda", "Valuación al Cierre"],
+            ["GD30", 2000, Decimal("61.20"), "USD", Decimal("1224.00")],
+            ["AL35", 3000, Decimal("54.80"), "USD", Decimal("1644.00")],
+            ["Subtotal Renta Fija", 5000, None, "USD", Decimal("2868.00")],
+            ["BMA", 400, Decimal("7100.00"), "ARS", Decimal("2840000.00")],
+            ["CEPU", 800, Decimal("1350.50"), "ARS", Decimal("1080400.00")],
+            ["Subtotal Renta Variable", 1200, None, "ARS", Decimal("3920400.00")],
+            ["Total General Valorizado", 6200, None, "ARS", Decimal("6788400.00")],
+        ]
+
+        xlsx_bytes = _build_xlsx_bytes({"Tenencia PPI": ppi_rows})
+        records = await ExcelReportParser().parse_report(xlsx_bytes, "ppi_cartera.xlsx")
+
+        self.assertEqual(len(records), 4)
+        self.assertEqual(
+            [r.raw_ticker for r in records], ["GD30", "AL35", "BMA", "CEPU"]
+        )
+        self.assertEqual(records[0].raw_avg_price, Decimal("61.2"))
+        self.assertEqual(records[2].raw_avg_price, Decimal("7100"))
+
+    async def test_alyc_bull_market_and_caja_de_valores_layouts(self) -> None:
+        """
+        Verify Bull Market layout and Caja de Valores custody statement
+        (which lacks a purchase price column and uses 'Código Especie' and 'Saldo Nominal').
+        """
+        bmb_csv = (
+            "Ticker;Denominación;Nominales;Precio Compra;Moneda;Importe\n"
+            "COME;Sociedad Comercial del Plata;5000;240,50;ARS;1202500,00\n"
+            "LOMA;Loma Negra C.I.A.S.A.;300;2150,00;ARS;645000,00\n"
+        ).encode("utf-8")
+        bmb_records = await CSVReportParser().parse_report(bmb_csv, "bull_market.csv")
+        self.assertEqual(len(bmb_records), 2)
+        self.assertEqual(bmb_records[0].raw_ticker, "COME")
+        self.assertEqual(bmb_records[0].raw_quantity, "5000")
+        self.assertEqual(bmb_records[0].raw_avg_price, "240,50")
+        self.assertEqual(bmb_records[0].raw_currency, "ARS")
+
+        cdv_rows: list[list[object]] = [
+            ["Caja de Valores S.A. - Comprobante de Saldo de Subcuenta Comitente"],
+            ["Código Especie", "Denominación", "Saldo Nominal", "Moneda Emisión"],
+            ["5458", "BONOS REP. ARGENTINA USD STEP UP 2030 (AL30)", 15000, "USD"],
+            ["0072", "GRUPO FINANCIERO GALICIA S.A.", 2400, "ARS"],
+            ["Saldo Total Custodia", "", 17400, ""],
+        ]
+        cdv_xlsx = _build_xlsx_bytes({"Custodia": cdv_rows})
+        cdv_records = await ExcelReportParser().parse_report(
+            cdv_xlsx, "caja_de_valores.xlsx"
+        )
+        self.assertEqual(len(cdv_records), 2)
+        self.assertEqual(cdv_records[0].raw_ticker, "5458")
+        self.assertEqual(cdv_records[0].raw_quantity, 15000)
+        self.assertIsNone(cdv_records[0].raw_avg_price)
+        self.assertEqual(cdv_records[0].raw_currency, "USD")
+
+    async def test_encodings_utf8_bom_cp1252_and_latin1_resilience(self) -> None:
+        """
+        Verify multi-encoding decoding cascade across UTF-8 with BOM (utf-8-sig),
+        CP1252 (with Windows-1252 em-dash \\x97 and Euro sign \\x80), and Latin-1.
+        """
+        parser = CSVReportParser()
+
+        # 1. UTF-8 with BOM (\xef\xbb\xbf)
+        bom_csv = (
+            "\ufeffTicker,Cantidad,Precio Promedio,Moneda\n"
+            "MSFT,40,415.20,USD\n"
+        ).encode("utf-8-sig")
+        bom_records = await parser.parse_report(bom_csv, "utf8_bom.csv")
+        self.assertEqual(len(bom_records), 1)
+        self.assertEqual(bom_records[0].raw_ticker, "MSFT")
+
+        # 2. Windows-1252 with em-dash (— = 0x97) and Euro (€ = 0x80)
+        cp1252_text = (
+            "Símbolo;Cantidad;Precio Promedio;Moneda;Categoría\n"
+            "VWCE;100;118,50;€;Títulos Públicos — Acción Europea\n"
+        )
+        cp1252_bytes = cp1252_text.encode("cp1252")
+        cp1252_records = await parser.parse_report(cp1252_bytes, "cp1252_euro.csv")
+        self.assertEqual(len(cp1252_records), 1)
+        self.assertEqual(cp1252_records[0].raw_ticker, "VWCE")
+        self.assertEqual(cp1252_records[0].raw_currency, "€")
+        self.assertEqual(
+            cp1252_records[0].raw_fields["Categoría"],
+            "Títulos Públicos — Acción Europea",
+        )
+
+        # 3. Latin-1 fallback (including byte 0x81 which is undefined in strict cp1252)
+        latin1_bytes = (
+            b"Especie;Cantidad;Precio;Descripci\xf3n\n"
+            b"GGAL;250;4300,00;Nota\x81Acci\xf3n\n"
+        )
+        latin1_records = await parser.parse_report(latin1_bytes, "latin1_fallback.csv")
+        self.assertEqual(len(latin1_records), 1)
+        self.assertEqual(latin1_records[0].raw_ticker, "GGAL")
+        self.assertEqual(latin1_records[0].raw_quantity, "250")
+
+    async def test_negative_quantities_and_non_breaking_spaces_preserved_for_cleaning(
+        self,
+    ) -> None:
+        """
+        Verify negative quantities (e.g. '-150') and formatted currency strings with
+        non-breaking spaces ('\\xa0') preserve their minus sign while cleaning '\\xa0'
+        for downstream Module 6.2 validation.
+        """
+        csv_text = (
+            "Ticker;Cantidad;Precio\xa0Promedio;Moneda\n"
+            "GFGC4500O;-150;$ \xa0 1.250,50;ARS\n"
+            "AL30;\xa02.500\xa0;-\xa064.100,00;ARS\n"
+        ).encode("utf-8")
+
+        records = await CSVReportParser().parse_report(
+            csv_text, "short_options_nbsp.csv"
+        )
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].raw_ticker, "GFGC4500O")
+        self.assertEqual(records[0].raw_quantity, "-150")
+        self.assertEqual(records[0].raw_avg_price, "$ 1.250,50")
+        self.assertNotIn("\xa0", str(records[0].raw_avg_price))
+
+        self.assertEqual(records[1].raw_ticker, "AL30")
+        self.assertEqual(records[1].raw_quantity, "2.500")
+        self.assertEqual(records[1].raw_avg_price, "- 64.100,00")
+        self.assertNotIn("\xa0", str(records[1].raw_avg_price))
+
+    async def test_tab_and_pipe_delimited_reports_and_sparse_blank_rows(self) -> None:
+        """
+        Verify CSVReportParser auto-detects tab ('\\t') and pipe ('|') delimiters
+        and cleanly skips sparse blank rows interspersed between holdings.
+        """
+        parser = CSVReportParser()
+
+        tab_csv = (
+            "\n\n"
+            "Ticker\tNominales\tPPC\tMoneda\n"
+            "\t\t\t\n"
+            "NVDA\t15\t120.50\tUSD\n"
+            "   \t   \t   \t   \n"
+            "MELI\t8\t1850.00\tUSD\n"
+            "\n"
+        ).encode("utf-8")
+        tab_records = await parser.parse_report(tab_csv, "tsv_export.csv")
+        self.assertEqual(len(tab_records), 2)
+        self.assertEqual([r.raw_ticker for r in tab_records], ["NVDA", "MELI"])
+        self.assertEqual(tab_records[0].raw_quantity, "15")
+        self.assertEqual(tab_records[1].raw_avg_price, "1850.00")
+
+        pipe_csv = (
+            "Especie|Cantidad|Precio Promedio|Divisa\n"
+            "||||\n"
+            "PAM|100|55.25|USD\n"
+            " | | | \n"
+            "YPF|200|28.10|USD\n"
+        ).encode("utf-8")
+        pipe_records = await parser.parse_report(pipe_csv, "pipe_export.csv")
+        self.assertEqual(len(pipe_records), 2)
+        self.assertEqual([r.raw_ticker for r in pipe_records], ["PAM", "YPF"])
+        self.assertEqual(pipe_records[0].raw_currency, "USD")
+
+
 

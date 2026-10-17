@@ -1,10 +1,10 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 18 de 26 Módulos Completados (69.2%) — Capítulos 1 a 5 completados al 100%; Capítulo 6 en progreso (Módulo 6.1 Fases 1 y 2 completadas)  
+> **Progreso Consolidado:** 19 de 26 Módulos Completados (73.1%) — Capítulos 1 a 5 completados al 100%; Capítulo 6 en progreso (Módulo 6.1 completado al 100%)  
 > **Capítulos Implementados:** Capítulos 1, 2, 3, 4 y 5 (100% completados)  
 > **Capítulos Pendientes / En Progreso:** Capítulo 6 (en progreso), Capítulos 7, 8 y 9  
-> **Calidad y Suite de Pruebas:** **309 tests pasando al 100% en verde (241 unitarios + 68 de integración)**  
+> **Calidad y Suite de Pruebas:** **316 tests pasando al 100% en verde (248 unitarios + 68 de integración)**  
 > **Última Actualización:** 2026-10-17
 
 ---
@@ -24,7 +24,7 @@
 | **Capítulo 3** | Remediación Técnica y Hardening Post-Auditoría | 5 / 5 | 17 / 17 | **COMPLETADO** | 159 tests (+22) |
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
 | **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 293 tests (+88) |
-| **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 0 / 3 | 2 / 9 | **EN PROGRESO** | 309 tests (+16) |
+| **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 1 / 3 | 3 / 9 | **EN PROGRESO** | 316 tests (+23) |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
 | **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
@@ -133,10 +133,10 @@
 ---
 
 ### CAPÍTULO 6: Ingesta de Reportes Locales y Pipeline de Calidad de Datos
-- [ ] **Módulo 6.1: Parser Desacoplado de Extractos y Reportes de ALyCs (CSV / Excel)**
+- [x] **Módulo 6.1: Parser Desacoplado de Extractos y Reportes de ALyCs (CSV / Excel)**
   - [x] Fase 1: Interfaz Abstracta de Parsing y Estrategias por Formato (`backend/app/domain/services/ingestion/base_parser.py`, `backend/app/domain/services/ingestion/excel_parser.py`, `backend/app/domain/services/ingestion/csv_parser.py`, `backend/tests/unit/test_report_parsers.py`)
   - [x] Fase 2: Detección Automática de Esquemas y Normalización de Columnas (Fuzzy Matching en `backend/app/domain/services/ingestion/schema_detector.py`, `backend/tests/unit/test_report_parsers.py`)
-  - [ ] Fase 3: Suite de Pruebas con Muestras Sintéticas de Brokers Locales
+  - [x] Fase 3: Suite de Pruebas con Muestras Sintéticas de Brokers Locales (`backend/tests/unit/test_report_parsers.py` — 23 pruebas unitarias de ingesta cubriendo Balanz, IOL, PPI, Bull Market y Caja de Valores)
 - [ ] **Módulo 6.2: Pipeline de Validación, Normalización y Tratamiento Contable (EPS $\le$ 0)**
   - [ ] Fase 1: Pipeline de Saneamiento y Limpieza Monetaria (`data_cleaning_pipeline.py`)
   - [ ] Fase 2: Manejo de Inconsistencias de Balance (etiquetado `INDETERMINATE` para ratios patológicos)
@@ -196,12 +196,12 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 6 — Módulo 6.1 (Fase 3): Suite Exhaustiva de Pruebas con Muestras Sintéticas de ALyCs y Casos de Borde de Codificación/Layouts (`test_report_parsers.py`)**  
-> **Prioridad:** Alta (Cierre del Módulo 6.1 tras completar la Fase 2 con 309 tests en verde)  
-> **Objetivo:** Completar el Módulo 6.1 desarrollando una batería exhaustiva de pruebas con muestras sintéticas de brokers locales (Balanz, IOL, PPI, Bull Market, Caja de Valores) en formatos CSV y Excel, cubriendo dialectos multimoneda, encabezados desplazados, celdas fusionadas/vacías y codificaciones regionales.
+> **Foco Actual:** **CAPÍTULO 6 — Módulo 6.2 (Fase 1): Pipeline de Saneamiento, Validación de Esquemas y Normalización de Tickers/Monedas (`data_cleaning_pipeline.py`)**  
+> **Prioridad:** Alta (Inicio del Módulo 6.2 tras completar al 100% el Módulo 6.1 con 316 tests en verde)  
+> **Objetivo:** Implementar `backend/app/domain/services/ingestion/data_cleaning_pipeline.py` para transformar registros crudos (`RawHoldingRecord`) en tenencias validadas y normalizadas con precisión `Decimal`, saneando formatos numéricos locales (`1.250,50` vs `1,250.50`), símbolos monetarios, sufijos bursátiles (`.BA`) y rechazando nominales o costos inválidos.
 
 ### Hoja de Ruta Inmediata para el Capítulo 6:
-1. **Módulo 6.1 (Fase 3)**: Implementar la suite exhaustiva de pruebas con muestras sintéticas de ALyCs locales y casos de borde de codificación/layouts para cerrar el Módulo 6.1 al 100%.
-2. **Módulo 6.2**: Implementar el pipeline de validación, normalización monetaria y tratamiento contable (`EPS <= 0` / `INDETERMINATE`).
+1. **Módulo 6.2 (Fase 1)**: Implementar `data_cleaning_pipeline.py` (Pipeline de Saneamiento y Limpieza Monetaria).
+2. **Módulo 6.2 (Fase 2 y Fase 3)**: Implementar el manejo de inconsistencias contables (`EPS <= 0` etiquetado como `INDETERMINATE` en `accounting_integrity.py`) y su suite de pruebas de calidad contable.
 3. **Módulo 6.3**: Integrar la conciliación transaccional (`PortfolioReconciliationService`) y exponer el controlador REST bajo `APIResponse[T]`.
 

@@ -53,7 +53,7 @@ def _clean_cell_value(val: Any) -> Any:
         return Decimal(str(val))
     if isinstance(val, (int, Decimal)):
         return val
-    return str(val).strip()
+    return str(val).replace("\xa0", " ").strip()
 
 
 def _is_empty_cell(val: Any) -> bool:

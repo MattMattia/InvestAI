@@ -89,7 +89,9 @@ class CSVReportParser(BaseReportParser):
             lines
         )
 
-        clean_headers: list[str] = [str(h).strip() for h in header_cells]
+        clean_headers: list[str] = [
+            str(h).replace("\xa0", " ").strip() for h in header_cells
+        ]
         remaining_text = "\n".join(lines[header_line_idx + 1 :])
 
         records: list[RawHoldingRecord] = []
@@ -97,7 +99,7 @@ class CSVReportParser(BaseReportParser):
             reader = csv.reader(io.StringIO(remaining_text), delimiter=delimiter)
             for offset, row in enumerate(reader, start=1):
                 row_number = header_line_idx + 1 + offset
-                if not row or all(not cell.strip() for cell in row):
+                if not row or all(not cell.replace("\xa0", " ").strip() for cell in row):
                     continue
 
                 ticker_idx = column_map["ticker"]
@@ -106,8 +108,8 @@ class CSVReportParser(BaseReportParser):
                 if ticker_idx >= len(row) or qty_idx >= len(row):
                     continue
 
-                raw_ticker_cell = row[ticker_idx].strip()
-                raw_qty_cell = row[qty_idx].strip()
+                raw_ticker_cell = row[ticker_idx].replace("\xa0", " ").strip()
+                raw_qty_cell = row[qty_idx].replace("\xa0", " ").strip()
 
                 if not raw_ticker_cell or not raw_qty_cell:
                     continue
@@ -122,19 +124,23 @@ class CSVReportParser(BaseReportParser):
 
                 raw_avg_price: str | None = None
                 if "avg_price" in column_map and column_map["avg_price"] < len(row):
-                    avg_cell = row[column_map["avg_price"]].strip()
+                    avg_cell = row[column_map["avg_price"]].replace("\xa0", " ").strip()
                     raw_avg_price = avg_cell if avg_cell else None
 
                 raw_currency: str | None = None
                 if "currency" in column_map and column_map["currency"] < len(row):
-                    curr_cell = row[column_map["currency"]].strip()
+                    curr_cell = row[column_map["currency"]].replace("\xa0", " ").strip()
                     raw_currency = curr_cell if curr_cell else None
 
                 raw_fields: dict[str, Any] = {}
                 for col_idx, header_name in enumerate(clean_headers):
                     if not header_name:
                         continue
-                    cell_val = row[col_idx].strip() if col_idx < len(row) else ""
+                    cell_val = (
+                        row[col_idx].replace("\xa0", " ").strip()
+                        if col_idx < len(row)
+                        else ""
+                    )
                     raw_fields[header_name] = cell_val
 
                 try:

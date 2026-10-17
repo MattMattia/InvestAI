@@ -26,9 +26,20 @@ MAX_REPORT_ROWS: int = 50_000  # Maximum holding rows per report
 MAX_HEADER_SCAN_LINES: int = 50  # Maximum leading rows scanned to locate table header
 
 _FORMULA_DANGEROUS_PREFIX_CHARS: str = "=+-@\t\r\n "
+_NUMERIC_FORMULA_PREFIX_CHARS: str = "=+@\t\r\n "
 _WHITESPACE_COLLAPSE_RE = re.compile(r"\s+")
+_DOTTED_ACRONYM_RE = re.compile(r"(?<=\b[a-z])\.(?=[a-z]\b)")
 _HEADER_SEPARATOR_RE = re.compile(r"[-_/.,:;()\[\]]+")
 _TRAILING_PUNCTUATION_RE = re.compile(r"[:.;,]+$")
+
+_IGNORED_SUMMARY_PREFIXES: tuple[str, ...] = (
+    "total ",
+    "totales ",
+    "subtotal ",
+    "subtotales ",
+    "saldo ",
+    "resumen ",
+)
 
 # ============================================================================
 # Canonical Column Header Alias Sets (Hook for Phase 2 SchemaDetector)
@@ -47,6 +58,7 @@ TICKER_HEADER_ALIASES: frozenset[str] = frozenset(
         "denominacion",
         "nombre especie",
         "cod especie",
+        "codigo especie",
         "simb",
     }
 )
@@ -61,6 +73,7 @@ QUANTITY_HEADER_ALIASES: frozenset[str] = frozenset(
         "tenencia",
         "unidades",
         "vn",
+        "v n",
         "valor nominal",
         "saldo nominal",
         "posicion",
@@ -73,6 +86,7 @@ AVG_PRICE_HEADER_ALIASES: frozenset[str] = frozenset(
     {
         "precio promedio",
         "ppc",
+        "p p c",
         "avg price",
         "average price",
         "precio",
@@ -81,6 +95,7 @@ AVG_PRICE_HEADER_ALIASES: frozenset[str] = frozenset(
         "precio de compra",
         "precio promedio de compra",
         "precio promedio compra",
+        "precio promedio compra ppc",
         "costo unitario",
         "precio compra",
         "precio pond",
@@ -94,7 +109,9 @@ CURRENCY_HEADER_ALIASES: frozenset[str] = frozenset(
         "currency",
         "divisa",
         "moneda de liquidacion",
+        "moneda liquidacion",
         "moneda emision",
+        "moneda de emision",
         "moneda origen",
         "mon",
         "moneda liq",
@@ -110,6 +127,7 @@ IGNORED_SUMMARY_TICKERS: frozenset[str] = frozenset(
         "total cartera",
         "total general",
         "saldo",
+        "resumen",
     }
 )
 
@@ -148,18 +166,20 @@ def normalize_header_name(header: Any) -> str:
     """
     Normalize a column header or token into a canonical ASCII lowercase form.
 
-    Strips null bytes, decomposes Unicode characters (NFKD) to remove diacritics,
+    Strips null bytes, converts non-breaking spaces, decomposes Unicode characters
+    (NFKD) to remove diacritics, collapses dotted acronyms (e.g. 'P.P.C.' -> 'ppc'),
     replaces hyphens/underscores/slashes/punctuation with spaces, and collapses whitespace.
     """
     if header is None:
         return ""
-    raw_text = str(header).replace("\x00", "")
+    raw_text = str(header).replace("\x00", "").replace("\xa0", " ")
     decomposed = unicodedata.normalize("NFKD", raw_text)
     stripped_accents = "".join(
         ch for ch in decomposed if not unicodedata.combining(ch)
     )
     lowered = stripped_accents.lower()
-    separated = _HEADER_SEPARATOR_RE.sub(" ", lowered)
+    collapsed_acronyms = _DOTTED_ACRONYM_RE.sub("", lowered)
+    separated = _HEADER_SEPARATOR_RE.sub(" ", collapsed_acronyms)
     return _WHITESPACE_COLLAPSE_RE.sub(" ", separated).strip()
 
 
@@ -179,13 +199,23 @@ def resolve_header_mapping(headers: Sequence[Any]) -> dict[str, int]:
 
 def is_ignored_summary_ticker(raw_ticker: Any) -> bool:
     """
-    Return True if the candidate ticker value corresponds to a table footer or summary row.
+    Return True if the candidate ticker value corresponds to a table footer,
+    category subtotal, or summary row (exact match or prefix match).
     """
     if raw_ticker is None:
         return True
-    cleaned = _TRAILING_PUNCTUATION_RE.sub("", str(raw_ticker).strip())
+    cleaned = _TRAILING_PUNCTUATION_RE.sub("", str(raw_ticker).replace("\xa0", " ").strip())
     normalized = normalize_header_name(cleaned)
-    return normalized in IGNORED_SUMMARY_TICKERS
+    if not normalized:
+        return True
+    if normalized in IGNORED_SUMMARY_TICKERS:
+        return True
+    return normalized.startswith(_IGNORED_SUMMARY_PREFIXES)
+
+
+def _clean_whitespace(value: str) -> str:
+    """Replace non-breaking spaces with standard spaces and collapse runs of whitespace."""
+    return _WHITESPACE_COLLAPSE_RE.sub(" ", value.replace("\xa0", " ")).strip()
 
 
 def _sanitize_formula_prefix(value: str) -> str:
@@ -194,14 +224,38 @@ def _sanitize_formula_prefix(value: str) -> str:
     formula trigger characters ('=', '+', '-', '@', tabs, CR/LF) and quotes
     wrapping formula prefixes.
     """
-    cleaned = value.strip()
+    cleaned = _clean_whitespace(value)
     prev = None
     while cleaned and cleaned != prev:
         prev = cleaned
         cleaned = cleaned.lstrip(_FORMULA_DANGEROUS_PREFIX_CHARS)
-        if len(cleaned) >= 2 and cleaned[0] in ("'", '"') and cleaned[1] in _FORMULA_DANGEROUS_PREFIX_CHARS:
+        if (
+            len(cleaned) >= 2
+            and cleaned[0] in ("'", '"')
+            and cleaned[1] in _FORMULA_DANGEROUS_PREFIX_CHARS
+        ):
             cleaned = cleaned[1:].lstrip(_FORMULA_DANGEROUS_PREFIX_CHARS)
-    return cleaned.strip()
+    return _clean_whitespace(cleaned)
+
+
+def _sanitize_numeric_cell_string(value: str) -> str:
+    """
+    Clean a numeric string cell by replacing non-breaking spaces and stripping pure
+    formula triggers ('=', '+', '@') while strictly preserving leading '-' signs
+    for negative quantities or prices.
+    """
+    cleaned = _clean_whitespace(value)
+    prev = None
+    while cleaned and cleaned != prev:
+        prev = cleaned
+        cleaned = cleaned.lstrip(_NUMERIC_FORMULA_PREFIX_CHARS)
+        if (
+            len(cleaned) >= 2
+            and cleaned[0] in ("'", '"')
+            and cleaned[1] in _NUMERIC_FORMULA_PREFIX_CHARS
+        ):
+            cleaned = cleaned[1:].lstrip(_NUMERIC_FORMULA_PREFIX_CHARS)
+    return _clean_whitespace(cleaned)
 
 
 def _assert_no_null_bytes(value: Any, field_name: str) -> None:
@@ -273,10 +327,10 @@ class RawHoldingRecord(BaseSchema):
             raise ValueError("raw_quantity is required and cannot be boolean or None")
         if isinstance(value, str):
             _assert_no_null_bytes(value, "raw_quantity")
-            stripped = value.strip()
-            if not stripped:
+            cleaned = _sanitize_numeric_cell_string(value)
+            if not cleaned:
                 raise ValueError("raw_quantity cannot be an empty string")
-            return stripped
+            return cleaned
         if isinstance(value, (Decimal, int, float)):
             return value
         raise ValueError(f"Unsupported type for raw_quantity: {type(value).__name__}")
@@ -290,11 +344,23 @@ class RawHoldingRecord(BaseSchema):
             raise ValueError("raw_avg_price cannot be boolean")
         if isinstance(value, str):
             _assert_no_null_bytes(value, "raw_avg_price")
-            stripped = value.strip()
-            return stripped if stripped else None
+            cleaned = _sanitize_numeric_cell_string(value)
+            return cleaned if cleaned else None
         if isinstance(value, (Decimal, int, float)):
             return value
         raise ValueError(f"Unsupported type for raw_avg_price: {type(value).__name__}")
+
+    @field_validator("raw_fields", mode="before")
+    @classmethod
+    def _clean_raw_fields_whitespace(cls, value: Any) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return value
+        cleaned_dict: dict[str, Any] = {}
+        for k, v in value.items():
+            key_str = _clean_whitespace(str(k)) if isinstance(k, str) else k
+            val_clean = _clean_whitespace(v) if isinstance(v, str) else v
+            cleaned_dict[key_str] = val_clean
+        return cleaned_dict
 
     @model_validator(mode="after")
     def _validate_raw_fields_null_bytes(self) -> RawHoldingRecord:
