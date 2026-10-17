@@ -63,6 +63,14 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Defensive Rate Limiting for Authentication Endpoints (Módulo 5.4 - Fase 2)
+    RATE_LIMITING_ENABLED: bool = True
+    AUTH_RATE_LIMIT_LOGIN_ACCOUNT_MAX: int = 5
+    AUTH_RATE_LIMIT_LOGIN_IP_MAX: int = 20
+    AUTH_RATE_LIMIT_LOGIN_WINDOW_SECONDS: int = 60
+    AUTH_RATE_LIMIT_REGISTER_MAX: int = 3
+    AUTH_RATE_LIMIT_REGISTER_WINDOW_SECONDS: int = 300
+
     @field_validator("JWT_SECRET_KEY", mode="after")
     @classmethod
     def validate_jwt_secret_key(cls, v: SecretStr) -> SecretStr:
@@ -77,6 +85,7 @@ class Settings(BaseSettings):
         if not (1 <= v <= 90):
             raise ValueError("REFRESH_TOKEN_EXPIRE_DAYS must be between 1 and 90")
         return v
+
 
     # PostgreSQL Database Connection
     POSTGRES_SERVER: str = "localhost"

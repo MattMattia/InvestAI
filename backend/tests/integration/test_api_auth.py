@@ -7,7 +7,9 @@ bajo el contrato Universal Envelope (APIResponse / APIErrorResponse).
 """
 from datetime import timedelta
 import unittest
+import unittest.mock
 import uuid
+
 
 import httpx
 import pytest
@@ -16,7 +18,9 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # Registra todos los modelos declarativos SQLAlchemy
 from app.api.deps import get_db_session
+from app.core.config import settings
 from app.core.database import Base
+from app.core.rate_limit import auth_rate_limiter
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -33,7 +37,14 @@ from app.schemas.user import UserRole
 class TestApiAuthIntegration(unittest.IsolatedAsyncioTestCase):
     """Pruebas de integración E2E para los endpoints de identidad y sesión (/api/v1/auth)."""
 
+    def setUp(self) -> None:
+        auth_rate_limiter.reset()
+
+    def tearDown(self) -> None:
+        auth_rate_limiter.reset()
+
     async def asyncSetUp(self) -> None:
+        auth_rate_limiter.reset()
         self.engine = create_async_engine(
             "sqlite+aiosqlite:///:memory:",
             poolclass=StaticPool,
@@ -89,6 +100,7 @@ class TestApiAuthIntegration(unittest.IsolatedAsyncioTestCase):
         self.client = httpx.AsyncClient(transport=self.transport, base_url="http://test")
 
     async def asyncTearDown(self) -> None:
+        auth_rate_limiter.reset()
         if hasattr(self, "client") and self.client is not None:
             await self.client.aclose()
         fastapi_app.dependency_overrides.clear()
@@ -411,7 +423,129 @@ class TestApiAuthIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res_refresh_as_access.status_code, 401)
         self.assertFalse(res_refresh_as_access.json()["success"])
 
+    # -------------------------------------------------------------------------
+    # Pruebas de Integración de Rate Limiting Defensivo en /auth (Módulo 5.4 - Fase 2)
+    # -------------------------------------------------------------------------
+
+    async def test_login_rate_limiting_account_triggers_429(self) -> None:
+        """
+        Realizar 5 intentos fallidos consecutivos al mismo correo y comprobar que el 6to
+        retorne HTTP 429 Too Many Requests con cabecera Retry-After, X-RateLimit-Limit='5',
+        X-RateLimit-Remaining='0' y cuerpo encapsulado en APIErrorResponse.
+        """
+        for _ in range(settings.AUTH_RATE_LIMIT_LOGIN_ACCOUNT_MAX):
+            res_attempt = await self.client.post(
+                "/api/v1/auth/login",
+                json={
+                    "email": self.active_user.email,
+                    "password": "WrongAttemptPassword!123",
+                },
+            )
+            self.assertEqual(res_attempt.status_code, 401)
+
+        # 6to intento debe ser bloqueado por Rate Limiting antes de tocar bcrypt/DB
+        res_blocked = await self.client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": self.active_user.email,
+                "password": "WrongAttemptPassword!123",
+            },
+        )
+        self.assertEqual(res_blocked.status_code, 429)
+        self.assertIn("Retry-After", res_blocked.headers)
+        self.assertGreater(int(res_blocked.headers["Retry-After"]), 0)
+        self.assertEqual(res_blocked.headers.get("X-RateLimit-Limit"), "5")
+        self.assertEqual(res_blocked.headers.get("X-RateLimit-Remaining"), "0")
+
+        body = res_blocked.json()
+        self.assertFalse(body["success"])
+        self.assertEqual(body["error"]["code"], "RATE_LIMIT_EXCEEDED")
+        self.assertIn("Too many login attempts for this account", body["error"]["message"])
+        self.assertIn("request_id", body["meta"])
+
+    async def test_login_rate_limiting_ip_triggers_429(self) -> None:
+        """
+        Realizar peticiones con correos distintos desde la misma IP hasta superar
+        AUTH_RATE_LIMIT_LOGIN_IP_MAX y comprobar que se bloquee con HTTP 429
+        (mitigación de password spraying).
+        """
+        fast_dummy_hash = get_password_hash("fast_dummy_secret", rounds=4)
+        with unittest.mock.patch(
+            "app.api.v1.endpoints.auth._DUMMY_PASSWORD_HASH", fast_dummy_hash
+        ):
+            for i in range(settings.AUTH_RATE_LIMIT_LOGIN_IP_MAX):
+                res_attempt = await self.client.post(
+                    "/api/v1/auth/login",
+                    json={
+                        "email": f"spray.target.{i}@investai.internal",
+                        "password": "SprayPassword!123",
+                    },
+                )
+                self.assertEqual(res_attempt.status_code, 401)
+
+            # Intento N+1 desde la misma IP hacia una cuenta nueva -> bloqueado por cota global de IP (429)
+            res_spraying_blocked = await self.client.post(
+                "/api/v1/auth/login",
+                json={
+                    "email": "brand.new.target@investai.internal",
+                    "password": "SprayPassword!123",
+                },
+            )
+        self.assertEqual(res_spraying_blocked.status_code, 429)
+        self.assertIn("Retry-After", res_spraying_blocked.headers)
+        self.assertGreater(int(res_spraying_blocked.headers["Retry-After"]), 0)
+        self.assertEqual(
+            res_spraying_blocked.headers.get("X-RateLimit-Limit"),
+            str(settings.AUTH_RATE_LIMIT_LOGIN_IP_MAX),
+        )
+        self.assertEqual(res_spraying_blocked.headers.get("X-RateLimit-Remaining"), "0")
+
+        body = res_spraying_blocked.json()
+        self.assertFalse(body["success"])
+        self.assertEqual(body["error"]["code"], "RATE_LIMIT_EXCEEDED")
+        self.assertIn("Too many login attempts from this IP", body["error"]["message"])
+
+
+    async def test_register_rate_limiting_triggers_429(self) -> None:
+        """
+        Realizar 3 registros válidos consecutivos y verificar que el 4to retorne HTTP 429.
+        """
+        for idx in range(settings.AUTH_RATE_LIMIT_REGISTER_MAX):
+            res_reg = await self.client.post(
+                "/api/v1/auth/register",
+                json={
+                    "email": f"new.registered.{idx}@investai.com",
+                    "full_name": f"Registered Investor {idx}",
+                    "password": "StrongRegisterPass!99",
+                },
+            )
+            self.assertEqual(res_reg.status_code, 201)
+
+        # 4to intento de registro desde la misma IP -> 429 Too Many Requests
+        res_reg_blocked = await self.client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "new.registered.4@investai.com",
+                "full_name": "Registered Investor 4",
+                "password": "StrongRegisterPass!99",
+            },
+        )
+        self.assertEqual(res_reg_blocked.status_code, 429)
+        self.assertIn("Retry-After", res_reg_blocked.headers)
+        self.assertGreater(int(res_reg_blocked.headers["Retry-After"]), 0)
+        self.assertEqual(
+            res_reg_blocked.headers.get("X-RateLimit-Limit"),
+            str(settings.AUTH_RATE_LIMIT_REGISTER_MAX),
+        )
+        self.assertEqual(res_reg_blocked.headers.get("X-RateLimit-Remaining"), "0")
+
+        body = res_reg_blocked.json()
+        self.assertFalse(body["success"])
+        self.assertEqual(body["error"]["code"], "RATE_LIMIT_EXCEEDED")
+        self.assertIn("Too many registration attempts from this IP", body["error"]["message"])
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

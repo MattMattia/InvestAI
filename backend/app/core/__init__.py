@@ -1,5 +1,9 @@
 """Core Package (Configuration, Database, Security, Exceptions)"""
 
+from app.core.rate_limit import (
+    SlidingWindowRateLimiter,
+    auth_rate_limiter,
+)
 from app.core.security import (
     ExpiredTokenError,
     InvalidTokenError,
@@ -14,6 +18,8 @@ from app.core.security import (
 )
 
 __all__ = [
+    "SlidingWindowRateLimiter",
+    "auth_rate_limiter",
     "SecurityError",
     "TokenSecurityError",
     "InvalidTokenError",
@@ -25,3 +31,4 @@ __all__ = [
     "create_token_pair",
     "decode_token",
 ]
+

@@ -6,13 +6,14 @@ estricta de tokens OAuth2 Bearer, resolución de identidad de usuario y control 
 from typing import Annotated, AsyncGenerator, Sequence
 import uuid
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, ensure_db_ready
+from app.core.rate_limit import auth_rate_limiter
 from app.core.security import (
     ExpiredTokenError,
     InvalidTokenError,
@@ -22,6 +23,7 @@ from app.domain.services.market_history_service import MarketHistoryService
 from app.infrastructure.market_data.http_connector import HttpMarketConnector
 from app.infrastructure.market_data.quote_cache import InMemoryQuoteCache
 from app.models.user import UserModel
+from app.schemas.auth import LoginRequest
 from app.schemas.token import TokenPayload, TokenType
 from app.schemas.user import UserRole
 
@@ -155,6 +157,84 @@ require_trader_or_admin = RoleChecker([UserRole.TRADER, UserRole.ADMIN])
 require_admin = RoleChecker([UserRole.ADMIN])
 
 
+def get_client_ip(request: Request) -> str:
+    """Extrae de forma segura la dirección IP del cliente desde el objeto Request."""
+    return request.client.host if request.client and request.client.host else "127.0.0.1"
+
+
+async def check_login_rate_limit(request: Request, payload: LoginRequest) -> None:
+    """
+    Dependencia declarativa de Rate Limiting para el endpoint POST /api/v1/auth/login.
+    Aplica doble cota en ventana deslizante:
+    1. Cota global por IP (anti password-spraying).
+    2. Cota específica por tupla IP+email (anti fuerza bruta dirigida).
+    """
+    if not settings.RATE_LIMITING_ENABLED:
+        return
+
+    client_ip = get_client_ip(request)
+
+    # 1. Verificar cota global de IP (anti password-spraying)
+    is_limited_ip, retry_after_ip, _ = auth_rate_limiter.is_rate_limited(
+        f"login:ip:{client_ip}",
+        settings.AUTH_RATE_LIMIT_LOGIN_IP_MAX,
+        settings.AUTH_RATE_LIMIT_LOGIN_WINDOW_SECONDS,
+    )
+    if is_limited_ip:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts from this IP. Please try again later.",
+            headers={
+                "Retry-After": str(retry_after_ip),
+                "X-RateLimit-Limit": str(settings.AUTH_RATE_LIMIT_LOGIN_IP_MAX),
+                "X-RateLimit-Remaining": "0",
+            },
+        )
+
+    # 2. Verificar cota de cuenta (anti fuerza bruta dirigida)
+    is_limited_acc, retry_after_acc, _ = auth_rate_limiter.is_rate_limited(
+        f"login:account:{client_ip}:{payload.email}",
+        settings.AUTH_RATE_LIMIT_LOGIN_ACCOUNT_MAX,
+        settings.AUTH_RATE_LIMIT_LOGIN_WINDOW_SECONDS,
+    )
+    if is_limited_acc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts for this account. Please try again later.",
+            headers={
+                "Retry-After": str(retry_after_acc),
+                "X-RateLimit-Limit": str(settings.AUTH_RATE_LIMIT_LOGIN_ACCOUNT_MAX),
+                "X-RateLimit-Remaining": "0",
+            },
+        )
+
+
+async def check_register_rate_limit(request: Request) -> None:
+    """
+    Dependencia declarativa de Rate Limiting para el endpoint POST /api/v1/auth/register.
+    Previene creación masiva automatizada de cuentas desde una misma IP.
+    """
+    if not settings.RATE_LIMITING_ENABLED:
+        return
+
+    client_ip = get_client_ip(request)
+    is_limited, retry_after, _ = auth_rate_limiter.is_rate_limited(
+        f"register:ip:{client_ip}",
+        settings.AUTH_RATE_LIMIT_REGISTER_MAX,
+        settings.AUTH_RATE_LIMIT_REGISTER_WINDOW_SECONDS,
+    )
+    if is_limited:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many registration attempts from this IP. Please try again later.",
+            headers={
+                "Retry-After": str(retry_after),
+                "X-RateLimit-Limit": str(settings.AUTH_RATE_LIMIT_REGISTER_MAX),
+                "X-RateLimit-Remaining": "0",
+            },
+        )
+
+
 def get_market_service(
     db: AsyncSession = Depends(get_db_session),
 ) -> MarketHistoryService:
@@ -187,5 +267,9 @@ __all__ = [
     "RoleChecker",
     "require_trader_or_admin",
     "require_admin",
+    "get_client_ip",
+    "check_login_rate_limit",
+    "check_register_rate_limit",
     "get_market_service",
 ]
+

@@ -12,7 +12,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_active_user, get_db_session
+from app.api.deps import (
+    check_login_rate_limit,
+    check_register_rate_limit,
+    get_current_active_user,
+    get_db_session,
+)
 from app.core.security import (
     ExpiredTokenError,
     InvalidTokenError,
@@ -43,16 +48,18 @@ _DUMMY_PASSWORD_HASH: str = get_password_hash(
     summary="Registrar nueva cuenta de usuario",
     description=(
         "Registra un nuevo usuario asignando por defecto el rol de privilegio mínimo (VIEWER) "
-        "y estado activo. Protegido contra Mass Assignment y condiciones de carrera TOCTOU."
+        "y estado activo. Protegido contra Mass Assignment, Rate Limiting y condiciones de carrera TOCTOU."
     ),
     responses={
         409: {"model": APIErrorResponse},
         422: {"model": APIErrorResponse},
+        429: {"model": APIErrorResponse},
     },
 )
 async def register_user(
     payload: RegisterRequest,
     db: Annotated[AsyncSession, Depends(get_db_session)],
+    _rate_limit: None = Depends(check_register_rate_limit),
 ) -> APIResponse[UserResponse]:
     """
     Endpoint público de registro de usuario con asignación forzada de rol VIEWER.
@@ -103,12 +110,15 @@ async def register_user(
         401: {"model": APIErrorResponse},
         403: {"model": APIErrorResponse},
         422: {"model": APIErrorResponse},
+        429: {"model": APIErrorResponse},
     },
 )
 async def login_user(
     payload: LoginRequest,
     db: Annotated[AsyncSession, Depends(get_db_session)],
+    _rate_limit: None = Depends(check_login_rate_limit),
 ) -> APIResponse[TokenResponse]:
+
     """
     Endpoint de autenticación de credenciales con protección contra Timing Attacks.
     """

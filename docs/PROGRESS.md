@@ -1,10 +1,10 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 17 de 26 Módulos Completados (65.4%) — Módulos 5.1, 5.2, 5.3 y 5.4 (Fase 1) completados  
-> **Capítulos Implementados:** Capítulos 1, 2, 3 y 4 (100% completados)  
-> **Capítulos Pendientes / En Progreso:** Capítulos 5 (En Curso), 6, 7, 8 y 9  
-> **Calidad y Suite de Pruebas:** **279 tests pasando al 100% en verde (216 unitarios + 63 de integración)**  
+> **Progreso Consolidado:** 18 de 26 Módulos Completados (69.2%) — Capítulos 1, 2, 3, 4 y 5 completados al 100%  
+> **Capítulos Implementados:** Capítulos 1, 2, 3, 4 y 5 (100% completados)  
+> **Capítulos Pendientes / En Progreso:** Capítulos 6, 7, 8 y 9  
+> **Calidad y Suite de Pruebas:** **289 tests pasando al 100% en verde (223 unitarios + 66 de integración)**  
 > **Última Actualización:** 2026-10-16
 
 ---
@@ -23,7 +23,7 @@
 | **Capítulo 2** | Auditoría Integral y Diagnóstico Técnico (`AUDIT_REPORT.md`) | 2 / 2 | 6 / 6 | **COMPLETADO** | Informe formal emitido |
 | **Capítulo 3** | Remediación Técnica y Hardening Post-Auditoría | 5 / 5 | 17 / 17 | **COMPLETADO** | 159 tests (+22) |
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
-| **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 3 / 4 (M5.1, M5.2, M5.3 y M5.4 F1 completados) | 8 / 9 | **EN PROGRESO** | 279 tests (+74) |
+| **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 289 tests (+84) |
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
@@ -125,9 +125,9 @@
   - [x] Fase 1: Dependencias de Seguridad, Inyección OAuth2 Bearer y Control de Acceso RBAC (`backend/app/api/deps.py`, `backend/app/api/__init__.py`, `backend/tests/unit/test_security_deps.py`)
   - [x] Fase 2: Erradicación del Mock X-User-Id, Control de Propiedad Tenant y Aislamiento Anti-IDOR/BOLA (`backend/app/api/deps.py`, `backend/app/services/portfolio_service.py`, `backend/app/api/v1/endpoints/*`, `backend/tests/integration/test_api_endpoints.py`, `backend/tests/integration/test_api_backtest.py`)
   - [x] Fase 3: Aislamiento Multitenant Estricto (Filtro mandatorio de `user_id` en endpoints de cartera, órdenes y backtest)
-- [ ] **Módulo 5.4: Controlador REST de Autenticación, Endpoints /auth y Rate Limiting Defensivo**
+- [x] **Módulo 5.4: Controlador REST de Autenticación, Endpoints /auth y Rate Limiting Defensivo**
   - [x] Fase 1: Controlador REST de Autenticación, Endpoints `/auth` (`/register`, `/login`, `/refresh`, `/me` bajo Universal Envelope) y Suite de Integración (`backend/app/schemas/auth.py`, `backend/app/api/v1/endpoints/auth.py`, `backend/tests/integration/test_api_auth.py`)
-  - [ ] Fase 2: Rate Limiting Defensivo y Mitigación de Fuerza Bruta en `/auth`
+  - [x] Fase 2: Rate Limiting Defensivo y Mitigación de Fuerza Bruta en `/auth` (`backend/app/core/rate_limit.py`, `backend/app/api/deps.py`, `backend/tests/unit/test_rate_limiter.py`, `backend/tests/integration/test_api_auth.py`)
 
 ---
 
@@ -195,10 +195,12 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 5 - MÓDULO 5.4: Controlador REST de Autenticación, Endpoints /auth y Rate Limiting Defensivo - FASE 2**  
-> **Prioridad:** Alta (Cierre del Capítulo 5 de Seguridad Criptográfica, Autenticación y RBAC)  
-> **Objetivo:** Implementar el mecanismo de Rate Limiting Defensivo y mitigación de ataques de fuerza bruta / credential stuffing sobre los endpoints críticos de autenticación (`/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/refresh`), devolviendo respuestas HTTP 429 (`Too Many Requests`) con cabecera `Retry-After` bajo el contrato `APIErrorResponse`.
+> **Foco Actual:** **CAPÍTULO 6: Motor de Ejecución de Órdenes y Conectividad con Brokers / Paper Trading (e Ingesta de Reportes Locales)**  
+> **Prioridad:** Alta (Inicio del Capítulo 6 tras completar al 100% el Capítulo 5 de Seguridad Criptográfica, Autenticación y RBAC - SEC-03)  
+> **Objetivo:** Iniciar la implementación del **Capítulo 6**, desarrollando los componentes desacoplados de ejecución transaccional, conectividad de órdenes / paper trading e ingesta y conciliación de reportes de brokers locales.
 
-### Hoja de Ruta Inmediata para el Capítulo 5:
-1. **Módulo 5.4 (Fase 2)**: Implementar Rate Limiting Defensivo y Mitigación de Fuerza Bruta en `/auth`, junto con su suite de pruebas unitarias y de integración, cerrando el Capítulo 5 al 100%.
+### Hoja de Ruta Inmediata para el Capítulo 6:
+1. **Módulo 6.1**: Implementar la capa desacoplada de ejecución / parsing y contratos asociados.
+2. **Módulo 6.2**: Implementar el pipeline de validación, normalización y reglas operativas/contables.
+3. **Módulo 6.3**: Integrar la conciliación transaccional y exponer los controladores REST bajo `APIResponse[T]` con su suite de pruebas E2E.
 
