@@ -544,8 +544,78 @@ class TestApiAuthIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["error"]["code"], "RATE_LIMIT_EXCEEDED")
         self.assertIn("Too many registration attempts from this IP", body["error"]["message"])
 
+    async def test_register_and_login_null_byte_injection_rejected_422(self) -> None:
+        """
+        Verifica que inyecciones de bytes nulos (\\x00) en password, full_name o email
+        en /register y /login sean rechazadas determinísticamente en la frontera Pydantic
+        con HTTP 422 VALIDATION_ERROR (nunca HTTP 500) (AUD-C5-02).
+        """
+        # 1. Null byte en password de registro
+        res_reg_pw = await self.client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "nullbyte.test@investai.com",
+                "full_name": "Null Byte Tester",
+                "password": "ValidPass\x00123!",
+            },
+        )
+        self.assertEqual(res_reg_pw.status_code, 422)
+        self.assertEqual(res_reg_pw.json()["error"]["code"], "VALIDATION_ERROR")
+
+        # 2. Null byte en full_name de registro
+        res_reg_name = await self.client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "nullbyte.name@investai.com",
+                "full_name": "Null\x00Name",
+                "password": "ValidPass123!",
+            },
+        )
+        self.assertEqual(res_reg_name.status_code, 422)
+        self.assertEqual(res_reg_name.json()["error"]["code"], "VALIDATION_ERROR")
+
+        # 3. Null byte en password de login
+        res_login_pw = await self.client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": self.active_user.email,
+                "password": "Pass\x00word123!",
+            },
+        )
+        self.assertEqual(res_login_pw.status_code, 422)
+        self.assertEqual(res_login_pw.json()["error"]["code"], "VALIDATION_ERROR")
+
+    async def test_concurrent_duplicate_registration_race_condition_handled_409(self) -> None:
+        """
+        Simula una condición de carrera TOCTOU donde el SELECT previo no encuentra el email
+        pero el COMMIT lanza IntegrityError por inserción concurrente, verificando que se
+        ejecute rollback() y se retorne HTTP 409 Conflict dentro del APIErrorResponse.
+        """
+        from sqlalchemy.exc import IntegrityError
+
+        async def _conflict_commit(*args, **kwargs):
+            raise IntegrityError("INSERT INTO users", params={}, orig=Exception("UNIQUE constraint failed"))
+
+        with unittest.mock.patch.object(
+            AsyncSession, "commit", side_effect=_conflict_commit
+        ):
+            res = await self.client.post(
+                "/api/v1/auth/register",
+                json={
+                    "email": "toctou.race@investai.com",
+                    "full_name": "Race Condition User",
+                    "password": "StrongRegisterPass!99",
+                },
+            )
+        self.assertEqual(res.status_code, 409)
+        body = res.json()
+        self.assertFalse(body["success"])
+        self.assertEqual(body["error"]["code"], "CONFLICT")
+        self.assertEqual(body["error"]["message"], "Email already registered")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

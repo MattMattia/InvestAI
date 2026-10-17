@@ -69,23 +69,32 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-    """Custom structured response conforming to APIErrorResponse for HTTP exceptions (ARQ-02, SEC-03)."""
+    """Custom structured response conforming to APIErrorResponse for HTTP exceptions (ARQ-02, SEC-02, SEC-03)."""
     request_id = get_current_request_id() or request.headers.get("X-Request-ID") or str(uuid.uuid4())
-    status_code_map = {
-        status.HTTP_400_BAD_REQUEST: "BAD_REQUEST",
-        status.HTTP_401_UNAUTHORIZED: "UNAUTHORIZED",
-        status.HTTP_403_FORBIDDEN: "FORBIDDEN",
-        status.HTTP_404_NOT_FOUND: "NOT_FOUND",
-        status.HTTP_409_CONFLICT: "CONFLICT",
-        status.HTTP_422_UNPROCESSABLE_CONTENT: "VALIDATION_ERROR",
-        status.HTTP_429_TOO_MANY_REQUESTS: "RATE_LIMIT_EXCEEDED",
-    }
-    error_code = status_code_map.get(exc.status_code, f"HTTP_{exc.status_code}")
+    if exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
+        logger.error(
+            f"HTTP {exc.status_code} internal error [req_id={request_id}] on {request.method} {request.url.path}: {exc.detail}"
+        )
+        error_code = "INTERNAL_SERVER_ERROR"
+        safe_message = "An internal server error occurred."
+    else:
+        status_code_map = {
+            status.HTTP_400_BAD_REQUEST: "BAD_REQUEST",
+            status.HTTP_401_UNAUTHORIZED: "UNAUTHORIZED",
+            status.HTTP_403_FORBIDDEN: "FORBIDDEN",
+            status.HTTP_404_NOT_FOUND: "NOT_FOUND",
+            status.HTTP_409_CONFLICT: "CONFLICT",
+            status.HTTP_422_UNPROCESSABLE_CONTENT: "VALIDATION_ERROR",
+            status.HTTP_429_TOO_MANY_REQUESTS: "RATE_LIMIT_EXCEEDED",
+        }
+        error_code = status_code_map.get(exc.status_code, f"HTTP_{exc.status_code}")
+        safe_message = str(exc.detail)
+
     error_payload = APIErrorResponse(
         success=False,
         error=ErrorDetail(
             code=error_code,
-            message=str(exc.detail),
+            message=safe_message,
             details=[],
         ),
         meta=ResponseMeta(request_id=request_id),
@@ -95,6 +104,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
         content=error_payload.model_dump(mode="json"),
         headers=getattr(exc, "headers", None),
     )
+
 
 
 @app.exception_handler(RequestValidationError)

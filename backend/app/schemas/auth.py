@@ -42,14 +42,23 @@ class RegisterRequest(BaseSchema):
     @classmethod
     def validate_email_format(cls, v: str) -> str:
         normalized = v.strip().lower()
-        if not RFC_EMAIL_REGEX.match(normalized):
+        if "\x00" in normalized or not RFC_EMAIL_REGEX.match(normalized):
             raise ValueError("Invalid email format")
         return normalized
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name_no_null_bytes(cls, v: str) -> str:
+        if "\x00" in v:
+            raise ValueError("Full name cannot contain null bytes")
+        return v
 
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: SecretStr) -> SecretStr:
         raw = v.get_secret_value()
+        if "\x00" in raw:
+            raise ValueError("Password cannot contain null bytes")
         if len(raw) < 8:
             raise ValueError("Password must be at least 8 characters long")
         if len(raw.encode("utf-8")) > 72:
@@ -74,7 +83,7 @@ class LoginRequest(BaseSchema):
     @classmethod
     def validate_email_format(cls, v: str) -> str:
         normalized = v.strip().lower()
-        if not RFC_EMAIL_REGEX.match(normalized):
+        if "\x00" in normalized or not RFC_EMAIL_REGEX.match(normalized):
             raise ValueError("Invalid email format")
         return normalized
 
@@ -82,9 +91,12 @@ class LoginRequest(BaseSchema):
     @classmethod
     def validate_password(cls, v: SecretStr) -> SecretStr:
         raw = v.get_secret_value()
+        if "\x00" in raw:
+            raise ValueError("Password cannot contain null bytes")
         if len(raw) < 1:
             raise ValueError("Password cannot be empty")
         if len(raw.encode("utf-8")) > 72:
             raise ValueError("Password cannot exceed 72 bytes")
         return v
+
 

@@ -120,7 +120,7 @@ def _prepare_quantitative_inputs(
         cov = np.asarray(req.covariance_matrix, dtype=np.float64)
         if cov.shape != (n_assets, n_assets):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Dimensiones de covariance_matrix {cov.shape} no coinciden con N={n_assets} activos.",
             )
         # Symmetrize
@@ -139,7 +139,7 @@ def _prepare_quantitative_inputs(
         returns = np.asarray(req.returns, dtype=np.float64)
         if returns.ndim != 2 or returns.shape[1] != n_assets:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Matriz de retornos debe tener forma (T, {n_assets}). Forma dada: {returns.shape}",
             )
         if req.use_ledoit_wolf:

@@ -28,16 +28,15 @@ from app.domain.models.order import (
 from app.models.portfolio import PortfolioModel
 from app.models.rebalance_order import RebalanceOrderModel
 from app.models.user import UserModel
+from app.schemas.envelope import BaseSchema
 from app.schemas.user import UserRole
 from app.services.portfolio_service import get_user_portfolio_or_404
 
 router = APIRouter()
 
 
-class OrderCreateRequest(BaseModel):
-    """Esquema de entrada para creación de una orden de compra/venta sobre una cartera."""
-
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+class OrderCreateRequest(BaseSchema):
+    """Esquema inmutable de entrada para creación de una orden de compra/venta sobre una cartera."""
 
     portfolio_id: str = Field(..., min_length=1, description="ID de la cartera propietaria")
     ticker: str = Field(..., min_length=1, max_length=30, description="Símbolo del activo")
@@ -49,13 +48,12 @@ class OrderCreateRequest(BaseModel):
     justification: Optional[str] = Field(default="Manual trade order", description="Motivo o justificación de la orden")
 
 
-class OrderTransitionRequest(BaseModel):
-    """Esquema de entrada para transición de estado en la FSM de una orden."""
-
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+class OrderTransitionRequest(BaseSchema):
+    """Esquema inmutable de entrada para transición de estado en la FSM de una orden."""
 
     new_state: OrderState = Field(..., description="Nuevo estado objetivo en la FSM")
     reason: Optional[str] = Field(default=None, description="Motivo de cancelación o rechazo")
+
 
 
 class OrderResponseDTO(BaseModel):

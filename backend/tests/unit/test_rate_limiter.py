@@ -173,7 +173,38 @@ class TestSlidingWindowRateLimiter(unittest.TestCase):
         self.assertEqual(blocked_count, total_attempts - max_requests)
         self.assertEqual(len(self.limiter._storage[key]), max_requests)
 
+    def test_cross_window_isolation_does_not_evict_longer_window_keys(self) -> None:
+        """
+        Verifica aislamiento entre claves con ventanas distintas (ej. register=300s vs login=60s):
+        una consulta con window_seconds=60 no debe purgar prematuramente marcas de una clave con
+        window_seconds=300 que tengan 90s de antigüedad (AUD-C5-01).
+        """
+        reg_key = "register:ip:10.0.0.1"
+        login_key = "login:ip:10.0.0.2"
+        with patch("app.core.rate_limit.time.time") as mock_time:
+            mock_time.return_value = 1000.0
+            # Agotar límite de registro (3 peticiones en ventana de 300s)
+            for _ in range(3):
+                is_lim, _, _ = self.limiter.is_rate_limited(
+                    reg_key, max_requests=3, window_seconds=300
+                )
+                self.assertFalse(is_lim)
+
+            # Avanzar 90s (t=1090.0): aún restan 210s de bloqueo para reg_key (ventana de 300s),
+            # pero supera la ventana de 60s de login_key
+            mock_time.return_value = 1090.0
+            self.limiter.is_rate_limited(login_key, max_requests=20, window_seconds=60)
+
+            # reg_key debe permanecer bloqueada en t=1090.0 con retry_after == 210s
+            is_reg_limited, retry_after, remaining = self.limiter.is_rate_limited(
+                reg_key, max_requests=3, window_seconds=300
+            )
+            self.assertTrue(is_reg_limited)
+            self.assertEqual(retry_after, 210)
+            self.assertEqual(remaining, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

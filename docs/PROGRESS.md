@@ -4,7 +4,7 @@
 > **Progreso Consolidado:** 18 de 26 Módulos Completados (69.2%) — Capítulos 1, 2, 3, 4 y 5 completados al 100%  
 > **Capítulos Implementados:** Capítulos 1, 2, 3, 4 y 5 (100% completados)  
 > **Capítulos Pendientes / En Progreso:** Capítulos 6, 7, 8 y 9  
-> **Calidad y Suite de Pruebas:** **289 tests pasando al 100% en verde (223 unitarios + 66 de integración)**  
+> **Calidad y Suite de Pruebas:** **293 tests pasando al 100% en verde (225 unitarios + 68 de integración)**  
 > **Última Actualización:** 2026-10-16
 
 ---
@@ -23,7 +23,7 @@
 | **Capítulo 2** | Auditoría Integral y Diagnóstico Técnico (`AUDIT_REPORT.md`) | 2 / 2 | 6 / 6 | **COMPLETADO** | Informe formal emitido |
 | **Capítulo 3** | Remediación Técnica y Hardening Post-Auditoría | 5 / 5 | 17 / 17 | **COMPLETADO** | 159 tests (+22) |
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
-| **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 289 tests (+84) |
+| **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 293 tests (+88) |
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
@@ -128,6 +128,7 @@
 - [x] **Módulo 5.4: Controlador REST de Autenticación, Endpoints /auth y Rate Limiting Defensivo**
   - [x] Fase 1: Controlador REST de Autenticación, Endpoints `/auth` (`/register`, `/login`, `/refresh`, `/me` bajo Universal Envelope) y Suite de Integración (`backend/app/schemas/auth.py`, `backend/app/api/v1/endpoints/auth.py`, `backend/tests/integration/test_api_auth.py`)
   - [x] Fase 2: Rate Limiting Defensivo y Mitigación de Fuerza Bruta en `/auth` (`backend/app/core/rate_limit.py`, `backend/app/api/deps.py`, `backend/tests/unit/test_rate_limiter.py`, `backend/tests/integration/test_api_auth.py`)
+  - [x] Auditoría Adversarial E2E (Red-Team / Blue-Team) y Hardening del Capítulo 5 (`AUD-C5-01` a `AUD-C5-05` — 293 tests en verde: 225 unitarios + 68 de integración)
 
 ---
 

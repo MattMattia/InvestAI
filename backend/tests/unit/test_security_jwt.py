@@ -392,6 +392,47 @@ class TestSecurityJWT(unittest.TestCase):
         self.assertEqual(dumped_with_refresh["access_token"], token_str)
         self.assertEqual(dumped_with_refresh["refresh_token"], refresh_str)
 
+    def test_malformed_claim_types_and_timestamp_overflow_raise_invalid_token_error(self):
+        """
+        Valida que un token firmado con tipos de claims corruptos (ej. role inválido,
+        sub vacío o timestamps fuera de rango C time_t) arroje InvalidTokenError y nunca 500.
+        """
+        now = datetime.now(timezone.utc)
+        # Caso 1: Rol inexistente en el enum UserRole
+        bad_role_payload = {
+            "sub": "user_123",
+            "role": "SUPER_HACKER_ROOT",
+            "type": "access",
+            "iat": int(now.timestamp()),
+            "exp": int((now + timedelta(minutes=30)).timestamp()),
+            "jti": str(uuid.uuid4()),
+        }
+        tok_bad_role = jwt.encode(
+            bad_role_payload,
+            settings.JWT_SECRET_KEY.get_secret_value(),
+            algorithm=settings.JWT_ALGORITHM,
+        )
+        with self.assertRaises(InvalidTokenError):
+            decode_token(tok_bad_role)
+
+        # Caso 2: Timestamp exp desbordado (10**16 segundos -> OverflowError / OSError en fromtimestamp)
+        overflow_exp_payload = {
+            "sub": "user_123",
+            "role": "VIEWER",
+            "type": "access",
+            "iat": int(now.timestamp()),
+            "exp": 10**16,
+            "jti": str(uuid.uuid4()),
+        }
+        tok_overflow = jwt.encode(
+            overflow_exp_payload,
+            settings.JWT_SECRET_KEY.get_secret_value(),
+            algorithm=settings.JWT_ALGORITHM,
+        )
+        with self.assertRaises(InvalidTokenError):
+            decode_token(tok_overflow)
+
 
 if __name__ == "__main__":
     unittest.main()
+

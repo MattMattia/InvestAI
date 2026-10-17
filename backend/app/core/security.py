@@ -295,8 +295,9 @@ def decode_token(
             jti=decoded["jti"],
             email=decoded.get("email"),
         )
-    except (ValidationError, ValueError, KeyError) as e:
+    except (ValidationError, ValueError, KeyError, TypeError, OSError, OverflowError) as e:
         raise InvalidTokenError("Token payload claims are malformed") from e
+
 
     if expected_type is not None and payload.type != expected_type:
         raise InvalidTokenError(

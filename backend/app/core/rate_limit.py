@@ -52,15 +52,6 @@ class SlidingWindowRateLimiter:
             else:
                 self._storage[key] = valid_timestamps
 
-            # Purgar claves huérfanas cuyas marcas hayan expirado respecto a esta ventana
-            expired_keys = [
-                k
-                for k, ts_list in self._storage.items()
-                if k != key and not any(ts > cutoff for ts in ts_list)
-            ]
-            for k in expired_keys:
-                del self._storage[k]
-
             if len(valid_timestamps) >= max_requests:
                 oldest = valid_timestamps[0] if valid_timestamps else now
                 retry_after = max(1, int(ceil(window_seconds - (now - oldest))))
@@ -74,6 +65,7 @@ class SlidingWindowRateLimiter:
             self._storage[key] = valid_timestamps
             remaining = max(0, max_requests - len(valid_timestamps))
             return (False, 0, remaining)
+
 
     def reset(self) -> None:
         """Limpia la totalidad del estado en memoria de manera thread-safe."""
