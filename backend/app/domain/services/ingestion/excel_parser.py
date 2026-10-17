@@ -6,8 +6,10 @@ read-only workbook streaming, and multi-sheet table discovery.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from decimal import Decimal
 import io
+import itertools
 import math
 from pathlib import PurePath
 from typing import Any
@@ -31,8 +33,8 @@ from app.domain.services.ingestion.base_parser import (
     ReportSizeLimitExceededError,
     UnsupportedReportFormatError,
     is_ignored_summary_ticker,
-    resolve_header_mapping,
 )
+from app.domain.services.ingestion.schema_detector import SchemaDetector
 
 _XML_HEAD_INSPECTION_BYTES: int = 4096
 
@@ -68,6 +70,9 @@ class ExcelReportParser(BaseReportParser):
     Asynchronous-safe Excel (.xlsx) parser using `openpyxl` in `read_only=True, data_only=True`
     mode with defensive archive inspection.
     """
+
+    def __init__(self, schema_detector: SchemaDetector | None = None) -> None:
+        self._schema_detector: SchemaDetector = schema_detector or SchemaDetector()
 
     async def parse_report(
         self, file_stream: bytes, filename: str
@@ -172,38 +177,40 @@ class ExcelReportParser(BaseReportParser):
             sheet = workbook[sheet_name]
             row_iter = sheet.iter_rows(values_only=True)
 
+            buffered_rows: list[Sequence[Any]] = []
             scanned_non_empty = 0
-            header_row_number: int | None = None
-            header_cells: list[str] | None = None
-            column_map: dict[str, int] | None = None
 
-            current_row_num = 0
             for raw_row in row_iter:
-                current_row_num += 1
-                if not raw_row or all(_is_empty_cell(_clean_cell_value(c)) for c in raw_row):
+                row_seq: Sequence[Any] = raw_row if raw_row is not None else ()
+                buffered_rows.append(row_seq)
+                if not row_seq or all(
+                    _is_empty_cell(_clean_cell_value(c)) for c in row_seq
+                ):
                     continue
 
                 has_any_content = True
                 scanned_non_empty += 1
-                if scanned_non_empty > MAX_HEADER_SCAN_LINES:
+                if scanned_non_empty >= MAX_HEADER_SCAN_LINES:
                     break
 
-                mapping = resolve_header_mapping(raw_row)
-                if "ticker" in mapping and "quantity" in mapping:
-                    header_row_number = current_row_num
-                    header_cells = [
-                        str(c).strip() if c is not None else "" for c in raw_row
-                    ]
-                    column_map = mapping
-                    break
-
-            if (
-                header_row_number is not None
-                and header_cells is not None
-                and column_map is not None
-            ):
+            best_schema = self._schema_detector.find_best_header_row(buffered_rows)
+            if best_schema is not None:
+                header_idx = best_schema.header_row_index
+                header_row_number = header_idx + 1
+                raw_header_row = buffered_rows[header_idx]
+                header_cells = [
+                    str(c).strip() if c is not None else "" for c in raw_header_row
+                ]
+                column_map = {
+                    field.value: col_map.column_index
+                    for field, col_map in best_schema.mappings.items()
+                }
+                remaining_iter = itertools.chain(
+                    buffered_rows[header_idx + 1 :],
+                    row_iter,
+                )
                 return self._extract_rows_after_header(
-                    row_iter=row_iter,
+                    row_iter=remaining_iter,
                     start_row_number=header_row_number,
                     header_cells=header_cells,
                     column_map=column_map,

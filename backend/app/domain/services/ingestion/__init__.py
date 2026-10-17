@@ -27,31 +27,46 @@ from app.domain.services.ingestion.base_parser import (
 )
 from app.domain.services.ingestion.csv_parser import CSVReportParser
 from app.domain.services.ingestion.excel_parser import ExcelReportParser
+from app.domain.services.ingestion.schema_detector import (
+    MAX_COLUMNS_TO_SCAN,
+    MAX_HEADER_LENGTH,
+    MIN_CONFIDENCE_THRESHOLD,
+    CanonicalReportField,
+    DetectedColumnMapping,
+    DetectedSchemaResult,
+    SchemaDetector,
+)
 
 __all__ = [
     "AVG_PRICE_HEADER_ALIASES",
     "CURRENCY_HEADER_ALIASES",
     "IGNORED_SUMMARY_TICKERS",
+    "MAX_COLUMNS_TO_SCAN",
     "MAX_COMPRESSION_RATIO",
     "MAX_DECOMPRESSED_XLSX_BYTES",
+    "MAX_HEADER_LENGTH",
     "MAX_HEADER_SCAN_LINES",
     "MAX_REPORT_ROWS",
     "MAX_REPORT_SIZE_BYTES",
+    "MIN_CONFIDENCE_THRESHOLD",
     "QUANTITY_HEADER_ALIASES",
     "TICKER_HEADER_ALIASES",
     "BaseReportParser",
     "CSVReportParser",
+    "CanonicalReportField",
     "CorruptedReportError",
+    "DetectedColumnMapping",
+    "DetectedSchemaResult",
     "EmptyReportError",
     "ExcelReportParser",
     "MissingRequiredColumnsError",
     "RawHoldingRecord",
     "ReportParsingError",
     "ReportSizeLimitExceededError",
+    "SchemaDetector",
     "UnsupportedReportFormatError",
     "get_report_parser",
     "is_ignored_summary_ticker",
     "normalize_header_name",
     "resolve_header_mapping",
 ]
-

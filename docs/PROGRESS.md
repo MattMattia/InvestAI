@@ -1,10 +1,10 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 18 de 26 Módulos Completados (69.2%) — Capítulos 1 a 5 completados al 100%; Capítulo 6 en progreso (Módulo 6.1 Fase 1 completada)  
+> **Progreso Consolidado:** 18 de 26 Módulos Completados (69.2%) — Capítulos 1 a 5 completados al 100%; Capítulo 6 en progreso (Módulo 6.1 Fases 1 y 2 completadas)  
 > **Capítulos Implementados:** Capítulos 1, 2, 3, 4 y 5 (100% completados)  
 > **Capítulos Pendientes / En Progreso:** Capítulo 6 (en progreso), Capítulos 7, 8 y 9  
-> **Calidad y Suite de Pruebas:** **303 tests pasando al 100% en verde (235 unitarios + 68 de integración)**  
+> **Calidad y Suite de Pruebas:** **309 tests pasando al 100% en verde (241 unitarios + 68 de integración)**  
 > **Última Actualización:** 2026-10-17
 
 ---
@@ -24,7 +24,7 @@
 | **Capítulo 3** | Remediación Técnica y Hardening Post-Auditoría | 5 / 5 | 17 / 17 | **COMPLETADO** | 159 tests (+22) |
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
 | **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 293 tests (+88) |
-| **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 0 / 3 | 1 / 9 | **EN PROGRESO** | 303 tests (+10) |
+| **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 0 / 3 | 2 / 9 | **EN PROGRESO** | 309 tests (+16) |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
 | **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
@@ -135,7 +135,7 @@
 ### CAPÍTULO 6: Ingesta de Reportes Locales y Pipeline de Calidad de Datos
 - [ ] **Módulo 6.1: Parser Desacoplado de Extractos y Reportes de ALyCs (CSV / Excel)**
   - [x] Fase 1: Interfaz Abstracta de Parsing y Estrategias por Formato (`backend/app/domain/services/ingestion/base_parser.py`, `backend/app/domain/services/ingestion/excel_parser.py`, `backend/app/domain/services/ingestion/csv_parser.py`, `backend/tests/unit/test_report_parsers.py`)
-  - [ ] Fase 2: Detección Automática de Esquemas y Normalización de Columnas (Fuzzy Matching en `schema_detector.py`)
+  - [x] Fase 2: Detección Automática de Esquemas y Normalización de Columnas (Fuzzy Matching en `backend/app/domain/services/ingestion/schema_detector.py`, `backend/tests/unit/test_report_parsers.py`)
   - [ ] Fase 3: Suite de Pruebas con Muestras Sintéticas de Brokers Locales
 - [ ] **Módulo 6.2: Pipeline de Validación, Normalización y Tratamiento Contable (EPS $\le$ 0)**
   - [ ] Fase 1: Pipeline de Saneamiento y Limpieza Monetaria (`data_cleaning_pipeline.py`)
@@ -196,12 +196,12 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 6 — Módulo 6.1 (Fase 2): Detección Automática de Esquemas y Normalización Difusa de Columnas (`schema_detector.py`)**  
-> **Prioridad:** Alta (Continuación del Módulo 6.1 tras completar la Fase 1 con 303 tests en verde)  
-> **Objetivo:** Implementar el detector automático de esquemas (`schema_detector.py`) con normalización léxica/difusa de encabezados, reconocimiento de dialectos de ALyCs locales (Balanz, IOL, PPI, Bull Market) e integración con las estrategias `CSVReportParser` y `ExcelReportParser`.
+> **Foco Actual:** **CAPÍTULO 6 — Módulo 6.1 (Fase 3): Suite Exhaustiva de Pruebas con Muestras Sintéticas de ALyCs y Casos de Borde de Codificación/Layouts (`test_report_parsers.py`)**  
+> **Prioridad:** Alta (Cierre del Módulo 6.1 tras completar la Fase 2 con 309 tests en verde)  
+> **Objetivo:** Completar el Módulo 6.1 desarrollando una batería exhaustiva de pruebas con muestras sintéticas de brokers locales (Balanz, IOL, PPI, Bull Market, Caja de Valores) en formatos CSV y Excel, cubriendo dialectos multimoneda, encabezados desplazados, celdas fusionadas/vacías y codificaciones regionales.
 
 ### Hoja de Ruta Inmediata para el Capítulo 6:
-1. **Módulo 6.1 (Fase 2)**: Implementar `schema_detector.py` (Detección Automática de Esquemas y Normalización de Columnas con Fuzzy Matching) y su suite de pruebas en Fase 3.
+1. **Módulo 6.1 (Fase 3)**: Implementar la suite exhaustiva de pruebas con muestras sintéticas de ALyCs locales y casos de borde de codificación/layouts para cerrar el Módulo 6.1 al 100%.
 2. **Módulo 6.2**: Implementar el pipeline de validación, normalización monetaria y tratamiento contable (`EPS <= 0` / `INDETERMINATE`).
 3. **Módulo 6.3**: Integrar la conciliación transaccional (`PortfolioReconciliationService`) y exponer el controlador REST bajo `APIResponse[T]`.
 

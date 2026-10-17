@@ -14,7 +14,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.domain.services.ingestion.base_parser import (
-     MAX_HEADER_SCAN_LINES,
+    MAX_HEADER_SCAN_LINES,
     MAX_REPORT_ROWS,
     BaseReportParser,
     CorruptedReportError,
@@ -24,8 +24,8 @@ from app.domain.services.ingestion.base_parser import (
     ReportSizeLimitExceededError,
     UnsupportedReportFormatError,
     is_ignored_summary_ticker,
-    resolve_header_mapping,
 )
+from app.domain.services.ingestion.schema_detector import SchemaDetector
 
 _CANDIDATE_ENCODINGS: tuple[str, ...] = ("utf-8-sig", "utf-8", "cp1252", "latin-1")
 _CANDIDATE_DELIMITERS: tuple[str, ...] = (";", ",", "\t", "|")
@@ -44,6 +44,9 @@ class CSVReportParser(BaseReportParser):
     statements with preamble banners, semicolon/comma/tab/pipe delimiters,
     and legacy Windows-1252/Latin-1 encodings.
     """
+
+    def __init__(self, schema_detector: SchemaDetector | None = None) -> None:
+        self._schema_detector: SchemaDetector = schema_detector or SchemaDetector()
 
     async def parse_report(
         self, file_stream: bytes, filename: str
@@ -171,15 +174,19 @@ class CSVReportParser(BaseReportParser):
             "Unable to decode CSV stream with supported character encodings"
         )
 
-    @staticmethod
     def _detect_header(
+        self,
         lines: list[str],
     ) -> tuple[int, str, list[str], dict[str, int]]:
         """
-        Scan up to `MAX_HEADER_SCAN_LINES` non-empty lines to identify the delimiter
-        and header row containing at least 'ticker' and 'quantity' columns.
+        Scan up to `MAX_HEADER_SCAN_LINES` non-empty lines using `SchemaDetector`
+        to identify the delimiter and richest table header row containing at least
+        'ticker' and 'quantity' columns.
         """
         scanned_non_empty = 0
+        best_overall_rank: tuple[int, float, int, int] | None = None
+        best_choice: tuple[int, str, list[str], dict[str, int]] | None = None
+
         for line_idx, line in enumerate(lines):
             if not line.strip():
                 continue
@@ -187,11 +194,7 @@ class CSVReportParser(BaseReportParser):
             if scanned_non_empty > MAX_HEADER_SCAN_LINES:
                 break
 
-            best_delimiter: str | None = None
-            best_row: list[str] | None = None
-            best_mapping: dict[str, int] | None = None
-
-            for delimiter in _CANDIDATE_DELIMITERS:
+            for delim_prio, delimiter in enumerate(_CANDIDATE_DELIMITERS):
                 try:
                     parsed_rows = list(csv.reader([line], delimiter=delimiter))
                 except csv.Error as exc:
@@ -205,19 +208,28 @@ class CSVReportParser(BaseReportParser):
                 if len(candidate_cells) < 2:
                     continue
 
-                mapping = resolve_header_mapping(candidate_cells)
-                if "ticker" in mapping and "quantity" in mapping:
-                    if best_mapping is None or len(mapping) > len(best_mapping):
-                        best_delimiter = delimiter
-                        best_row = candidate_cells
-                        best_mapping = mapping
+                schema_res = self._schema_detector.detect_schema(
+                    candidate_cells, header_row_index=line_idx
+                )
+                if not schema_res.has_required_fields():
+                    continue
 
-            if (
-                best_delimiter is not None
-                and best_row is not None
-                and best_mapping is not None
-            ):
-                return line_idx, best_delimiter, best_row, best_mapping
+                rank = (
+                    len(schema_res.mappings),
+                    schema_res.total_confidence,
+                    -line_idx,
+                    -delim_prio,
+                )
+                if best_overall_rank is None or rank > best_overall_rank:
+                    best_overall_rank = rank
+                    mapping = {
+                        field.value: col_map.column_index
+                        for field, col_map in schema_res.mappings.items()
+                    }
+                    best_choice = (line_idx, delimiter, candidate_cells, mapping)
+
+        if best_choice is not None:
+            return best_choice
 
         raise MissingRequiredColumnsError(
             "Required columns ('ticker' and 'quantity') were not found in the CSV report"

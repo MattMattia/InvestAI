@@ -15,14 +15,17 @@ from pydantic import ValidationError
 import pytest
 
 from app.domain.services.ingestion import (
-     MAX_REPORT_SIZE_BYTES,
+    MAX_COLUMNS_TO_SCAN,
+    MAX_REPORT_SIZE_BYTES,
     CSVReportParser,
+    CanonicalReportField,
     CorruptedReportError,
     EmptyReportError,
     ExcelReportParser,
     MissingRequiredColumnsError,
     RawHoldingRecord,
     ReportSizeLimitExceededError,
+    SchemaDetector,
     UnsupportedReportFormatError,
     get_report_parser,
 )
@@ -339,4 +342,208 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         with patch("app.domain.services.ingestion.csv_parser.MAX_REPORT_ROWS", 1):
             with self.assertRaises(ReportSizeLimitExceededError):
                 await csv_parser.parse_report(small_csv, "too_many_rows.csv")
+
+    async def test_schema_detector_exact_and_synonym_matching(self) -> None:
+        """
+        Verify exact and synonym mapping across Argentine ALyC layouts
+        (Balanz, IOL, PPI, Bull Market, Caja de Valores).
+        """
+        detector = SchemaDetector()
+
+        # Balanz layout
+        balanz_headers = [
+            "Especie",
+            "Tenencia",
+            "Precio Promedio de Compra",
+            "Moneda de Liquidación",
+            "Saldo Valorizado",
+        ]
+        res_balanz = detector.detect_schema(balanz_headers)
+        self.assertTrue(res_balanz.has_required_fields())
+        self.assertEqual(res_balanz.get_column_index(CanonicalReportField.TICKER), 0)
+        self.assertEqual(res_balanz.get_column_index(CanonicalReportField.QUANTITY), 1)
+        self.assertEqual(res_balanz.get_column_index(CanonicalReportField.AVG_PRICE), 2)
+        self.assertEqual(res_balanz.get_column_index(CanonicalReportField.CURRENCY), 3)
+        self.assertEqual(
+            res_balanz.get_column_index(CanonicalReportField.TOTAL_AMOUNT), 4
+        )
+        self.assertAlmostEqual(res_balanz.total_confidence, 5.0, places=4)
+
+        # IOL / PPI / Caja de Valores layout
+        ppi_headers = [
+            "Instrumento",
+            "Cantidad Disponible",
+            "PPC",
+            "Divisa",
+            "Valuación Actual",
+        ]
+        res_ppi = detector.detect_schema(ppi_headers)
+        self.assertTrue(res_ppi.has_required_fields())
+        self.assertEqual(res_ppi.get_column_index(CanonicalReportField.TICKER), 0)
+        self.assertEqual(res_ppi.get_column_index(CanonicalReportField.QUANTITY), 1)
+        self.assertEqual(res_ppi.get_column_index(CanonicalReportField.AVG_PRICE), 2)
+        self.assertEqual(res_ppi.get_column_index(CanonicalReportField.CURRENCY), 3)
+        self.assertEqual(res_ppi.get_column_index(CanonicalReportField.TOTAL_AMOUNT), 4)
+
+    async def test_schema_detector_fuzzy_matching_typos_and_abbreviations(self) -> None:
+        """
+        Verify fuzzy matching and normalization handle abbreviations, punctuation,
+        diacritics, and minor typos.
+        """
+        detector = SchemaDetector()
+        noisy_headers = [
+            "Espécïe / Símbolo",
+            "Cant. Nominales",
+            "Prec. Prom. Compra",
+            "Moneda Liq.",
+            "Valuación Actual",
+        ]
+        res = detector.detect_schema(noisy_headers)
+        self.assertTrue(res.has_required_fields())
+        self.assertEqual(res.get_column_index(CanonicalReportField.TICKER), 0)
+        self.assertEqual(res.get_column_index(CanonicalReportField.QUANTITY), 1)
+        self.assertEqual(res.get_column_index(CanonicalReportField.AVG_PRICE), 2)
+        self.assertEqual(res.get_column_index(CanonicalReportField.CURRENCY), 3)
+        self.assertEqual(res.get_column_index(CanonicalReportField.TOTAL_AMOUNT), 4)
+
+        # Also verify typo tolerance via SequenceMatcher and end-to-end CSV parsing
+        typo_csv = (
+            "Simblo;Cantidadd;Precio Promdio;Moneda Orign;Valuasion Actual\n"
+            "GGAL;500;4100,00;ARS;2050000,00\n"
+        ).encode("utf-8")
+        records = await CSVReportParser().parse_report(typo_csv, "typo_alyc.csv")
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].raw_ticker, "GGAL")
+        self.assertEqual(records[0].raw_quantity, "500")
+        self.assertEqual(records[0].raw_avg_price, "4100,00")
+        self.assertEqual(records[0].raw_currency, "ARS")
+
+    async def test_schema_detector_avg_price_vs_market_price_disambiguation(
+        self,
+    ) -> None:
+        """
+        Verify AVG_PRICE prioritizes 'PPC' / 'Precio Promedio' over 'Último Precio' /
+        'Cotización' / 'Precio', and never maps current market price to AVG_PRICE.
+        """
+        detector = SchemaDetector()
+
+        # Case 1: Both market price and PPC coexist -> AVG_PRICE must bind to PPC (col 3)
+        coexisting_headers = [
+            "Ticker",
+            "Nominales",
+            "Último Precio",
+            "PPC",
+            "Cotización Actual",
+            "Precio",
+        ]
+        res_both = detector.detect_schema(coexisting_headers)
+        self.assertEqual(res_both.get_column_index(CanonicalReportField.AVG_PRICE), 3)
+        self.assertEqual(
+            res_both.mappings[CanonicalReportField.AVG_PRICE].raw_header, "PPC"
+        )
+
+        # Case 2: Only market price columns exist (no PPC or historical cost) -> AVG_PRICE is None
+        market_only_headers = [
+            "Especie",
+            "Cantidad",
+            "Último Precio",
+            "Precio Actual",
+            "Cotización",
+            "Precio de Mercado",
+            "Precio Cierre",
+        ]
+        res_market_only = detector.detect_schema(market_only_headers)
+        self.assertTrue(res_market_only.has_required_fields())
+        self.assertIsNone(
+            res_market_only.get_column_index(CanonicalReportField.AVG_PRICE)
+        )
+
+    async def test_schema_detector_rejects_unrelated_columns(self) -> None:
+        """
+        Verify administrative/settlement columns remain in unmapped_headers and
+        do not trigger false-positive canonical mappings.
+        """
+        detector = SchemaDetector()
+        headers = [
+            "Fecha Liquidación",
+            "Número de Boleto",
+            "Especie",
+            "Cantidad",
+            "Comisión ALyC",
+            "IVA",
+            "Derecho de Mercado",
+        ]
+        res = detector.detect_schema(headers)
+        self.assertTrue(res.has_required_fields())
+        self.assertEqual(len(res.mappings), 2)
+        self.assertEqual(res.get_column_index(CanonicalReportField.TICKER), 2)
+        self.assertEqual(res.get_column_index(CanonicalReportField.QUANTITY), 3)
+        self.assertEqual(
+            res.unmapped_headers,
+            [
+                "Fecha Liquidación",
+                "Número de Boleto",
+                "Comisión ALyC",
+                "IVA",
+                "Derecho de Mercado",
+            ],
+        )
+
+    async def test_find_best_header_row_prefers_richest_table_header(self) -> None:
+        """
+        Verify find_best_header_row (and CSV/Excel parsers) selects the richest
+        5-column table header row over an earlier 2-column banner row.
+        """
+        detector = SchemaDetector()
+        sample_rows = [
+            ["Resumen por Especie", "Tenencia Consolidada"],
+            ["Cliente: 12345", "Fecha: 17/10/2026"],
+            ["Especie", "Cantidad", "PPC", "Moneda", "Valuación Actual"],
+        ]
+        best = detector.find_best_header_row(sample_rows)
+        self.assertIsNotNone(best)
+        assert best is not None
+        self.assertEqual(best.header_row_index, 2)
+        self.assertEqual(len(best.mappings), 5)
+
+        # Verify ExcelReportParser also selects row 3 (index 2) as header and extracts data
+        xlsx_bytes = _build_xlsx_bytes(
+            {
+                "Tenencias": [
+                    ["Especie", "Cantidad"],
+                    [None, None, None, None, None],
+                    ["Especie", "Cantidad", "PPC", "Moneda", "Valuación Actual"],
+                    ["AL30", 1000, Decimal("65.50"), "USD", Decimal("65500.00")],
+                ]
+            }
+        )
+        records = await ExcelReportParser().parse_report(xlsx_bytes, "rich_header.xlsx")
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].row_number, 4)
+        self.assertEqual(records[0].raw_ticker, "AL30")
+        self.assertEqual(records[0].raw_quantity, 1000)
+        self.assertEqual(records[0].raw_avg_price, Decimal("65.5"))
+        self.assertEqual(records[0].raw_currency, "USD")
+
+    async def test_wide_table_dos_protection_truncates_columns(self) -> None:
+        """
+        Verify a row with 500 columns is truncated to MAX_COLUMNS_TO_SCAN (128)
+        and processed deterministically without algorithmic complexity explosion.
+        """
+        detector = SchemaDetector()
+        wide_headers = (
+            ["Ticker", "Cantidad", "PPC", "Moneda"]
+            + [f"Columna_Extra_{i}" for i in range(500)]
+        )
+        res = detector.detect_schema(wide_headers)
+        self.assertTrue(res.has_required_fields())
+        self.assertEqual(res.get_column_index(CanonicalReportField.TICKER), 0)
+        self.assertEqual(res.get_column_index(CanonicalReportField.QUANTITY), 1)
+        self.assertEqual(res.get_column_index(CanonicalReportField.AVG_PRICE), 2)
+        self.assertEqual(res.get_column_index(CanonicalReportField.CURRENCY), 3)
+        self.assertEqual(
+            len(res.mappings) + len(res.unmapped_headers),
+            MAX_COLUMNS_TO_SCAN,
+        )
+
 

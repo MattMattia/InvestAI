@@ -27,7 +27,7 @@ MAX_HEADER_SCAN_LINES: int = 50  # Maximum leading rows scanned to locate table 
 
 _FORMULA_DANGEROUS_PREFIX_CHARS: str = "=+-@\t\r\n "
 _WHITESPACE_COLLAPSE_RE = re.compile(r"\s+")
-_HEADER_SEPARATOR_RE = re.compile(r"[-_/]+")
+_HEADER_SEPARATOR_RE = re.compile(r"[-_/.,:;()\[\]]+")
 _TRAILING_PUNCTUATION_RE = re.compile(r"[:.;,]+$")
 
 # ============================================================================
@@ -43,6 +43,11 @@ TICKER_HEADER_ALIASES: frozenset[str] = frozenset(
         "instrumento",
         "codigo",
         "titulo",
+        "descripcion especie",
+        "denominacion",
+        "nombre especie",
+        "cod especie",
+        "simb",
     }
 )
 
@@ -50,12 +55,17 @@ QUANTITY_HEADER_ALIASES: frozenset[str] = frozenset(
     {
         "cantidad",
         "nominales",
+        "cant",
         "quantity",
         "qty",
         "tenencia",
         "unidades",
         "vn",
         "valor nominal",
+        "saldo nominal",
+        "posicion",
+        "cant nominales",
+        "cantidad disponible",
     }
 )
 
@@ -69,7 +79,12 @@ AVG_PRICE_HEADER_ALIASES: frozenset[str] = frozenset(
         "price",
         "costo promedio",
         "precio de compra",
+        "precio promedio de compra",
+        "precio promedio compra",
+        "costo unitario",
         "precio compra",
+        "precio pond",
+        "prec prom compra",
     }
 )
 
@@ -79,7 +94,10 @@ CURRENCY_HEADER_ALIASES: frozenset[str] = frozenset(
         "currency",
         "divisa",
         "moneda de liquidacion",
+        "moneda emision",
         "moneda origen",
+        "mon",
+        "moneda liq",
     }
 )
 
@@ -131,7 +149,7 @@ def normalize_header_name(header: Any) -> str:
     Normalize a column header or token into a canonical ASCII lowercase form.
 
     Strips null bytes, decomposes Unicode characters (NFKD) to remove diacritics,
-    replaces hyphens/underscores/slashes with spaces, and collapses whitespace.
+    replaces hyphens/underscores/slashes/punctuation with spaces, and collapses whitespace.
     """
     if header is None:
         return ""
@@ -147,23 +165,16 @@ def normalize_header_name(header: Any) -> str:
 
 def resolve_header_mapping(headers: Sequence[Any]) -> dict[str, int]:
     """
-    Map canonical field names ('ticker', 'quantity', 'avg_price', 'currency')
-    to their first matching zero-based column index in a header row.
+    Map canonical field names ('ticker', 'quantity', 'avg_price', 'currency', 'total_amount')
+    to their best matching zero-based column index using `SchemaDetector`.
     """
-    mapping: dict[str, int] = {}
-    for idx, cell in enumerate(headers):
-        normalized = normalize_header_name(cell)
-        if not normalized:
-            continue
-        if "ticker" not in mapping and normalized in TICKER_HEADER_ALIASES:
-            mapping["ticker"] = idx
-        elif "quantity" not in mapping and normalized in QUANTITY_HEADER_ALIASES:
-            mapping["quantity"] = idx
-        elif "avg_price" not in mapping and normalized in AVG_PRICE_HEADER_ALIASES:
-            mapping["avg_price"] = idx
-        elif "currency" not in mapping and normalized in CURRENCY_HEADER_ALIASES:
-            mapping["currency"] = idx
-    return mapping
+    from app.domain.services.ingestion.schema_detector import SchemaDetector
+
+    result = SchemaDetector().detect_schema(headers)
+    return {
+        field.value: col_mapping.column_index
+        for field, col_mapping in result.mappings.items()
+    }
 
 
 def is_ignored_summary_ticker(raw_ticker: Any) -> bool:
