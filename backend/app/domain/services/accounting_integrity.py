@@ -173,8 +173,8 @@ class FundamentalInputs(BaseSchema):
     def _validate_ticker(cls, v: Any) -> str:
         if not isinstance(v, str):
             raise ValueError("ticker must be a string")
-        if "\x00" in v:
-            raise ValueError("Null bytes are not permitted in ticker")
+        if any(ctrl in v for ctrl in ("\r", "\n", "\t", "\x00")):
+            raise ValueError("Control characters are not permitted in ticker")
         cleaned = v.strip().upper()
         if not cleaned:
             raise ValueError("ticker cannot be empty")
@@ -240,6 +240,7 @@ class AccountingIntegrityService:
         Safely divide `numerator / denominator` and quantize to 4 decimal places.
         Returns `None` if denominator is zero, result is non-finite, or magnitude
         exceeds `MAX_COMPUTABLE_RATIO` (preventing `decimal.InvalidOperation`).
+        Normalizes `-0.0000` to positive `0.0000`.
         """
         if denominator == Decimal("0"):
             return None
@@ -249,7 +250,10 @@ class AccountingIntegrityService:
                 return None
             if abs(raw_ratio) > MAX_COMPUTABLE_RATIO:
                 return None
-            return raw_ratio.quantize(RATIO_QUANTIZE_EXP, rounding=ROUND_HALF_UP)
+            quantized = raw_ratio.quantize(RATIO_QUANTIZE_EXP, rounding=ROUND_HALF_UP)
+            if quantized == Decimal("0"):
+                return Decimal("0.0000")
+            return quantized
         except (InvalidOperation, DivisionByZero, OverflowError):
             return None
 
@@ -272,21 +276,37 @@ class AccountingIntegrityService:
                 [AccountingRiskFlag.DELISTED_OR_INVALID_PRICE],
             )
 
-        adjusted_price = inputs.price * inputs.conversion_ratio
-        if inputs.price_currency == inputs.financials_currency:
-            return adjusted_price, None, []
+        if inputs.price_currency != inputs.financials_currency:
+            if inputs.fx_rate is None or inputs.fx_rate <= Decimal("0"):
+                return (
+                    None,
+                    "Currency mismatch between price and financials without valid FX rate",
+                    [AccountingRiskFlag.CURRENCY_MISMATCH],
+                )
 
-        if inputs.fx_rate is None or inputs.fx_rate <= Decimal("0"):
+        try:
+            adjusted_price = inputs.price * inputs.conversion_ratio
+            if inputs.price_currency == inputs.financials_currency:
+                effective_price = adjusted_price
+            elif inputs.price_currency == "ARS" and inputs.financials_currency == "USD":
+                assert inputs.fx_rate is not None
+                effective_price = adjusted_price / inputs.fx_rate
+            else:
+                assert inputs.fx_rate is not None
+                effective_price = adjusted_price * inputs.fx_rate
+        except (InvalidOperation, DivisionByZero, OverflowError):
             return (
                 None,
-                "Currency mismatch between price and financials without valid FX rate",
-                [AccountingRiskFlag.CURRENCY_MISMATCH],
+                "Effective market price calculation overflowed or failed",
+                [AccountingRiskFlag.DELISTED_OR_INVALID_PRICE],
             )
 
-        if inputs.price_currency == "ARS" and inputs.financials_currency == "USD":
-            effective_price = adjusted_price / inputs.fx_rate
-        else:
-            effective_price = adjusted_price * inputs.fx_rate
+        if not effective_price.is_finite() or effective_price <= Decimal("0"):
+            return (
+                None,
+                "Effective market price collapsed to non-positive or non-finite value",
+                [AccountingRiskFlag.DELISTED_OR_INVALID_PRICE],
+            )
 
         return effective_price, None, []
 
@@ -636,4 +656,18 @@ class AccountingIntegrityService:
     ) -> list[FinancialMetricsReport]:
         """Evaluate fundamental metrics for a sequence of portfolio instruments."""
         return [self.evaluate_company_metrics(item) for item in items]
+
+    def summarize_portfolio_anomalies(
+        self, reports: Sequence[FinancialMetricsReport]
+    ) -> dict[str, list[AccountingRiskFlag]]:
+        """
+        Return a mapping `{ticker: list(risk_flags)}` restricted strictly to
+        instruments where `has_accounting_anomalies` is True.
+        """
+        return {
+            report.ticker: list(report.risk_flags)
+            for report in reports
+            if report.has_accounting_anomalies
+        }
+
 
