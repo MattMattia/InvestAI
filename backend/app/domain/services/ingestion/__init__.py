@@ -1,7 +1,18 @@
 """
-Domain ingestion services, format strategies, schema detection, and data cleaning
-pipeline for local broker reports (Modules 6.1 & 6.2).
+Domain ingestion services, format strategies, schema detection, data cleaning
+pipeline, and accounting integrity exports (Modules 6.1 & 6.2).
 """
+from app.domain.services.accounting_integrity import (
+    MAX_COMPUTABLE_RATIO,
+    MAX_RATIONAL_PE,
+    RATIO_QUANTIZE_EXP,
+    AccountingIntegrityService,
+    AccountingRiskFlag,
+    FinancialMetricsReport,
+    FundamentalInputs,
+    RatioStatus,
+    RatioValue,
+)
 from app.domain.services.ingestion.base_parser import (
     AVG_PRICE_HEADER_ALIASES,
     CURRENCY_HEADER_ALIASES,
@@ -54,17 +65,22 @@ __all__ = [
     "IGNORED_SUMMARY_TICKERS",
     "MAX_COLUMNS_TO_SCAN",
     "MAX_COMPRESSION_RATIO",
+    "MAX_COMPUTABLE_RATIO",
     "MAX_DECOMPRESSED_XLSX_BYTES",
     "MAX_HEADER_LENGTH",
     "MAX_HEADER_SCAN_LINES",
     "MAX_HOLDING_QUANTITY",
     "MAX_NUMERIC_STR_LENGTH",
+    "MAX_RATIONAL_PE",
     "MAX_REPORT_ROWS",
     "MAX_REPORT_SIZE_BYTES",
     "MIN_CONFIDENCE_THRESHOLD",
     "QUANTITY_HEADER_ALIASES",
+    "RATIO_QUANTIZE_EXP",
     "TICKER_HEADER_ALIASES",
     "VALID_TICKER_PATTERN",
+    "AccountingIntegrityService",
+    "AccountingRiskFlag",
     "BaseReportParser",
     "CSVReportParser",
     "CanonicalReportField",
@@ -77,8 +93,12 @@ __all__ = [
     "DetectedSchemaResult",
     "EmptyReportError",
     "ExcelReportParser",
+    "FinancialMetricsReport",
+    "FundamentalInputs",
     "InvalidHoldingRecord",
     "MissingRequiredColumnsError",
+    "RatioStatus",
+    "RatioValue",
     "RawHoldingRecord",
     "ReportParsingError",
     "ReportSizeLimitExceededError",
