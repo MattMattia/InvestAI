@@ -1,10 +1,10 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 19 de 26 Módulos Completados (73.1%) — Capítulos 1 a 5 completados al 100%; Capítulo 6 en progreso (Módulo 6.1 completado al 100%)  
+> **Progreso Consolidado:** 19 de 26 Módulos Completados (73.1%) — Capítulos 1 a 5 completados al 100%; Capítulo 6 en progreso (Módulo 6.1 completado + Módulo 6.2 Fase 1 completada)  
 > **Capítulos Implementados:** Capítulos 1, 2, 3, 4 y 5 (100% completados)  
 > **Capítulos Pendientes / En Progreso:** Capítulo 6 (en progreso), Capítulos 7, 8 y 9  
-> **Calidad y Suite de Pruebas:** **316 tests pasando al 100% en verde (248 unitarios + 68 de integración)**  
+> **Calidad y Suite de Pruebas:** **324 tests pasando al 100% en verde (256 unitarios + 68 de integración)**  
 > **Última Actualización:** 2026-10-17
 
 ---
@@ -24,7 +24,7 @@
 | **Capítulo 3** | Remediación Técnica y Hardening Post-Auditoría | 5 / 5 | 17 / 17 | **COMPLETADO** | 159 tests (+22) |
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
 | **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 293 tests (+88) |
-| **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 1 / 3 | 3 / 9 | **EN PROGRESO** | 316 tests (+23) |
+| **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 1 / 3 | 4 / 9 | **EN PROGRESO** | 324 tests (+31) |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
 | **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
@@ -138,7 +138,7 @@
   - [x] Fase 2: Detección Automática de Esquemas y Normalización de Columnas (Fuzzy Matching en `backend/app/domain/services/ingestion/schema_detector.py`, `backend/tests/unit/test_report_parsers.py`)
   - [x] Fase 3: Suite de Pruebas con Muestras Sintéticas de Brokers Locales (`backend/tests/unit/test_report_parsers.py` — 23 pruebas unitarias de ingesta cubriendo Balanz, IOL, PPI, Bull Market y Caja de Valores)
 - [ ] **Módulo 6.2: Pipeline de Validación, Normalización y Tratamiento Contable (EPS $\le$ 0)**
-  - [ ] Fase 1: Pipeline de Saneamiento y Limpieza Monetaria (`data_cleaning_pipeline.py`)
+  - [x] Fase 1: Pipeline de Saneamiento y Limpieza Monetaria (`backend/app/domain/services/ingestion/data_cleaning_pipeline.py`, `backend/tests/unit/test_data_cleaning_pipeline.py`)
   - [ ] Fase 2: Manejo de Inconsistencias de Balance (etiquetado `INDETERMINATE` para ratios patológicos)
   - [ ] Fase 3: Suite de Pruebas de Calidad Contable y Balances Extremos
 - [ ] **Módulo 6.3: Integración Transaccional y Conciliación Automática de Tenencias**
@@ -196,12 +196,12 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 6 — Módulo 6.2 (Fase 1): Pipeline de Saneamiento, Validación de Esquemas y Normalización de Tickers/Monedas (`data_cleaning_pipeline.py`)**  
-> **Prioridad:** Alta (Inicio del Módulo 6.2 tras completar al 100% el Módulo 6.1 con 316 tests en verde)  
-> **Objetivo:** Implementar `backend/app/domain/services/ingestion/data_cleaning_pipeline.py` para transformar registros crudos (`RawHoldingRecord`) en tenencias validadas y normalizadas con precisión `Decimal`, saneando formatos numéricos locales (`1.250,50` vs `1,250.50`), símbolos monetarios, sufijos bursátiles (`.BA`) y rechazando nominales o costos inválidos.
+> **Foco Actual:** **CAPÍTULO 6 — Módulo 6.2 (Fase 2): Manejo Robusto de Inconsistencias de Balance ($\text{EPS} \le 0$) y Ratios Indeterminados (`accounting_integrity.py`)**  
+> **Prioridad:** Alta (Continuación del Módulo 6.2 tras completar la Fase 1 con 324 tests en verde)  
+> **Objetivo:** Implementar `backend/app/domain/services/accounting_integrity.py` para evaluar estados contables y ratios fundamentales (P/E, PEG, ROE, Deuda/Patrimonio), etiquetando determinísticamente como `INDETERMINATE` aquellos múltiplos comprometidos por ganancias negativas/nulas ($\text{EPS} \le 0$) o patrimonio neto negativo, evitando divisiones por cero y generando alertas cuantitativas accionables.
 
 ### Hoja de Ruta Inmediata para el Capítulo 6:
-1. **Módulo 6.2 (Fase 1)**: Implementar `data_cleaning_pipeline.py` (Pipeline de Saneamiento y Limpieza Monetaria).
-2. **Módulo 6.2 (Fase 2 y Fase 3)**: Implementar el manejo de inconsistencias contables (`EPS <= 0` etiquetado como `INDETERMINATE` en `accounting_integrity.py`) y su suite de pruebas de calidad contable.
+1. **Módulo 6.2 (Fase 2)**: Implementar `accounting_integrity.py` (Manejo de Inconsistencias de Balance con etiquetado `INDETERMINATE` para $\text{EPS} \le 0$ y patrimonio neto negativo).
+2. **Módulo 6.2 (Fase 3)**: Desarrollar la suite de pruebas de calidad contable y balances extremos (`test_accounting_integrity.py`) para cerrar el Módulo 6.2.
 3. **Módulo 6.3**: Integrar la conciliación transaccional (`PortfolioReconciliationService`) y exponer el controlador REST bajo `APIResponse[T]`.
 

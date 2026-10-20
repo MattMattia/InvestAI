@@ -1,5 +1,6 @@
 """
-Domain ingestion services and format strategies for local broker reports (Module 6.1).
+Domain ingestion services, format strategies, schema detection, and data cleaning
+pipeline for local broker reports (Modules 6.1 & 6.2).
 """
 from app.domain.services.ingestion.base_parser import (
     AVG_PRICE_HEADER_ALIASES,
@@ -26,6 +27,16 @@ from app.domain.services.ingestion.base_parser import (
     resolve_header_mapping,
 )
 from app.domain.services.ingestion.csv_parser import CSVReportParser
+from app.domain.services.ingestion.data_cleaning_pipeline import (
+    MAX_HOLDING_QUANTITY,
+    MAX_NUMERIC_STR_LENGTH,
+    VALID_TICKER_PATTERN,
+    CleanHoldingRecord,
+    CleaningErrorCode,
+    CleanReportResult,
+    DataCleaningPipeline,
+    InvalidHoldingRecord,
+)
 from app.domain.services.ingestion.excel_parser import ExcelReportParser
 from app.domain.services.ingestion.schema_detector import (
     MAX_COLUMNS_TO_SCAN,
@@ -46,19 +57,27 @@ __all__ = [
     "MAX_DECOMPRESSED_XLSX_BYTES",
     "MAX_HEADER_LENGTH",
     "MAX_HEADER_SCAN_LINES",
+    "MAX_HOLDING_QUANTITY",
+    "MAX_NUMERIC_STR_LENGTH",
     "MAX_REPORT_ROWS",
     "MAX_REPORT_SIZE_BYTES",
     "MIN_CONFIDENCE_THRESHOLD",
     "QUANTITY_HEADER_ALIASES",
     "TICKER_HEADER_ALIASES",
+    "VALID_TICKER_PATTERN",
     "BaseReportParser",
     "CSVReportParser",
     "CanonicalReportField",
+    "CleanHoldingRecord",
+    "CleanReportResult",
+    "CleaningErrorCode",
     "CorruptedReportError",
+    "DataCleaningPipeline",
     "DetectedColumnMapping",
     "DetectedSchemaResult",
     "EmptyReportError",
     "ExcelReportParser",
+    "InvalidHoldingRecord",
     "MissingRequiredColumnsError",
     "RawHoldingRecord",
     "ReportParsingError",
