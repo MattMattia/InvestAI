@@ -1,6 +1,13 @@
 import math
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.domain.services.ingestion.data_cleaning_pipeline import InvalidHoldingRecord
+from app.domain.services.portfolio_reconciliation import (
+    ReconciliationMode,
+    ReconciliationReport,
+)
+from app.schemas.envelope import BaseSchema
 
 
 class RawHoldingRecord(BaseModel):
@@ -74,3 +81,36 @@ class IngestionUploadResponse(BaseModel):
     is_successful: bool
     has_partial_errors: bool
     errors: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class IngestionReportSummary(BaseSchema):
+    """
+    Immutable E2E ingestion report summary returned by
+    `POST /api/v1/ingestion/upload-report` inside `APIResponse[IngestionReportSummary]`.
+    """
+
+    filename: str = Field(min_length=1, max_length=255)
+    portfolio_id: str = Field(min_length=1)
+    mode: ReconciliationMode
+    total_rows_parsed: int = Field(ge=0)
+    valid_records_count: int = Field(ge=0)
+    invalid_records_count: int = Field(ge=0)
+    invalid_records: list[InvalidHoldingRecord] = Field(default_factory=list)
+    reconciliation: ReconciliationReport
+    warnings: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _enforce_row_count_invariants(self) -> "IngestionReportSummary":
+        if self.valid_records_count + self.invalid_records_count != self.total_rows_parsed:
+            raise ValueError(
+                f"valid_records_count ({self.valid_records_count}) + "
+                f"invalid_records_count ({self.invalid_records_count}) must equal "
+                f"total_rows_parsed ({self.total_rows_parsed})"
+            )
+        if self.invalid_records_count != len(self.invalid_records):
+            raise ValueError(
+                f"invalid_records_count ({self.invalid_records_count}) must equal "
+                f"len(invalid_records) ({len(self.invalid_records)})"
+            )
+        return self
+

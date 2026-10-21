@@ -16,7 +16,11 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 - register ORM metadata
 from app.core.database import Base
-from app.domain.services.ingestion.data_cleaning_pipeline import CleanHoldingRecord
+from app.domain.services.ingestion.data_cleaning_pipeline import (
+    CleanHoldingRecord,
+    CleaningErrorCode,
+    InvalidHoldingRecord,
+)
 from app.domain.services.portfolio_reconciliation import (
     EmptyReconciliationSnapshotError,
     HoldingReconciliationEvent,
@@ -30,6 +34,7 @@ from app.models.asset import AssetModel
 from app.models.holding import HoldingModel
 from app.models.portfolio import PortfolioModel
 from app.models.user import UserModel
+from app.schemas.ingestion import IngestionReportSummary
 
 
 @pytest.mark.unit
@@ -493,4 +498,92 @@ class TestPortfolioReconciliation(unittest.IsolatedAsyncioTestCase):
                 unchanged_count=0,
                 total_holdings_after=1,
             )
+
+    def test_ingestion_report_summary_contract_invariants(self) -> None:
+        """
+        Verify IngestionReportSummary enforces row count invariants
+        (valid_records_count + invalid_records_count == total_rows_parsed and
+        invalid_records_count == len(invalid_records)) and extra='forbid'.
+        """
+        rec_report = ReconciliationReport(
+            portfolio_id="p-1",
+            mode=ReconciliationMode.SNAPSHOT,
+            events=[
+                HoldingReconciliationEvent(
+                    ticker="GGAL",
+                    action=ReconciliationAction.ADDED,
+                    previous_quantity=Decimal("0.0000"),
+                    new_quantity=Decimal("100.0000"),
+                    quantity_delta=Decimal("100.0000"),
+                )
+            ],
+            added_count=1,
+            updated_count=0,
+            removed_count=0,
+            unchanged_count=0,
+            total_holdings_after=1,
+        )
+        invalid_item = InvalidHoldingRecord(
+            row_number=3,
+            raw_ticker="BAD",
+            raw_quantity="-10",
+            error_code=CleaningErrorCode.NEGATIVE_QUANTITY,
+            reason="Quantity must be positive",
+        )
+
+        valid_summary = IngestionReportSummary(
+            filename="balanz_tenencias.csv",
+            portfolio_id="p-1",
+            mode=ReconciliationMode.SNAPSHOT,
+            total_rows_parsed=2,
+            valid_records_count=1,
+            invalid_records_count=1,
+            invalid_records=[invalid_item],
+            reconciliation=rec_report,
+            warnings=["Row 3 rejected"],
+        )
+        self.assertEqual(valid_summary.total_rows_parsed, 2)
+        self.assertEqual(valid_summary.valid_records_count, 1)
+        self.assertEqual(valid_summary.invalid_records_count, 1)
+
+        # Mismatch between valid + invalid and total_rows_parsed
+        with self.assertRaises(ValidationError):
+            IngestionReportSummary(
+                filename="balanz_tenencias.csv",
+                portfolio_id="p-1",
+                mode=ReconciliationMode.SNAPSHOT,
+                total_rows_parsed=5,
+                valid_records_count=1,
+                invalid_records_count=1,
+                invalid_records=[invalid_item],
+                reconciliation=rec_report,
+            )
+
+        # Mismatch between invalid_records_count and len(invalid_records)
+        with self.assertRaises(ValidationError):
+            IngestionReportSummary(
+                filename="balanz_tenencias.csv",
+                portfolio_id="p-1",
+                mode=ReconciliationMode.SNAPSHOT,
+                total_rows_parsed=2,
+                valid_records_count=1,
+                invalid_records_count=1,
+                invalid_records=[],
+                reconciliation=rec_report,
+            )
+
+        # extra="forbid" enforcement
+        with self.assertRaises(ValidationError):
+            IngestionReportSummary(
+                filename="balanz_tenencias.csv",
+                portfolio_id="p-1",
+                mode=ReconciliationMode.SNAPSHOT,
+                total_rows_parsed=1,
+                valid_records_count=1,
+                invalid_records_count=0,
+                invalid_records=[],
+                reconciliation=rec_report,
+                unexpected_field="injected",  # type: ignore[call-arg]
+            )
+
 

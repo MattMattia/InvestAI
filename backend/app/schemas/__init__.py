@@ -1,5 +1,7 @@
 """Pydantic Schemas / DTOs Package"""
 
+from typing import TYPE_CHECKING
+
 from app.schemas.auth import (
     LoginRequest,
     RegisterRequest,
@@ -32,6 +34,9 @@ from app.schemas.user import (
     UserRole,
 )
 
+if TYPE_CHECKING:
+    from app.schemas.ingestion import IngestionReportSummary
+
 __all__ = [
     "BaseSchema",
     "ResponseMeta",
@@ -39,6 +44,7 @@ __all__ = [
     "SubErrorDetail",
     "ErrorDetail",
     "APIErrorResponse",
+    "IngestionReportSummary",
     "Timeframe",
     "FXType",
     "MarketQuoteDTO",
@@ -55,4 +61,14 @@ __all__ = [
     "RegisterRequest",
     "LoginRequest",
 ]
+
+
+def __getattr__(name: str):
+    if name == "IngestionReportSummary":
+        from app.schemas.ingestion import IngestionReportSummary
+
+        return IngestionReportSummary
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 

@@ -110,6 +110,7 @@ __all__ = [
     "FinancialMetricsReport",
     "FundamentalInputs",
     "HoldingReconciliationEvent",
+    "IngestionReportSummary",
     "InvalidHoldingRecord",
     "MissingRequiredColumnsError",
     "PortfolioReconciliationError",
@@ -130,4 +131,14 @@ __all__ = [
     "normalize_header_name",
     "resolve_header_mapping",
 ]
+
+
+def __getattr__(name: str):
+    if name == "IngestionReportSummary":
+        from app.schemas.ingestion import IngestionReportSummary
+
+        return IngestionReportSummary
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 
