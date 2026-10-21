@@ -1,10 +1,10 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 21 de 26 Módulos Completados (80.8%) — Capítulos 1 a 6 completados al 100%  
+> **Progreso Consolidado:** 21 de 26 Módulos Completados (80.8%) — Capítulos 1 a 6 completados al 100%; Capítulo 7 en progreso (Módulo 7.1 Fase 1 completada)  
 > **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5 y 6 (100% completados)  
-> **Capítulos Pendientes / En Progreso:** Capítulos 7, 8 y 9  
-> **Calidad y Suite de Pruebas:** **359 tests pasando al 100% en verde (281 unitarios + 78 de integración)**  
+> **Capítulos Pendientes / En Progreso:** Capítulo 7 (en progreso), Capítulos 8 y 9  
+> **Calidad y Suite de Pruebas:** **365 tests pasando al 100% en verde (287 unitarios + 78 de integración)**  
 > **Última Actualización:** 2026-10-21
 
 ---
@@ -25,7 +25,7 @@
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
 | **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 293 tests (+88) |
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 3 / 3 | 9 / 9 | **COMPLETADO** | 359 tests (+66) |
-| **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
+| **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 1 / 9 | **EN PROGRESO** | 365 tests (+6) |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
 | **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 
@@ -151,7 +151,7 @@
 
 ### CAPÍTULO 7: Motores Cuantitativos Avanzados, Señales y Valuación Mark-to-Market
 - [ ] **Módulo 7.1: Indicadores Técnicos y Generador de Señales Cuantitativas**
-  - [ ] Fase 1: Biblioteca de Indicadores Numéricos Vectorizados (SMA, EMA, RSI Wilder, Bollinger, ATR)
+  - [x] Fase 1: Biblioteca de Indicadores Numéricos Vectorizados (`backend/app/domain/services/technical_indicators.py`, `backend/tests/unit/test_technical_indicators.py` — SMA, EMA, RSI Wilder, Bollinger, ATR y `TechnicalIndicatorsSnapshot` con 6 pruebas unitarias)
   - [ ] Fase 2: Motor de Generación de Señales de Negociación (`signal_generator.py`)
   - [ ] Fase 3: Pruebas Unitarias de Precisión Numérica contra Benchmarks
 - [ ] **Módulo 7.2: Valuación Patrimonial Dinámica y PnL Multimoneda (TWR / MWR)**
@@ -197,13 +197,13 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 7 — Módulo 7.1 (Fase 1): Biblioteca de Indicadores Numéricos Vectorizados (`backend/app/domain/services/technical_indicators.py`)**  
-> **Prioridad:** Alta (Inicio del Capítulo 7 tras cerrar el Capítulo 6 al 100% con 359 tests en verde)  
-> **Objetivo:** Implementar la biblioteca vectorizada pura en NumPy (`technical_indicators.py`) con Media Móvil Simple (SMA), Media Móvil Exponencial (EMA), Índice de Fuerza Relativa de Wilder (RSI), Bandas de Bollinger y Average True Range (ATR), con validación estricta de ventanas y manejo defensivo de `NaN`/`Inf`.
+> **Foco Actual:** **CAPÍTULO 7 — Módulo 7.1 (Fase 2): Motor de Generación de Señales de Negociación (`backend/app/domain/services/signal_generator.py`)**  
+> **Prioridad:** Alta (Continuación del Módulo 7.1 tras completar la Fase 1 con 365 tests en verde)  
+> **Objetivo:** Implementar el motor determinista de señales cuantitativas (`signal_generator.py`) consumiendo `TechnicalIndicatorsSnapshot`, evaluando cruces de medias (SMA/EMA), regímenes de sobrecompra/sobreventa RSI de Wilder, rupturas de Bandas de Bollinger y dimensionamiento de stop-loss/volatilidad vía ATR.
 
 ### Hoja de Ruta Inmediata para el Capítulo 7:
-1. **Módulo 7.1 (Fase 1)**: Implementar `backend/app/domain/services/technical_indicators.py` (SMA, EMA, RSI de Wilder, Bandas de Bollinger y ATR).
-2. **Módulo 7.1 (Fase 2)**: Implementar el motor de generación de señales de negociación (`backend/app/domain/services/signal_generator.py`).
-3. **Módulo 7.1 (Fase 3)**: Implementar la suite de pruebas unitarias de precisión numérica contra benchmarks (`backend/tests/unit/test_technical_indicators.py`).
+1. **Módulo 7.1 (Fase 2)**: Implementar el motor de generación de señales de negociación (`backend/app/domain/services/signal_generator.py`).
+2. **Módulo 7.1 (Fase 3)**: Implementar la suite de pruebas unitarias de precisión numérica contra benchmarks (`backend/tests/unit/test_technical_indicators.py`).
+3. **Módulo 7.2 (Fase 1)**: Implementar el motor de valuación Mark-to-Market bimoneda (`backend/app/domain/services/portfolio_valuation_service.py`).
 
 
