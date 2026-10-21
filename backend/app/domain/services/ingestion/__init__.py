@@ -1,6 +1,7 @@
 """
 Domain ingestion services, format strategies, schema detection, data cleaning
-pipeline, and accounting integrity exports (Modules 6.1 & 6.2).
+pipeline, accounting integrity, and portfolio reconciliation exports
+(Modules 6.1, 6.2 & 6.3).
 """
 from app.domain.services.accounting_integrity import (
     MAX_COMPUTABLE_RATIO,
@@ -58,6 +59,17 @@ from app.domain.services.ingestion.schema_detector import (
     DetectedSchemaResult,
     SchemaDetector,
 )
+from app.domain.services.portfolio_reconciliation import (
+    RECONCILIATION_QUANTIZE,
+    EmptyReconciliationSnapshotError,
+    HoldingReconciliationEvent,
+    PortfolioReconciliationError,
+    PortfolioReconciliationService,
+    ReconciliationAction,
+    ReconciliationMode,
+    ReconciliationPortfolioNotFoundError,
+    ReconciliationReport,
+)
 
 __all__ = [
     "AVG_PRICE_HEADER_ALIASES",
@@ -77,6 +89,7 @@ __all__ = [
     "MIN_CONFIDENCE_THRESHOLD",
     "QUANTITY_HEADER_ALIASES",
     "RATIO_QUANTIZE_EXP",
+    "RECONCILIATION_QUANTIZE",
     "TICKER_HEADER_ALIASES",
     "VALID_TICKER_PATTERN",
     "AccountingIntegrityService",
@@ -91,15 +104,23 @@ __all__ = [
     "DataCleaningPipeline",
     "DetectedColumnMapping",
     "DetectedSchemaResult",
+    "EmptyReconciliationSnapshotError",
     "EmptyReportError",
     "ExcelReportParser",
     "FinancialMetricsReport",
     "FundamentalInputs",
+    "HoldingReconciliationEvent",
     "InvalidHoldingRecord",
     "MissingRequiredColumnsError",
+    "PortfolioReconciliationError",
+    "PortfolioReconciliationService",
     "RatioStatus",
     "RatioValue",
     "RawHoldingRecord",
+    "ReconciliationAction",
+    "ReconciliationMode",
+    "ReconciliationPortfolioNotFoundError",
+    "ReconciliationReport",
     "ReportParsingError",
     "ReportSizeLimitExceededError",
     "SchemaDetector",
@@ -109,3 +130,4 @@ __all__ = [
     "normalize_header_name",
     "resolve_header_mapping",
 ]
+
