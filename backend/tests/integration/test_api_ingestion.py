@@ -12,6 +12,7 @@ in-memory persistence:
 """
 from __future__ import annotations
 
+from decimal import Decimal
 import io
 import unittest
 import uuid
@@ -694,3 +695,102 @@ class TestAPIIngestion(unittest.IsolatedAsyncioTestCase):
         err = res.json()
         self.assertFalse(err["success"])
         self.assertEqual(err["error"]["code"], "VALIDATION_ERROR")
+
+    async def test_upload_report_adversarial_sub_pip_non_xlsx_zip_and_entry_bomb(
+        self,
+    ) -> None:
+        """
+        Verify E2E adversarial protections across Chapter 6:
+        1. Sub-pip quantity ('0,00004') is isolated as ZERO_QUANTITY while a row with
+           sub-pip average price ('0,00004') reconciles cleanly (200 OK) with avg_price=None.
+        2. A valid .zip without OOXML workbook structure uploaded as 'cartera.xlsx'
+           returns HTTP 422.
+        3. An .xlsx with lowercase '<!entity' returns HTTP 422.
+        4. An .xlsx exceeding MAX_ZIP_ENTRIES (501 entries) returns HTTP 413.
+        """
+        # 1. Sub-pip quantity and sub-pip average price + formula prefix '- =AL30.BA'
+        sub_pip_csv = (
+            "Ticker;Cantidad;PPC;Moneda\n"
+            "SPY;0,00004;500,00;USD\n"
+            "- =AL30.BA;200;0,00004;ARS\n"
+            "AL30;300;850,00;ARS\n"
+        ).encode("utf-8")
+        res_sub_pip = await self.client.post(
+            "/api/v1/ingestion/upload-report",
+            headers=self._auth_headers(),
+            data={"portfolio_id": self.trader_portfolio_id, "mode": "MERGE"},
+            files={"file": ("sub_pip.csv", sub_pip_csv, "text/csv")},
+        )
+        self.assertEqual(res_sub_pip.status_code, 200, res_sub_pip.text)
+        payload = res_sub_pip.json()["data"]
+        self.assertEqual(payload["valid_records_count"], 2)
+        self.assertEqual(payload["invalid_records_count"], 1)
+        self.assertEqual(
+            payload["invalid_records"][0]["error_code"], "ZERO_QUANTITY"
+        )
+        self.assertEqual(payload["reconciliation"]["added_count"], 1)
+        self.assertEqual(payload["reconciliation"]["events"][0]["ticker"], "AL30")
+        self.assertEqual(
+            Decimal(str(payload["reconciliation"]["events"][0]["new_quantity"])),
+            Decimal("500.0000"),
+        )
+
+        # 2. Valid .zip lacking OOXML structure renamed to cartera.xlsx -> 422
+        plain_zip = io.BytesIO()
+        with zipfile.ZipFile(plain_zip, mode="w") as zf:
+            zf.writestr("readme.txt", "Plain zip without workbook.xml")
+        res_plain_zip = await self.client.post(
+            "/api/v1/ingestion/upload-report",
+            headers=self._auth_headers(),
+            data={"portfolio_id": self.trader_portfolio_id},
+            files={
+                "file": (
+                    "cartera.xlsx",
+                    plain_zip.getvalue(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+        self.assertEqual(res_plain_zip.status_code, 422)
+
+        # 3. Lowercase <!entity inside .xlsx -> 422
+        lower_xxe_zip = io.BytesIO()
+        with zipfile.ZipFile(lower_xxe_zip, mode="w") as zf:
+            zf.writestr(
+                "[Content_Types].xml",
+                '<?xml version="1.0"?><!doctype foo [<!entity xxe SYSTEM "file:///etc/passwd">]><Types/>',
+            )
+        res_lower_xxe = await self.client.post(
+            "/api/v1/ingestion/upload-report",
+            headers=self._auth_headers(),
+            data={"portfolio_id": self.trader_portfolio_id},
+            files={
+                "file": (
+                    "lower_xxe.xlsx",
+                    lower_xxe_zip.getvalue(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+        self.assertEqual(res_lower_xxe.status_code, 422)
+
+        # 4. Entry-Bomb (> 500 entries) inside .xlsx -> 413
+        entry_bomb_zip = io.BytesIO()
+        with zipfile.ZipFile(entry_bomb_zip, mode="w") as zf:
+            for idx in range(501):
+                zf.writestr(f"xl/entry_{idx}.txt", "x")
+        res_entry_bomb = await self.client.post(
+            "/api/v1/ingestion/upload-report",
+            headers=self._auth_headers(),
+            data={"portfolio_id": self.trader_portfolio_id},
+            files={
+                "file": (
+                    "entry_bomb.xlsx",
+                    entry_bomb_zip.getvalue(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+        self.assertEqual(res_entry_bomb.status_code, 413)
+        self.assertEqual(res_entry_bomb.json()["error"]["code"], "PAYLOAD_TOO_LARGE")
+

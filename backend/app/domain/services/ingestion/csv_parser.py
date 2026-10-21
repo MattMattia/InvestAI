@@ -96,7 +96,9 @@ class CSVReportParser(BaseReportParser):
 
         records: list[RawHoldingRecord] = []
         try:
-            reader = csv.reader(io.StringIO(remaining_text), delimiter=delimiter)
+            reader = csv.reader(
+                io.StringIO(remaining_text), delimiter=delimiter, strict=True
+            )
             for offset, row in enumerate(reader, start=1):
                 row_number = header_line_idx + 1 + offset
                 if not row or all(not cell.replace("\xa0", " ").strip() for cell in row):
@@ -200,13 +202,15 @@ class CSVReportParser(BaseReportParser):
             if scanned_non_empty > MAX_HEADER_SCAN_LINES:
                 break
 
+            delim_errors: list[csv.Error] = []
             for delim_prio, delimiter in enumerate(_CANDIDATE_DELIMITERS):
                 try:
-                    parsed_rows = list(csv.reader([line], delimiter=delimiter))
+                    parsed_rows = list(
+                        csv.reader([line], delimiter=delimiter, strict=True)
+                    )
                 except csv.Error as exc:
-                    raise CorruptedReportError(
-                        f"Malformed CSV header candidate at line {line_idx + 1}: {exc}"
-                    ) from exc
+                    delim_errors.append(exc)
+                    continue
 
                 if not parsed_rows:
                     continue
@@ -233,6 +237,11 @@ class CSVReportParser(BaseReportParser):
                         for field, col_map in schema_res.mappings.items()
                     }
                     best_choice = (line_idx, delimiter, candidate_cells, mapping)
+
+            if len(delim_errors) == len(_CANDIDATE_DELIMITERS):
+                raise CorruptedReportError(
+                    f"Malformed CSV structure at line {line_idx + 1}: {delim_errors[0]}"
+                ) from delim_errors[0]
 
         if best_choice is not None:
             return best_choice

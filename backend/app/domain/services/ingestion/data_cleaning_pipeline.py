@@ -5,7 +5,7 @@ for broker report holdings (Module 6.2 - Phase 1).
 from __future__ import annotations
 
 from collections.abc import Sequence
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from enum import Enum
 import math
 import re
@@ -14,13 +14,18 @@ import unicodedata
 
 from pydantic import Field
 
-from app.domain.services.ingestion.base_parser import RawHoldingRecord
+from app.domain.services.ingestion.base_parser import (
+    RawHoldingRecord,
+    _sanitize_formula_prefix,
+)
 from app.schemas.envelope import BaseSchema
 
 # ============================================================================
 # Defensive Security & Domain Boundaries
 # ============================================================================
 MAX_NUMERIC_STR_LENGTH: int = 32  # Mitigates Decimal exponent bomb DoS
+HOLDING_DECIMAL_QUANTIZE: Decimal = Decimal("0.0001")
+MIN_HOLDING_QUANTITY: Decimal = Decimal("0.0001")
 MAX_HOLDING_QUANTITY: Decimal = Decimal("1000000000000")  # 10^12 ceiling
 VALID_TICKER_PATTERN: re.Pattern[str] = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,19}$")
 
@@ -292,8 +297,7 @@ class DataCleaningPipeline:
         if not isinstance(raw_ticker, str):
             raise ValueError("Ticker must be a string")
 
-        cleaned = raw_ticker.replace("\xa0", " ").strip().upper()
-        cleaned = cleaned.lstrip("=+-@\t\r\n ")
+        cleaned = _sanitize_formula_prefix(raw_ticker).upper()
         if not cleaned:
             raise ValueError("Ticker is empty after normalization")
 
@@ -362,9 +366,9 @@ class DataCleaningPipeline:
                 )
                 continue
 
-            # 2. Parse & validate quantity
+            # 2. Parse, quantize & validate quantity
             try:
-                quantity = self.parse_decimal(raw.raw_quantity)
+                parsed_quantity = self.parse_decimal(raw.raw_quantity)
             except ValueError as exc:
                 invalid_records.append(
                     InvalidHoldingRecord(
@@ -377,26 +381,45 @@ class DataCleaningPipeline:
                 )
                 continue
 
-            if quantity < Decimal("0"):
+            if parsed_quantity < Decimal("0"):
                 invalid_records.append(
                     InvalidHoldingRecord(
                         row_number=raw.row_number,
                         raw_ticker=raw.raw_ticker,
                         raw_quantity=raw.raw_quantity,
                         error_code=CleaningErrorCode.NEGATIVE_QUANTITY,
-                        reason=f"Holding quantity must be positive (got {quantity})",
+                        reason=f"Holding quantity must be positive (got {parsed_quantity})",
                     )
                 )
                 continue
 
-            if quantity == Decimal("0"):
+            if parsed_quantity > MAX_HOLDING_QUANTITY:
+                invalid_records.append(
+                    InvalidHoldingRecord(
+                        row_number=raw.row_number,
+                        raw_ticker=raw.raw_ticker,
+                        raw_quantity=raw.raw_quantity,
+                        error_code=CleaningErrorCode.INVALID_NUMERIC_FORMAT,
+                        reason=f"Quantity {parsed_quantity} exceeds maximum limit of {MAX_HOLDING_QUANTITY}",
+                    )
+                )
+                continue
+
+            quantity = parsed_quantity.quantize(
+                HOLDING_DECIMAL_QUANTIZE, rounding=ROUND_HALF_UP
+            )
+
+            if quantity < MIN_HOLDING_QUANTITY:
                 invalid_records.append(
                     InvalidHoldingRecord(
                         row_number=raw.row_number,
                         raw_ticker=raw.raw_ticker,
                         raw_quantity=raw.raw_quantity,
                         error_code=CleaningErrorCode.ZERO_QUANTITY,
-                        reason="Holding quantity cannot be zero",
+                        reason=(
+                            "Holding quantity cannot be zero or sub-pip "
+                            f"(< {MIN_HOLDING_QUANTITY})"
+                        ),
                     )
                 )
                 continue
@@ -413,7 +436,7 @@ class DataCleaningPipeline:
                 )
                 continue
 
-            # 3. Parse & validate optional average purchase price (PPC)
+            # 3. Parse, quantize & validate optional average purchase price (PPC)
             avg_price: Decimal | None = None
             if raw.raw_avg_price is not None:
                 raw_price_str = (
@@ -446,14 +469,17 @@ class DataCleaningPipeline:
                         )
                         continue
 
-                    if parsed_price == Decimal("0"):
+                    quantized_price = parsed_price.quantize(
+                        HOLDING_DECIMAL_QUANTIZE, rounding=ROUND_HALF_UP
+                    )
+                    if quantized_price == Decimal("0.0000"):
                         avg_price = None
                         warnings.append(
-                            f"Row {raw.row_number} ({ticker}): zero average purchase price "
-                            "was normalized to None."
+                            f"Row {raw.row_number} ({ticker}): zero or sub-pip average "
+                            "purchase price was normalized to None."
                         )
                     else:
-                        avg_price = parsed_price
+                        avg_price = quantized_price
 
             # 4. Normalize or infer currency
             inferred_default = self._infer_default_currency(
@@ -482,7 +508,7 @@ class DataCleaningPipeline:
                     quantity=quantity,
                     avg_price=avg_price,
                     currency=currency,
-                    raw_fields=raw.raw_fields,
+                    raw_fields=dict(raw.raw_fields),
                 )
             )
 

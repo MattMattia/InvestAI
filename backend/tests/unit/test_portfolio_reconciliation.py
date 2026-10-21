@@ -586,4 +586,54 @@ class TestPortfolioReconciliation(unittest.IsolatedAsyncioTestCase):
                 unexpected_field="injected",  # type: ignore[call-arg]
             )
 
+    async def test_adversarial_equivalent_suffixes_consolidate_and_raw_fields_isolated(
+        self,
+    ) -> None:
+        """
+        Verify rows with equivalent exchange suffixes ('AL30' and 'AL30.BA') cleaned
+        via DataCleaningPipeline consolidate into a single holding without triggering
+        UniqueConstraint violations, and raw_fields is shallow-copied defensively.
+        """
+        from app.domain.services.ingestion import DataCleaningPipeline, RawHoldingRecord
+
+        source_fields = {"Especie": "AL30.BA", "Nota": "Original"}
+        raw_rows = [
+            RawHoldingRecord(
+                row_number=2,
+                raw_ticker="AL30",
+                raw_quantity="400",
+                raw_avg_price="800,00",
+                raw_currency="ARS",
+                raw_fields=source_fields,
+            ),
+            RawHoldingRecord(
+                row_number=3,
+                raw_ticker="AL30.BA",
+                raw_quantity="600",
+                raw_avg_price="900,00",
+                raw_currency="ARS",
+                raw_fields={"Especie": "AL30.BA"},
+            ),
+        ]
+        clean_res = DataCleaningPipeline().clean_records(raw_rows)
+        self.assertEqual(clean_res.total_valid, 2)
+
+        consolidated, _ = self.service.consolidate_clean_records(clean_res.valid_records)
+        self.assertEqual(len(consolidated), 1)
+        clean_res.valid_records[0].raw_fields["Nota"] = "Mutated"
+        self.assertEqual(consolidated[0].raw_fields["Nota"], "Original")
+
+        report = await self.service.reconcile_portfolio(
+            db=self.session,
+            portfolio_id=self.portfolio_id,
+            clean_records=clean_res.valid_records,
+            mode=ReconciliationMode.MERGE,
+            user_id=self.owner_id,
+        )
+        await self.session.commit()
+        self.assertEqual(report.added_count, 1)
+        self.assertEqual(report.events[0].ticker, "AL30")
+        self.assertEqual(report.events[0].new_quantity, Decimal("1000.0000"))
+        self.assertEqual(report.events[0].new_avg_price, Decimal("860.0000"))
+
 

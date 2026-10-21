@@ -338,3 +338,95 @@ class TestDataCleaningPipeline(unittest.TestCase):
         self.assertEqual(result.valid_records[0].avg_price, Decimal("105.50"))
         self.assertEqual(result.valid_records[1].currency, "ARS")
         self.assertEqual(result.valid_records[1].avg_price, Decimal("4500.00"))
+
+    def test_adversarial_sub_pip_quantity_rejected_and_sub_pip_price_normalized(
+        self,
+    ) -> None:
+        """
+        Verify sub-pip positive quantities ('0,00004' -> quantizes to '0.0000') are
+        rejected as ZERO_QUANTITY, and sub-pip average prices ('0,00004') are
+        normalized to None with an auditable warning.
+        """
+        pipeline = DataCleaningPipeline()
+        raw_batch = [
+            RawHoldingRecord(
+                row_number=2,
+                raw_ticker="GGAL",
+                raw_quantity="0,00004",
+                raw_avg_price="1200,00",
+                raw_currency="ARS",
+            ),
+            RawHoldingRecord(
+                row_number=3,
+                raw_ticker="YPFD",
+                raw_quantity="10,00004",
+                raw_avg_price="0,00004",
+                raw_currency="ARS",
+            ),
+        ]
+
+        result = pipeline.clean_records(raw_batch)
+        self.assertEqual(result.total_valid, 1)
+        self.assertEqual(result.total_invalid, 1)
+        self.assertEqual(
+            result.invalid_records[0].error_code, CleaningErrorCode.ZERO_QUANTITY
+        )
+        self.assertEqual(result.valid_records[0].ticker, "YPFD")
+        self.assertEqual(result.valid_records[0].quantity, Decimal("10.0000"))
+        self.assertIsNone(result.valid_records[0].avg_price)
+        self.assertEqual(len(result.warnings), 1)
+        self.assertIn("YPFD", result.warnings[0])
+
+    def test_adversarial_interleaved_formula_prefixes_and_numeric_formula_rejection(
+        self,
+    ) -> None:
+        """
+        Verify iterative CWE-1236 formula prefix neutralization on tickers ('- =GGAL',
+        '\\t +@YPFD.BA', \"'=AL30\") and rejection of formula expressions ('=-SUM(A1)',
+        '=1+1') in quantity/price as INVALID_NUMERIC_FORMAT while preserving real negatives.
+        """
+        pipeline = DataCleaningPipeline()
+        raw_batch = [
+            RawHoldingRecord(
+                row_number=2,
+                raw_ticker="- =GGAL",
+                raw_quantity="100",
+                raw_avg_price="1500,00",
+                raw_currency="=ARS",
+            ),
+            RawHoldingRecord(
+                row_number=3,
+                raw_ticker="\t +@YPFD.BA",
+                raw_quantity="=-SUM(A1)",
+                raw_avg_price="21000,00",
+                raw_currency="ARS",
+            ),
+            RawHoldingRecord(
+                row_number=4,
+                raw_ticker="'=AL30",
+                raw_quantity="=1+1",
+                raw_avg_price="850,00",
+                raw_currency="ARS",
+            ),
+            RawHoldingRecord(
+                row_number=5,
+                raw_ticker="COME",
+                raw_quantity="- 150,50",
+                raw_avg_price="240,00",
+                raw_currency="ARS",
+            ),
+        ]
+
+        result = pipeline.clean_records(raw_batch)
+        self.assertEqual(result.total_valid, 1)
+        self.assertEqual(result.valid_records[0].ticker, "GGAL")
+        self.assertEqual(result.valid_records[0].currency, "ARS")
+        self.assertEqual(
+            [inv.error_code for inv in result.invalid_records],
+            [
+                CleaningErrorCode.INVALID_NUMERIC_FORMAT,
+                CleaningErrorCode.INVALID_NUMERIC_FORMAT,
+                CleaningErrorCode.NEGATIVE_QUANTITY,
+            ],
+        )
+

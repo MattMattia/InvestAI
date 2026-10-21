@@ -24,6 +24,7 @@ from app.domain.services.ingestion.base_parser import (
     MAX_DECOMPRESSED_XLSX_BYTES,
     MAX_HEADER_SCAN_LINES,
     MAX_REPORT_ROWS,
+    MAX_ZIP_ENTRIES,
     BaseReportParser,
     CorruptedReportError,
     EmptyReportError,
@@ -102,7 +103,7 @@ class ExcelReportParser(BaseReportParser):
             )
         except ReportParsingError:
             raise
-        except Exception as exc:
+        except (KeyError, ValueError, IndexError, TypeError, Exception) as exc:
             raise CorruptedReportError(
                 f"Failed to open XLSX workbook: {exc}"
             ) from exc
@@ -111,7 +112,7 @@ class ExcelReportParser(BaseReportParser):
             return self._extract_from_workbook(workbook)
         except ReportParsingError:
             raise
-        except Exception as exc:
+        except (KeyError, ValueError, IndexError, TypeError, Exception) as exc:
             raise CorruptedReportError(
                 f"Failed while reading XLSX workbook rows: {exc}"
             ) from exc
@@ -123,15 +124,22 @@ class ExcelReportParser(BaseReportParser):
         """
         Inspect the ZIP container before passing to openpyxl to block:
         1. Corrupted non-ZIP streams.
-        2. VBA macro binaries (`vbaProject.bin`).
-        3. Zip-Bombs via compression ratio or total decompressed size.
-        4. XML External Entities (`<!ENTITY` / `<!DOCTYPE`).
+        2. Entry-Bomb / Inode exhaustion archives (`> MAX_ZIP_ENTRIES`).
+        3. VBA macro binaries (`vbaProject.bin`).
+        4. Zip-Bombs via compression ratio or total decompressed size.
+        5. Case-insensitive XML External Entities (`<!entity` / `<!doctype`).
         """
         try:
             with zipfile.ZipFile(io.BytesIO(file_stream), mode="r") as zf:
                 infos = zf.infolist()
                 if not infos:
                     raise CorruptedReportError("XLSX archive contains no entries")
+
+                if len(infos) > MAX_ZIP_ENTRIES:
+                    raise ReportSizeLimitExceededError(
+                        f"XLSX archive entry count ({len(infos)}) exceeds "
+                        f"maximum safety limit ({MAX_ZIP_ENTRIES})"
+                    )
 
                 total_decompressed = 0
                 for zinfo in infos:
@@ -158,8 +166,8 @@ class ExcelReportParser(BaseReportParser):
 
                     if entry_name_lower.endswith((".xml", ".rels")):
                         with zf.open(zinfo, mode="r") as xml_file:
-                            head_bytes = xml_file.read(_XML_HEAD_INSPECTION_BYTES).upper()
-                            if b"<!ENTITY" in head_bytes or b"<!DOCTYPE" in head_bytes:
+                            head_bytes = xml_file.read(_XML_HEAD_INSPECTION_BYTES).lower()
+                            if b"<!entity" in head_bytes or b"<!doctype" in head_bytes:
                                 raise CorruptedReportError(
                                     "XML external entities or DOCTYPE declarations are not permitted"
                                 )

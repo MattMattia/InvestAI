@@ -9,6 +9,7 @@ canonical `APIResponse[IngestionReportSummary]` envelope.
 """
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import (
@@ -22,6 +23,7 @@ from fastapi import (
     status,
 )
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_trader_or_admin
@@ -38,6 +40,7 @@ from app.domain.services.ingestion.base_parser import (
 from app.domain.services.ingestion.data_cleaning_pipeline import DataCleaningPipeline
 from app.domain.services.portfolio_reconciliation import (
     EmptyReconciliationSnapshotError,
+    PortfolioReconciliationError,
     PortfolioReconciliationService,
     ReconciliationMode,
     ReconciliationPortfolioNotFoundError,
@@ -47,6 +50,7 @@ from app.models.user import UserModel
 from app.schemas.envelope import APIErrorResponse, APIResponse
 from app.schemas.ingestion import IngestionReportSummary
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 ALLOWED_REPORT_EXTENSIONS: frozenset[str] = frozenset({".csv", ".xlsx", ".xls"})
@@ -313,11 +317,25 @@ async def upload_broker_report(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
-    except EmptyReconciliationSnapshotError as exc:
+    except (EmptyReconciliationSnapshotError, PortfolioReconciliationError) as exc:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
+        ) from exc
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        logger.error("Database error during portfolio reconciliation: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal database error during portfolio reconciliation.",
+        ) from exc
+    except Exception as exc:
+        await db.rollback()
+        logger.error("Unexpected error during portfolio reconciliation: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during portfolio reconciliation.",
         ) from exc
 
     # 4. Canonical Envelope Assembly

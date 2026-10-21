@@ -23,6 +23,7 @@ from app.domain.services.ingestion.base_parser import (
     MAX_HEADER_SCAN_LINES,
     MAX_REPORT_ROWS,
     MAX_REPORT_SIZE_BYTES,
+    MAX_ZIP_ENTRIES,
     QUANTITY_HEADER_ALIASES,
     TICKER_HEADER_ALIASES,
     BaseReportParser,
@@ -40,8 +41,10 @@ from app.domain.services.ingestion.base_parser import (
 )
 from app.domain.services.ingestion.csv_parser import CSVReportParser
 from app.domain.services.ingestion.data_cleaning_pipeline import (
+    HOLDING_DECIMAL_QUANTIZE,
     MAX_HOLDING_QUANTITY,
     MAX_NUMERIC_STR_LENGTH,
+    MIN_HOLDING_QUANTITY,
     VALID_TICKER_PATTERN,
     CleanHoldingRecord,
     CleaningErrorCode,
@@ -74,6 +77,7 @@ from app.domain.services.portfolio_reconciliation import (
 __all__ = [
     "AVG_PRICE_HEADER_ALIASES",
     "CURRENCY_HEADER_ALIASES",
+    "HOLDING_DECIMAL_QUANTIZE",
     "IGNORED_SUMMARY_TICKERS",
     "MAX_COLUMNS_TO_SCAN",
     "MAX_COMPRESSION_RATIO",
@@ -86,7 +90,9 @@ __all__ = [
     "MAX_RATIONAL_PE",
     "MAX_REPORT_ROWS",
     "MAX_REPORT_SIZE_BYTES",
+    "MAX_ZIP_ENTRIES",
     "MIN_CONFIDENCE_THRESHOLD",
+    "MIN_HOLDING_QUANTITY",
     "QUANTITY_HEADER_ALIASES",
     "RATIO_QUANTIZE_EXP",
     "RECONCILIATION_QUANTIZE",

@@ -360,7 +360,7 @@ class PortfolioReconciliationService:
                         quantity=q_qty,
                         avg_price=q_price,
                         currency=single.currency,
-                        raw_fields=single.raw_fields,
+                        raw_fields=dict(single.raw_fields),
                     )
                 )
                 continue
@@ -400,8 +400,11 @@ class PortfolioReconciliationService:
                         ),
                         Decimal("0"),
                     )
-                    weighted_avg_price = (total_cost / priced_qty).quantize(
+                    q_weighted = (total_cost / priced_qty).quantize(
                         RECONCILIATION_QUANTIZE, rounding=ROUND_HALF_UP
+                    )
+                    weighted_avg_price = (
+                        q_weighted if q_weighted > Decimal("0") else None
                     )
 
             warnings.append(
@@ -416,7 +419,7 @@ class PortfolioReconciliationService:
                     quantity=total_qty,
                     avg_price=weighted_avg_price,
                     currency=primary_currency,
-                    raw_fields=group[0].raw_fields,
+                    raw_fields=dict(group[0].raw_fields),
                 )
             )
 

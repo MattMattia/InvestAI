@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db_session, require_trader_or_admin
+from app.domain.services.ingestion.base_parser import MAX_REPORT_SIZE_BYTES
 from app.models.holding import HoldingModel
 from app.models.user import UserModel
 from app.schemas.ingestion import IngestionUploadResponse
@@ -26,17 +27,27 @@ async def upload_portfolio_file(
     persists valid holdings into the portfolio, and returns an execution report.
     Enforces RBAC (TRADER or ADMIN) and anti-IDOR/BOLA tenant isolation.
     """
-    portfolio = await get_user_portfolio_or_404(id, current_user, db)
+    try:
+        portfolio = await get_user_portfolio_or_404(id, current_user, db)
 
-    filename = file.filename or "holdings.csv"
-    ext = filename.split(".")[-1].lower() if "." in filename else "csv"
-    file_format = "xlsx" if ext in ("xlsx", "xls") else "csv"
+        filename = file.filename or "holdings.csv"
+        ext = filename.split(".")[-1].lower() if "." in filename else "csv"
+        file_format = "xlsx" if ext in ("xlsx", "xls") else "csv"
 
-    content = await file.read()
+        content = await file.read(MAX_REPORT_SIZE_BYTES + 1)
+    finally:
+        await file.close()
+
     if not content:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El archivo subido está vacío.",
+        )
+
+    if len(content) > MAX_REPORT_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="El archivo subido excede el límite máximo de 10 MB.",
         )
 
     parser = UniversalHoldingParser()

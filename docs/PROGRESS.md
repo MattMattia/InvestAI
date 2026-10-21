@@ -4,7 +4,7 @@
 > **Progreso Consolidado:** 21 de 26 Módulos Completados (80.8%) — Capítulos 1 a 6 completados al 100%  
 > **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5 y 6 (100% completados)  
 > **Capítulos Pendientes / En Progreso:** Capítulos 7, 8 y 9  
-> **Calidad y Suite de Pruebas:** **353 tests pasando al 100% en verde (276 unitarios + 77 de integración)**  
+> **Calidad y Suite de Pruebas:** **359 tests pasando al 100% en verde (281 unitarios + 78 de integración)**  
 > **Última Actualización:** 2026-10-21
 
 ---
@@ -24,7 +24,7 @@
 | **Capítulo 3** | Remediación Técnica y Hardening Post-Auditoría | 5 / 5 | 17 / 17 | **COMPLETADO** | 159 tests (+22) |
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
 | **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 293 tests (+88) |
-| **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 3 / 3 | 9 / 9 | **COMPLETADO** | 353 tests (+60) |
+| **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 3 / 3 | 9 / 9 | **COMPLETADO** | 359 tests (+66) |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
 | **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
@@ -136,15 +136,16 @@
 - [x] **Módulo 6.1: Parser Desacoplado de Extractos y Reportes de ALyCs (CSV / Excel)**
   - [x] Fase 1: Interfaz Abstracta de Parsing y Estrategias por Formato (`backend/app/domain/services/ingestion/base_parser.py`, `backend/app/domain/services/ingestion/excel_parser.py`, `backend/app/domain/services/ingestion/csv_parser.py`, `backend/tests/unit/test_report_parsers.py`)
   - [x] Fase 2: Detección Automática de Esquemas y Normalización de Columnas (Fuzzy Matching en `backend/app/domain/services/ingestion/schema_detector.py`, `backend/tests/unit/test_report_parsers.py`)
-  - [x] Fase 3: Suite de Pruebas con Muestras Sintéticas de Brokers Locales (`backend/tests/unit/test_report_parsers.py` — 23 pruebas unitarias de ingesta cubriendo Balanz, IOL, PPI, Bull Market y Caja de Valores)
+  - [x] Fase 3: Suite de Pruebas con Muestras Sintéticas de Brokers Locales (`backend/tests/unit/test_report_parsers.py` — 25 pruebas unitarias de ingesta cubriendo Balanz, IOL, PPI, Bull Market, Caja de Valores y vectores adversariales ZIP/CSV)
 - [x] **Módulo 6.2: Pipeline de Validación, Normalización y Tratamiento Contable (EPS $\le$ 0)**
-  - [x] Fase 1: Pipeline de Saneamiento y Limpieza Monetaria (`backend/app/domain/services/ingestion/data_cleaning_pipeline.py`, `backend/tests/unit/test_data_cleaning_pipeline.py`)
+  - [x] Fase 1: Pipeline de Saneamiento y Limpieza Monetaria (`backend/app/domain/services/ingestion/data_cleaning_pipeline.py`, `backend/tests/unit/test_data_cleaning_pipeline.py` — 10 pruebas unitarias)
   - [x] Fase 2: Manejo de Inconsistencias de Balance (etiquetado `INDETERMINATE` para ratios patológicos en `backend/app/domain/services/accounting_integrity.py`, `backend/tests/unit/test_accounting_integrity.py`)
   - [x] Fase 3: Suite de Pruebas de Calidad Contable y Balances Extremos (`backend/tests/unit/test_accounting_integrity.py` — 12 pruebas unitarias de estrés contable e integración E2E con `DataCleaningPipeline`)
 - [x] **Módulo 6.3: Integración Transaccional y Conciliación Automática de Tenencias**
-  - [x] Fase 1: Servicio de Conciliación de Cartera (`backend/app/domain/services/portfolio_reconciliation.py`, `backend/tests/unit/test_portfolio_reconciliation.py` — 8 pruebas unitarias transaccionales y de contratos)
+  - [x] Fase 1: Servicio de Conciliación de Cartera (`backend/app/domain/services/portfolio_reconciliation.py`, `backend/tests/unit/test_portfolio_reconciliation.py` — 9 pruebas unitarias transaccionales y de contratos)
   - [x] Fase 2: Controlador REST de Ingesta (`POST /api/v1/ingestion/upload-report` en `backend/app/api/v1/endpoints/ingestion.py` y `IngestionReportSummary` en `backend/app/schemas/ingestion.py`)
-  - [x] Fase 3: Pruebas de Integración E2E con Carga Multiparte (`backend/tests/integration/test_api_ingestion.py` — 9 pruebas de integración E2E multiparte cerrando el Capítulo 6 al 100%)
+  - [x] Fase 3: Pruebas de Integración E2E con Carga Multiparte (`backend/tests/integration/test_api_ingestion.py` — 10 pruebas de integración E2E multiparte cerrando el Capítulo 6 al 100%)
+  - [x] Auditoría Adversarial E2E (Red-Team / Blue-Team) y Hardening Integral del Capítulo 6 (`MAX_ZIP_ENTRIES`, cuantización sub-pip `HOLDING_DECIMAL_QUANTIZE`, blindaje `imports.py` / `ingestion.py` — 359 tests en verde: 281 unitarios + 78 de integración)
 
 ---
 
@@ -197,7 +198,7 @@
 ## Siguiente Paso Inmediato
 
 > **Foco Actual:** **CAPÍTULO 7 — Módulo 7.1 (Fase 1): Biblioteca de Indicadores Numéricos Vectorizados (`backend/app/domain/services/technical_indicators.py`)**  
-> **Prioridad:** Alta (Inicio del Capítulo 7 tras cerrar el Capítulo 6 al 100% con 353 tests en verde)  
+> **Prioridad:** Alta (Inicio del Capítulo 7 tras cerrar el Capítulo 6 al 100% con 359 tests en verde)  
 > **Objetivo:** Implementar la biblioteca vectorizada pura en NumPy (`technical_indicators.py`) con Media Móvil Simple (SMA), Media Móvil Exponencial (EMA), Índice de Fuerza Relativa de Wilder (RSI), Bandas de Bollinger y Average True Range (ATR), con validación estricta de ventanas y manejo defensivo de `NaN`/`Inf`.
 
 ### Hoja de Ruta Inmediata para el Capítulo 7:

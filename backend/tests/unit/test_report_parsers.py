@@ -795,5 +795,69 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([r.raw_ticker for r in pipe_records], ["PAM", "YPF"])
         self.assertEqual(pipe_records[0].raw_currency, "USD")
 
+    async def test_adversarial_xlsx_zip_without_workbook_entry_bomb_and_lowercase_xxe(
+        self,
+    ) -> None:
+        """
+        Verify ExcelReportParser blocks:
+        1. A valid .zip lacking OOXML workbook structure (only 'readme.txt' inside 'cartera.xlsx')
+           with CorruptedReportError.
+        2. An .xlsx archive exceeding MAX_ZIP_ENTRIES (500) with ReportSizeLimitExceededError.
+        3. An .xlsx archive containing lowercase '<!entity' or mixed-case '<!DocType'
+           with CorruptedReportError.
+        """
+        parser = ExcelReportParser()
 
+        # 1. Valid ZIP without Excel structure
+        non_xlsx_zip = io.BytesIO()
+        with zipfile.ZipFile(non_xlsx_zip, mode="w") as zf:
+            zf.writestr("readme.txt", "Not an Excel workbook")
+        with self.assertRaises(CorruptedReportError):
+            await parser.parse_report(non_xlsx_zip.getvalue(), "cartera.xlsx")
 
+        # 2. Entry-Bomb exceeding MAX_ZIP_ENTRIES (501 entries)
+        entry_bomb_zip = io.BytesIO()
+        with zipfile.ZipFile(entry_bomb_zip, mode="w") as zf:
+            for idx in range(501):
+                zf.writestr(f"xl/worksheets/sheet_{idx}.txt", "ok")
+        with self.assertRaises(ReportSizeLimitExceededError):
+            await parser.parse_report(entry_bomb_zip.getvalue(), "entry_bomb.xlsx")
+
+        # 3. Lowercase <!entity and mixed-case <!DocType
+        lowercase_xxe_zip = io.BytesIO()
+        with zipfile.ZipFile(lowercase_xxe_zip, mode="w") as zf:
+            zf.writestr(
+                "[Content_Types].xml",
+                '<?xml version="1.0"?><!DocType foo [<!entity xxe SYSTEM "file:///etc/passwd">]><Types/>',
+            )
+        with self.assertRaises(CorruptedReportError):
+            await parser.parse_report(lowercase_xxe_zip.getvalue(), "xxe_lower.xlsx")
+
+    async def test_adversarial_csv_error_and_unclosed_quotes_translated_to_corrupted(
+        self,
+    ) -> None:
+        """
+        Verify CSVReportParser translates any csv.Error (e.g. unclosed quotes or
+        fields exceeding csv.field_size_limit) into CorruptedReportError.
+        """
+        import csv
+
+        parser = CSVReportParser()
+
+        # 1. Unclosed quote in data row
+        unclosed_quote_csv = b'Ticker,Cantidad,PPC\n"GGAL,100,1500\n'
+        with self.assertRaises(CorruptedReportError):
+            await parser.parse_report(unclosed_quote_csv, "unclosed.csv")
+
+        # 2. Field exceeding csv.field_size_limit
+        prev_limit = csv.field_size_limit()
+        try:
+            csv.field_size_limit(32)
+            oversized_field_csv = (
+                "Ticker,Cantidad,Descripcion\n"
+                f"GGAL,100,{'X' * 64}\n"
+            ).encode("utf-8")
+            with self.assertRaises(CorruptedReportError):
+                await parser.parse_report(oversized_field_csv, "oversized_field.csv")
+        finally:
+            csv.field_size_limit(prev_limit)

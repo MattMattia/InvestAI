@@ -22,6 +22,7 @@ from app.schemas.envelope import BaseSchema
 MAX_REPORT_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB compressed/raw upload limit
 MAX_DECOMPRESSED_XLSX_BYTES: int = 50 * 1024 * 1024  # 50 MB anti Zip-Bomb limit
 MAX_COMPRESSION_RATIO: float = 100.0  # Anti Zip-Bomb compression ratio ceiling
+MAX_ZIP_ENTRIES: int = 500  # Anti Inode / Entry-Bomb limit for XLSX archives
 MAX_REPORT_ROWS: int = 50_000  # Maximum holding rows per report
 MAX_HEADER_SCAN_LINES: int = 50  # Maximum leading rows scanned to locate table header
 
