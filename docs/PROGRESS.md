@@ -1,11 +1,11 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 20 de 26 Módulos Completados (76.9%) — Capítulos 1 a 5 completados al 100%; Capítulo 6 en progreso (Módulos 6.1 y 6.2 completados al 100% + Módulo 6.3 Fases 1 y 2 completadas)  
-> **Capítulos Implementados:** Capítulos 1, 2, 3, 4 y 5 (100% completados)  
-> **Capítulos Pendientes / En Progreso:** Capítulo 6 (en progreso), Capítulos 7, 8 y 9  
-> **Calidad y Suite de Pruebas:** **344 tests pasando al 100% en verde (276 unitarios + 68 de integración)**  
-> **Última Actualización:** 2026-10-20
+> **Progreso Consolidado:** 21 de 26 Módulos Completados (80.8%) — Capítulos 1 a 6 completados al 100%  
+> **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5 y 6 (100% completados)  
+> **Capítulos Pendientes / En Progreso:** Capítulos 7, 8 y 9  
+> **Calidad y Suite de Pruebas:** **353 tests pasando al 100% en verde (276 unitarios + 77 de integración)**  
+> **Última Actualización:** 2026-10-21
 
 ---
 
@@ -24,7 +24,7 @@
 | **Capítulo 3** | Remediación Técnica y Hardening Post-Auditoría | 5 / 5 | 17 / 17 | **COMPLETADO** | 159 tests (+22) |
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
 | **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 293 tests (+88) |
-| **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 2 / 3 | 8 / 9 | **EN PROGRESO** | 344 tests (+51) |
+| **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 3 / 3 | 9 / 9 | **COMPLETADO** | 353 tests (+60) |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
 | **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
@@ -141,10 +141,10 @@
   - [x] Fase 1: Pipeline de Saneamiento y Limpieza Monetaria (`backend/app/domain/services/ingestion/data_cleaning_pipeline.py`, `backend/tests/unit/test_data_cleaning_pipeline.py`)
   - [x] Fase 2: Manejo de Inconsistencias de Balance (etiquetado `INDETERMINATE` para ratios patológicos en `backend/app/domain/services/accounting_integrity.py`, `backend/tests/unit/test_accounting_integrity.py`)
   - [x] Fase 3: Suite de Pruebas de Calidad Contable y Balances Extremos (`backend/tests/unit/test_accounting_integrity.py` — 12 pruebas unitarias de estrés contable e integración E2E con `DataCleaningPipeline`)
-- [ ] **Módulo 6.3: Integración Transaccional y Conciliación Automática de Tenencias**
+- [x] **Módulo 6.3: Integración Transaccional y Conciliación Automática de Tenencias**
   - [x] Fase 1: Servicio de Conciliación de Cartera (`backend/app/domain/services/portfolio_reconciliation.py`, `backend/tests/unit/test_portfolio_reconciliation.py` — 8 pruebas unitarias transaccionales y de contratos)
   - [x] Fase 2: Controlador REST de Ingesta (`POST /api/v1/ingestion/upload-report` en `backend/app/api/v1/endpoints/ingestion.py` y `IngestionReportSummary` en `backend/app/schemas/ingestion.py`)
-  - [ ] Fase 3: Pruebas de Integración E2E con Carga Multiparte
+  - [x] Fase 3: Pruebas de Integración E2E con Carga Multiparte (`backend/tests/integration/test_api_ingestion.py` — 9 pruebas de integración E2E multiparte cerrando el Capítulo 6 al 100%)
 
 ---
 
@@ -196,10 +196,13 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 6 — Módulo 6.3 (Fase 3): Suite de Pruebas de Integración E2E del Pipeline de Ingesta (`backend/tests/integration/test_api_ingestion.py`)**  
-> **Prioridad:** Alta (Cierre del Módulo 6.3 y del Capítulo 6 completo tras completar la Fase 2 con 344 tests en verde)  
-> **Objetivo:** Implementar la suite de integración `backend/tests/integration/test_api_ingestion.py` ejercitando `POST /api/v1/ingestion/upload-report` mediante `httpx.AsyncClient` con archivos multiparte CSV y Excel, validando RBAC (`VIEWER` 403, anónimo 401), Anti-IDOR (404), límites de tamaño (413), rechazos de formato/MIME (422) y conciliación transaccional persistida en base de datos (`SNAPSHOT` y `MERGE`).
+> **Foco Actual:** **CAPÍTULO 7 — Módulo 7.1 (Fase 1): Biblioteca de Indicadores Numéricos Vectorizados (`backend/app/domain/services/technical_indicators.py`)**  
+> **Prioridad:** Alta (Inicio del Capítulo 7 tras cerrar el Capítulo 6 al 100% con 353 tests en verde)  
+> **Objetivo:** Implementar la biblioteca vectorizada pura en NumPy (`technical_indicators.py`) con Media Móvil Simple (SMA), Media Móvil Exponencial (EMA), Índice de Fuerza Relativa de Wilder (RSI), Bandas de Bollinger y Average True Range (ATR), con validación estricta de ventanas y manejo defensivo de `NaN`/`Inf`.
 
-### Hoja de Ruta Inmediata para el Capítulo 6:
-1. **Módulo 6.3 (Fase 3)**: Implementar `backend/tests/integration/test_api_ingestion.py` con pruebas de integración E2E multiparte para cerrar el Módulo 6.3 y el Capítulo 6 al 100%.
+### Hoja de Ruta Inmediata para el Capítulo 7:
+1. **Módulo 7.1 (Fase 1)**: Implementar `backend/app/domain/services/technical_indicators.py` (SMA, EMA, RSI de Wilder, Bandas de Bollinger y ATR).
+2. **Módulo 7.1 (Fase 2)**: Implementar el motor de generación de señales de negociación (`backend/app/domain/services/signal_generator.py`).
+3. **Módulo 7.1 (Fase 3)**: Implementar la suite de pruebas unitarias de precisión numérica contra benchmarks (`backend/tests/unit/test_technical_indicators.py`).
+
 

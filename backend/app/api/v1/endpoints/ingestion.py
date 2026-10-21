@@ -118,18 +118,23 @@ def _resolve_reconciliation_mode(
 
 
 def _resolve_allow_empty_snapshot(
-    form_allow_empty: bool | None,
+    form_allow_empty: str | bool | None,
     request: Request,
 ) -> bool:
     """Resolve `allow_empty_snapshot` flag from multipart form or query params."""
-    if form_allow_empty is not None:
-        return bool(form_allow_empty)
-
-    raw_query_val = request.query_params.get("allow_empty_snapshot")
-    if raw_query_val is None or not raw_query_val.strip():
+    raw_val: str | bool | None = (
+        form_allow_empty
+        if form_allow_empty is not None
+        else request.query_params.get("allow_empty_snapshot")
+    )
+    if raw_val is None:
         return False
+    if isinstance(raw_val, bool):
+        return raw_val
 
-    lowered = raw_query_val.strip().lower()
+    lowered = str(raw_val).strip().lower()
+    if not lowered:
+        return False
     if lowered in ("true", "1", "yes"):
         return True
     if lowered in ("false", "0", "no"):
@@ -137,7 +142,7 @@ def _resolve_allow_empty_snapshot(
 
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        detail=f"Invalid boolean value '{raw_query_val}' for 'allow_empty_snapshot'.",
+        detail=f"Invalid boolean value '{raw_val}' for 'allow_empty_snapshot'.",
     )
 
 
@@ -161,7 +166,7 @@ def _sanitize_and_validate_filename(raw_filename: str | None) -> str:
         )
 
     stem, dot, ext = clean_filename.rpartition(".")
-    if not dot or not stem.strip():
+    if not dot or not stem.strip(" ."):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Filename '{clean_filename}' must have a valid base name and extension.",
@@ -205,7 +210,7 @@ async def upload_broker_report(
     file: UploadFile = File(...),
     portfolio_id: str | None = Form(default=None),
     mode: str | None = Form(default=None),
-    allow_empty_snapshot: bool | None = Form(default=None),
+    allow_empty_snapshot: str | None = Form(default=None),
 ) -> APIResponse[IngestionReportSummary]:
     """
     End-to-end broker report upload and portfolio reconciliation endpoint.
