@@ -818,3 +818,4 @@ class TechnicalIndicatorsService:
             atr_14=atr_14,
             prev_atr_14=prev_atr_14,
         )
+

@@ -1,6 +1,7 @@
 """
-Unit test suite for Module 7.1 Phase 1: Vectorized Technical Indicators Library
-(`backend/app/domain/services/technical_indicators.py`).
+Unit test suite for Module 7.1 (Phases 1 & 2):
+- Vectorized Technical Indicators Library (`backend/app/domain/services/technical_indicators.py`)
+- Trading Signal Generation Engine (`backend/app/domain/services/signal_generator.py`)
 """
 from __future__ import annotations
 
@@ -11,6 +12,16 @@ import unittest
 from pydantic import ValidationError
 import pytest
 
+from app.domain.services.signal_generator import (
+    InvalidSignalParametersError,
+    OrderFSMIntent,
+    SignalAction,
+    SignalComponentEvaluation,
+    SignalGeneratorConfig,
+    SignalGeneratorService,
+    SignalRuleType,
+    TradingSignalReport,
+)
 from app.domain.services.technical_indicators import (
     BollingerBandsPoint,
     InsufficientMarketDataError,
@@ -372,3 +383,328 @@ class TestTechnicalIndicators(unittest.TestCase):
                 as_of=datetime(2026, 1, 2, 18, 0, tzinfo=timezone.utc),
                 close=Decimal("100"),
             )
+
+    def test_signal_generator_bullish_crossover_and_oversold_emits_buy_with_fsm_intent(self) -> None:
+        """Verify bullish EMA(12)/EMA(26) crossover + oversold RSI(14) emits BUY with valid OrderFSMIntent."""
+        as_of_ts = datetime(2026, 3, 15, 18, 0, tzinfo=timezone.utc)
+        snapshot = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of_ts,
+            close=Decimal("100.0000"),
+            ema_12=Decimal("101.2000"),
+            prev_ema_12=Decimal("99.5000"),
+            ema_26=Decimal("100.0000"),
+            prev_ema_26=Decimal("100.1000"),
+            sma_20=Decimal("99.8000"),
+            prev_sma_20=Decimal("98.5000"),
+            sma_50=Decimal("99.0000"),
+            prev_sma_50=Decimal("99.0000"),
+            rsi_14=Decimal("24.0000"),
+            prev_rsi_14=Decimal("29.0000"),
+            bollinger_20_2=BollingerBandsPoint(
+                upper_band=Decimal("108.0000"),
+                middle_band=Decimal("100.5000"),
+                lower_band=Decimal("93.0000"),
+                bandwidth=Decimal("0.1493"),
+                percent_b=Decimal("0.0400"),
+            ),
+            atr_14=Decimal("2.5000"),
+            prev_atr_14=Decimal("2.4000"),
+        )
+
+        generator = SignalGeneratorService()
+        report = generator.evaluate_from_snapshot(snapshot, ticker=" ggal ")
+
+        self.assertEqual(report.ticker, "GGAL")
+        self.assertEqual(report.action, SignalAction.BUY)
+        self.assertGreaterEqual(report.composite_score, Decimal("0.2500"))
+        self.assertEqual(report.conviction, abs(report.composite_score))
+        self.assertEqual(len(report.components), 4)
+
+        self.assertIsNotNone(report.order_intent)
+        assert report.order_intent is not None
+        self.assertEqual(report.order_intent.side, "BUY")
+        self.assertEqual(report.order_intent.target_status, "PENDING")
+        self.assertEqual(report.order_intent.reference_price, Decimal("100.0000"))
+        # Stop loss = 100 - 2.0 * 2.5 = 95.0000; Take profit = 100 + 3.0 * 2.5 = 107.5000
+        self.assertEqual(report.stop_loss_price, Decimal("95.0000"))
+        self.assertEqual(report.take_profit_price, Decimal("107.5000"))
+        self.assertEqual(report.order_intent.suggested_stop_loss, Decimal("95.0000"))
+        self.assertEqual(report.order_intent.suggested_take_profit, Decimal("107.5000"))
+        self.assertLess(
+            report.order_intent.suggested_stop_loss,
+            report.order_intent.reference_price,
+        )
+        self.assertLess(
+            report.order_intent.reference_price,
+            report.order_intent.suggested_take_profit,
+        )
+
+        payload = report.order_intent.to_order_payload(
+            quantity=Decimal("100"),
+            portfolio_id="port-uuid-123",
+        )
+        self.assertEqual(
+            payload,
+            {
+                "ticker": "GGAL",
+                "side": "BUY",
+                "quantity": Decimal("100.0000"),
+                "price": Decimal("100.0000"),
+                "status": "PENDING",
+                "portfolio_id": "port-uuid-123",
+            },
+        )
+
+    def test_signal_generator_bearish_crossover_and_overbought_emits_sell_with_fsm_intent(self) -> None:
+        """Verify bearish EMA(12)/EMA(26) crossover + overbought RSI(14) emits SELL with directional OrderFSMIntent."""
+        as_of_ts = datetime(2026, 3, 16, 18, 0, tzinfo=timezone.utc)
+        snapshot = TechnicalIndicatorsSnapshot(
+            ticker="YPFD",
+            as_of=as_of_ts,
+            close=Decimal("195.0000"),
+            ema_12=Decimal("198.5000"),
+            prev_ema_12=Decimal("201.0000"),
+            ema_26=Decimal("200.0000"),
+            prev_ema_26=Decimal("200.5000"),
+            sma_20=Decimal("197.0000"),
+            prev_sma_20=Decimal("200.0000"),
+            sma_50=Decimal("199.0000"),
+            prev_sma_50=Decimal("199.5000"),
+            rsi_14=Decimal("78.0000"),
+            prev_rsi_14=Decimal("71.0000"),
+            bollinger_20_2=BollingerBandsPoint(
+                upper_band=Decimal("199.0000"),
+                middle_band=Decimal("192.0000"),
+                lower_band=Decimal("185.0000"),
+                bandwidth=Decimal("0.0729"),
+                percent_b=Decimal("0.9600"),
+            ),
+            atr_14=Decimal("4.0000"),
+            prev_atr_14=Decimal("3.8000"),
+        )
+
+        generator = SignalGeneratorService()
+        report = generator.evaluate_from_snapshot(snapshot)
+
+        self.assertEqual(report.ticker, "YPFD")
+        self.assertEqual(report.action, SignalAction.SELL)
+        self.assertLessEqual(report.composite_score, Decimal("-0.2500"))
+        self.assertEqual(report.conviction, abs(report.composite_score))
+        self.assertIsNotNone(report.order_intent)
+        assert report.order_intent is not None
+        self.assertEqual(report.order_intent.side, "SELL")
+        self.assertEqual(report.order_intent.target_status, "PENDING")
+        # Stop loss = 195 + 2.0 * 4.0 = 203.0000; Take profit = 195 - 3.0 * 4.0 = 183.0000
+        self.assertEqual(report.order_intent.suggested_stop_loss, Decimal("203.0000"))
+        self.assertEqual(report.order_intent.suggested_take_profit, Decimal("183.0000"))
+        self.assertLess(
+            report.order_intent.suggested_take_profit,
+            report.order_intent.reference_price,
+        )
+        self.assertLess(
+            report.order_intent.reference_price,
+            report.order_intent.suggested_stop_loss,
+        )
+
+    def test_signal_generator_volatility_breakout_vs_mean_reversion_bollinger(self) -> None:
+        """Verify Bollinger mean-reversion vs bandwidth-expansion breakout evaluation."""
+        as_of_ts = datetime(2026, 3, 17, 18, 0, tzinfo=timezone.utc)
+        generator = SignalGeneratorService()
+
+        # 1. Mean-reversion when %B >= 0.95 WITHOUT bandwidth expansion
+        mr_snapshot = TechnicalIndicatorsSnapshot(
+            ticker="PAMP",
+            as_of=as_of_ts,
+            close=Decimal("109.5000"),
+            ema_12=Decimal("105.0000"),
+            ema_26=Decimal("103.0000"),
+            bollinger_20_2=BollingerBandsPoint(
+                upper_band=Decimal("110.0000"),
+                middle_band=Decimal("100.0000"),
+                lower_band=Decimal("90.0000"),
+                bandwidth=Decimal("0.2000"),
+                percent_b=Decimal("0.9600"),
+            ),
+            prev_bollinger_20_2=BollingerBandsPoint(
+                upper_band=Decimal("110.0000"),
+                middle_band=Decimal("100.0000"),
+                lower_band=Decimal("90.0000"),
+                bandwidth=Decimal("0.2000"),
+                percent_b=Decimal("0.8500"),
+            ),
+            atr_14=Decimal("2.0000"),
+        )
+        mr_report = generator.evaluate_from_snapshot(mr_snapshot)
+        mr_bb_comp = next(
+            c for c in mr_report.components if c.rule == SignalRuleType.VOLATILITY_BOLLINGER
+        )
+        self.assertEqual(mr_bb_comp.action, SignalAction.SELL)
+        self.assertEqual(mr_bb_comp.score, Decimal("-0.8500"))
+
+        # 2. Bullish volatility breakout when %B > 1.0 AND bandwidth expands >= 1.15x with bullish EMA momentum
+        bo_snapshot = TechnicalIndicatorsSnapshot(
+            ticker="PAMP",
+            as_of=as_of_ts,
+            close=Decimal("112.0000"),
+            ema_12=Decimal("106.0000"),
+            ema_26=Decimal("102.0000"),
+            bollinger_20_2=BollingerBandsPoint(
+                upper_band=Decimal("110.0000"),
+                middle_band=Decimal("100.0000"),
+                lower_band=Decimal("90.0000"),
+                bandwidth=Decimal("0.2500"),
+                percent_b=Decimal("1.1000"),
+            ),
+            prev_bollinger_20_2=BollingerBandsPoint(
+                upper_band=Decimal("108.0000"),
+                middle_band=Decimal("100.0000"),
+                lower_band=Decimal("92.0000"),
+                bandwidth=Decimal("0.1600"),
+                percent_b=Decimal("0.8500"),
+            ),
+            atr_14=Decimal("2.0000"),
+        )
+        bo_report = generator.evaluate_from_snapshot(bo_snapshot)
+        bo_bb_comp = next(
+            c for c in bo_report.components if c.rule == SignalRuleType.VOLATILITY_BOLLINGER
+        )
+        self.assertEqual(bo_bb_comp.action, SignalAction.BUY)
+        self.assertEqual(bo_bb_comp.score, Decimal("0.8500"))
+
+    def test_signal_generator_neutral_regime_or_short_series_emits_hold(self) -> None:
+        """Verify sideways market (RSI=50, %B=0.50) or short 5-bar sequence emits HOLD with order_intent=None."""
+        generator = SignalGeneratorService()
+
+        # 1. Neutral lateral regime
+        neutral_snapshot = TechnicalIndicatorsSnapshot(
+            ticker="ALUA",
+            as_of=datetime(2026, 3, 18, 18, 0, tzinfo=timezone.utc),
+            close=Decimal("100.0000"),
+            ema_12=Decimal("100.0000"),
+            prev_ema_12=Decimal("100.0000"),
+            ema_26=Decimal("100.0000"),
+            prev_ema_26=Decimal("100.0000"),
+            sma_20=Decimal("100.0000"),
+            prev_sma_20=Decimal("100.0000"),
+            sma_50=Decimal("100.0000"),
+            prev_sma_50=Decimal("100.0000"),
+            rsi_14=Decimal("50.0000"),
+            prev_rsi_14=Decimal("50.0000"),
+            bollinger_20_2=BollingerBandsPoint(
+                upper_band=Decimal("105.0000"),
+                middle_band=Decimal("100.0000"),
+                lower_band=Decimal("95.0000"),
+                bandwidth=Decimal("0.1000"),
+                percent_b=Decimal("0.5000"),
+            ),
+            atr_14=Decimal("1.5000"),
+        )
+        neutral_report = generator.evaluate_from_snapshot(neutral_snapshot)
+        self.assertEqual(neutral_report.action, SignalAction.HOLD)
+        self.assertEqual(neutral_report.composite_score, Decimal("0.0000"))
+        self.assertEqual(neutral_report.conviction, Decimal("0.0000"))
+        self.assertIsNone(neutral_report.order_intent)
+        self.assertIsNone(neutral_report.stop_loss_price)
+        self.assertIsNone(neutral_report.take_profit_price)
+
+        # 2. End-to-end generate_signal with a short 5-bar sequence (no indicators available yet)
+        short_bars = [
+            _make_bar(idx, "100", "110", "99", str(100 + idx))
+            for idx in range(5)
+        ]
+        short_report = generator.generate_signal(short_bars, ticker="TXAR")
+        self.assertEqual(short_report.ticker, "TXAR")
+        self.assertEqual(short_report.action, SignalAction.HOLD)
+        self.assertEqual(short_report.composite_score, Decimal("0.0000"))
+        self.assertEqual(short_report.conviction, Decimal("0.0000"))
+        self.assertIsNone(short_report.order_intent)
+
+    def test_signal_generator_config_and_dto_invariants_validation(self) -> None:
+        """Verify SignalGeneratorConfig and OrderFSMIntent enforce domain and directional invariants."""
+        # 1. rsi_oversold >= rsi_overbought raises ValidationError
+        with self.assertRaises(ValidationError):
+            SignalGeneratorConfig(
+                rsi_oversold=Decimal("70.0000"),
+                rsi_overbought=Decimal("70.0000"),
+            )
+        with self.assertRaises(ValidationError):
+            SignalGeneratorConfig(
+                rsi_oversold=Decimal("75.0000"),
+                rsi_overbought=Decimal("65.0000"),
+            )
+        with self.assertRaises(ValidationError):
+            SignalGeneratorConfig(
+                bollinger_lower_percent_b=Decimal("0.9500"),
+                bollinger_upper_percent_b=Decimal("0.0500"),
+            )
+
+        # 2. Out-of-range min_conviction_threshold rejected
+        with self.assertRaises(ValidationError):
+            SignalGeneratorConfig(min_conviction_threshold=Decimal("0.0000"))
+        with self.assertRaises(ValidationError):
+            SignalGeneratorConfig(min_conviction_threshold=Decimal("1.5000"))
+
+        # 3. Extra fields forbidden on frozen BaseSchema DTOs
+        with self.assertRaises(ValidationError):
+            SignalGeneratorConfig(unknown_param="attack")  # type: ignore[call-arg]
+
+        # 4. OrderFSMIntent directional invariants for BUY vs SELL
+        with self.assertRaises(ValidationError):
+            # BUY with stop_loss >= reference_price must fail
+            OrderFSMIntent(
+                ticker="GGAL",
+                side="BUY",
+                reference_price=Decimal("100.0000"),
+                suggested_stop_loss=Decimal("101.0000"),
+                suggested_take_profit=Decimal("110.0000"),
+                signal_conviction=Decimal("0.8000"),
+            )
+        with self.assertRaises(ValidationError):
+            # SELL with stop_loss <= reference_price must fail
+            OrderFSMIntent(
+                ticker="GGAL",
+                side="SELL",
+                reference_price=Decimal("100.0000"),
+                suggested_stop_loss=Decimal("99.0000"),
+                suggested_take_profit=Decimal("90.0000"),
+                signal_conviction=Decimal("0.8000"),
+            )
+
+        # 5. OrderFSMIntent.to_order_payload rejects quantity <= 0 or boolean
+        valid_intent = OrderFSMIntent(
+            ticker="GGAL",
+            side="BUY",
+            reference_price=Decimal("100.0000"),
+            suggested_stop_loss=Decimal("95.0000"),
+            suggested_take_profit=Decimal("108.0000"),
+            signal_conviction=Decimal("0.7500"),
+        )
+        with self.assertRaises(InvalidSignalParametersError):
+            valid_intent.to_order_payload(Decimal("0"))
+        with self.assertRaises(InvalidSignalParametersError):
+            valid_intent.to_order_payload(Decimal("-10"))
+        with self.assertRaises(InvalidSignalParametersError):
+            valid_intent.to_order_payload(True)  # type: ignore[arg-type]
+
+        # 6. TradingSignalReport enforces HOLD <-> order_intent=None and BUY/SELL <-> matching order_intent
+        as_of_ts = datetime(2026, 3, 18, 18, 0, tzinfo=timezone.utc)
+        dummy_snapshot = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of_ts,
+            close=Decimal("100.0000"),
+        )
+        with self.assertRaises(ValidationError):
+            TradingSignalReport(
+                ticker="GGAL",
+                as_of=as_of_ts,
+                action=SignalAction.HOLD,
+                conviction=Decimal("0.0000"),
+                composite_score=Decimal("0.0000"),
+                reference_price=Decimal("100.0000"),
+                components=[],
+                order_intent=valid_intent,
+                indicators=dummy_snapshot,
+            )
+
+
