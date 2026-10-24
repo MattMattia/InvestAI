@@ -1,10 +1,10 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 21 de 26 Módulos Completados (80.8%) — Capítulos 1 a 6 completados al 100%; Capítulo 7 en progreso (Módulo 7.1 Fases 1 y 2 completadas)  
+> **Progreso Consolidado:** 22 de 26 Módulos Completados (84.6%) — Capítulos 1 a 6 completados al 100%; Capítulo 7 en progreso (Módulo 7.1 completado al 100%)  
 > **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5 y 6 (100% completados)  
 > **Capítulos Pendientes / En Progreso:** Capítulo 7 (en progreso), Capítulos 8 y 9  
-> **Calidad y Suite de Pruebas:** **370 tests pasando al 100% en verde (292 unitarios + 78 de integración)**  
+> **Calidad y Suite de Pruebas:** **376 tests pasando al 100% en verde (298 unitarios + 78 de integración)**  
 > **Última Actualización:** 2026-10-21
 
 ---
@@ -25,7 +25,7 @@
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
 | **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 293 tests (+88) |
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 3 / 3 | 9 / 9 | **COMPLETADO** | 359 tests (+66) |
-| **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 0 / 3 | 2 / 9 | **EN PROGRESO** | 370 tests (+11) |
+| **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 1 / 3 | 3 / 9 | **EN PROGRESO** | 376 tests (+17) |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
 | **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 
@@ -150,10 +150,10 @@
 ---
 
 ### CAPÍTULO 7: Motores Cuantitativos Avanzados, Señales y Valuación Mark-to-Market
-- [ ] **Módulo 7.1: Indicadores Técnicos y Generador de Señales Cuantitativas**
+- [x] **Módulo 7.1: Indicadores Técnicos y Generador de Señales Cuantitativas**
   - [x] Fase 1: Biblioteca de Indicadores Numéricos Vectorizados (`backend/app/domain/services/technical_indicators.py`, `backend/tests/unit/test_technical_indicators.py` — SMA, EMA, RSI Wilder, Bollinger, ATR y `TechnicalIndicatorsSnapshot` con 6 pruebas unitarias)
   - [x] Fase 2: Motor de Generación de Señales de Negociación (`backend/app/domain/services/signal_generator.py`, `backend/tests/unit/test_technical_indicators.py` — reglas deterministas EMA/SMA/RSI/Bollinger, dimensionamiento ATR y `OrderFSMIntent` con 5 pruebas unitarias nuevas; 11 total en el módulo)
-  - [ ] Fase 3: Pruebas Unitarias de Precisión Numérica contra Benchmarks
+  - [x] Fase 3: Pruebas Unitarias de Precisión Numérica contra Benchmarks (`backend/tests/unit/test_technical_indicators.py`, `backend/app/domain/services/__init__.py` — endurecimiento de precisión intermedia `localcontext(prec=50)`, re-exportación limpia y 6 pruebas analíticas de benchmark y estrés; 17 pruebas totales cerrando el Módulo 7.1 al 100%)
 - [ ] **Módulo 7.2: Valuación Patrimonial Dinámica y PnL Multimoneda (TWR / MWR)**
   - [ ] Fase 1: Motor de Valuación Mark-to-Market Bimoneda (`portfolio_valuation_service.py`)
   - [ ] Fase 2: Métricas de Rendimiento Ponderado (Time-Weighted Return y Money-Weighted Return)
@@ -197,14 +197,15 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 7 — Módulo 7.1 (Fase 3): Suite Exhaustiva de Pruebas de Precisión contra Series de Benchmark Precalculadas y Cierre del Módulo 7.1 (`backend/tests/unit/test_technical_indicators.py`)**  
-> **Prioridad:** Alta (Cierre del Módulo 7.1 tras completar la Fase 2 con 370 tests en verde)  
-> **Objetivo:** Implementar pruebas exhaustivas de precisión numérica contra series de benchmark precalculadas, estrés sobre regímenes extremos de volatilidad/gaps y validación integral de extremo a extremo entre `TechnicalIndicatorsService` y `SignalGeneratorService`, cerrando el Módulo 7.1 al 100%.
+> **Foco Actual:** **CAPÍTULO 7 — Módulo 7.2 (Fase 1): Motor de Valuación Patrimonial Dinámica Mark-to-Market y Rendimientos `TWR` / `MWR` Bimoneda (`backend/app/domain/services/portfolio_valuation_service.py`)**  
+> **Prioridad:** Alta (Inicio del Módulo 7.2 tras cerrar el Módulo 7.1 al 100% con 376 tests en verde)  
+> **Objetivo:** Implementar el motor de valuación patrimonial dinámica Mark-to-Market bimoneda (`ARS` / `USD`) integrando conversión cambiaria implícita (Dólar MEP / CCL vía `fx_calculator.py`), desglose de PnL latente (no realizado) y PnL realizado con trazabilidad de comisiones e IVA.
 
 ### Hoja de Ruta Inmediata para el Capítulo 7:
-1. **Módulo 7.1 (Fase 3)**: Implementar la suite exhaustiva de pruebas unitarias de precisión numérica contra benchmarks (`backend/tests/unit/test_technical_indicators.py`) y cerrar el Módulo 7.1.
-2. **Módulo 7.2 (Fase 1)**: Implementar el motor de valuación Mark-to-Market bimoneda (`backend/app/domain/services/portfolio_valuation_service.py`).
-3. **Módulo 7.2 (Fase 2)**: Implementar las métricas de rendimiento ponderado en el tiempo y por dinero (`TWR` / `MWR`).
+1. **Módulo 7.2 (Fase 1)**: Implementar el motor de valuación Mark-to-Market bimoneda (`backend/app/domain/services/portfolio_valuation_service.py`).
+2. **Módulo 7.2 (Fase 2)**: Implementar las métricas de rendimiento ponderado en el tiempo y por dinero (`TWR` / `MWR`).
+3. **Módulo 7.2 (Fase 3)**: Implementar las pruebas unitarias y de integración con saltos cambiarios (`backend/tests/unit/test_portfolio_valuation.py`).
+
 
 
 

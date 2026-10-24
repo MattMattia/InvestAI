@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
 import math
 from typing import Any, TypeVar
 
@@ -26,6 +26,7 @@ T = TypeVar("T")
 # Quantitative Constants & Defensive Security Boundaries
 # ============================================================================
 INDICATOR_QUANTIZE: Decimal = Decimal("0.0001")
+INTERMEDIATE_DECIMAL_PRECISION: int = 50
 MAX_BARS_SERIES_LENGTH: int = 50_000
 MAX_VALID_BAR_PRICE: Decimal = Decimal("1000000000000")  # 10^12 ceiling
 
@@ -54,10 +55,13 @@ class InvalidMarketBarSequenceError(TechnicalIndicatorError):
 # ============================================================================
 def _quantize(value: Decimal) -> Decimal:
     """
-    Quantize a `Decimal` to 4 decimal places (`0.0001`, `ROUND_HALF_UP`),
-    normalizing negative zero (`-0.0000`) to positive `Decimal("0.0000")`.
+    Quantize a `Decimal` to 4 decimal places (`0.0001`, `ROUND_HALF_UP`)
+    under a 50-digit intermediate precision context, normalizing negative zero
+    (`-0.0000`) to positive `Decimal("0.0000")`.
     """
-    quantized = value.quantize(INDICATOR_QUANTIZE, rounding=ROUND_HALF_UP)
+    with localcontext() as ctx:
+        ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+        quantized = value.quantize(INDICATOR_QUANTIZE, rounding=ROUND_HALF_UP)
     if quantized == Decimal("0"):
         return Decimal("0.0000")
     return quantized
@@ -457,13 +461,15 @@ class TechnicalIndicatorsService:
                 f"got {len(closes)}."
             )
 
-        period_dec = Decimal(period)
-        window_sum = sum(closes[:period], Decimal("0"))
-        sma_values: list[Decimal] = [self._quantize(window_sum / period_dec)]
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            period_dec = Decimal(period)
+            window_sum = sum(closes[:period], Decimal("0"))
+            sma_values: list[Decimal] = [self._quantize(window_sum / period_dec)]
 
-        for idx in range(period, len(closes)):
-            window_sum += closes[idx] - closes[idx - period]
-            sma_values.append(self._quantize(window_sum / period_dec))
+            for idx in range(period, len(closes)):
+                window_sum += closes[idx] - closes[idx - period]
+                sma_values.append(self._quantize(window_sum / period_dec))
 
         return sma_values
 
@@ -487,15 +493,17 @@ class TechnicalIndicatorsService:
                 f"got {len(closes)}."
             )
 
-        period_dec = Decimal(period)
-        alpha = Decimal("2") / Decimal(period + 1)
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            period_dec = Decimal(period)
+            alpha = Decimal("2") / Decimal(period + 1)
 
-        ema = sum(closes[:period], Decimal("0")) / period_dec
-        ema_values: list[Decimal] = [self._quantize(ema)]
+            ema = sum(closes[:period], Decimal("0")) / period_dec
+            ema_values: list[Decimal] = [self._quantize(ema)]
 
-        for price in closes[period:]:
-            ema = (price - ema) * alpha + ema
-            ema_values.append(self._quantize(ema))
+            for price in closes[period:]:
+                ema = (price - ema) * alpha + ema
+                ema_values.append(self._quantize(ema))
 
         return ema_values
 
@@ -523,31 +531,33 @@ class TechnicalIndicatorsService:
                 f"({period} price changes), got {len(closes)}."
             )
 
-        deltas: list[Decimal] = [
-            closes[i] - closes[i - 1] for i in range(1, len(closes))
-        ]
-        period_dec = Decimal(period)
-        prev_weight = Decimal(period - 1)
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            deltas: list[Decimal] = [
+                closes[i] - closes[i - 1] for i in range(1, len(closes))
+            ]
+            period_dec = Decimal(period)
+            prev_weight = Decimal(period - 1)
 
-        avg_gain = (
-            sum((max(d, Decimal("0")) for d in deltas[:period]), Decimal("0"))
-            / period_dec
-        )
-        avg_loss = (
-            sum((max(-d, Decimal("0")) for d in deltas[:period]), Decimal("0"))
-            / period_dec
-        )
+            avg_gain = (
+                sum((max(d, Decimal("0")) for d in deltas[:period]), Decimal("0"))
+                / period_dec
+            )
+            avg_loss = (
+                sum((max(-d, Decimal("0")) for d in deltas[:period]), Decimal("0"))
+                / period_dec
+            )
 
-        rsi_values: list[Decimal] = [
-            self._compute_rsi_from_averages(avg_gain, avg_loss)
-        ]
+            rsi_values: list[Decimal] = [
+                self._compute_rsi_from_averages(avg_gain, avg_loss)
+            ]
 
-        for delta in deltas[period:]:
-            gain = max(delta, Decimal("0"))
-            loss = max(-delta, Decimal("0"))
-            avg_gain = (avg_gain * prev_weight + gain) / period_dec
-            avg_loss = (avg_loss * prev_weight + loss) / period_dec
-            rsi_values.append(self._compute_rsi_from_averages(avg_gain, avg_loss))
+            for delta in deltas[period:]:
+                gain = max(delta, Decimal("0"))
+                loss = max(-delta, Decimal("0"))
+                avg_gain = (avg_gain * prev_weight + gain) / period_dec
+                avg_loss = (avg_loss * prev_weight + loss) / period_dec
+                rsi_values.append(self._compute_rsi_from_averages(avg_gain, avg_loss))
 
         return rsi_values
 
@@ -563,9 +573,11 @@ class TechnicalIndicatorsService:
         if avg_gain == Decimal("0"):
             return Decimal("0.0000")
 
-        rs = avg_gain / avg_loss
-        raw_rsi = Decimal("100") - (Decimal("100") / (Decimal("1") + rs))
-        quantized = cls._quantize(raw_rsi)
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            rs = avg_gain / avg_loss
+            raw_rsi = Decimal("100") - (Decimal("100") / (Decimal("1") + rs))
+            quantized = cls._quantize(raw_rsi)
         if quantized < Decimal("0.0000"):
             return Decimal("0.0000")
         if quantized > Decimal("100.0000"):
@@ -630,43 +642,45 @@ class TechnicalIndicatorsService:
         denom_dec = Decimal(period - ddof)
         points: list[BollingerBandsPoint] = []
 
-        for start_idx in range(len(closes) - period + 1):
-            end_idx = start_idx + period - 1
-            window = closes[start_idx : start_idx + period]
-            mean = sum(window, Decimal("0")) / period_dec
-            variance = (
-                sum(((x - mean) ** 2 for x in window), Decimal("0")) / denom_dec
-            )
-            std_dev = variance.sqrt()
-
-            middle_band = self._quantize(mean)
-            upper_band = self._quantize(mean + k_mult * std_dev)
-            lower_band = self._quantize(mean - k_mult * std_dev)
-
-            # Guard sub-pip rounding ties
-            if upper_band < middle_band:
-                upper_band = middle_band
-            if lower_band > middle_band:
-                lower_band = middle_band
-
-            band_span = upper_band - lower_band
-            if band_span == Decimal("0"):
-                bandwidth = Decimal("0.0000")
-                percent_b = Decimal("0.5000")
-            else:
-                bandwidth = self._quantize(band_span / middle_band)
-                percent_b = self._quantize((window[-1] - lower_band) / band_span)
-
-            points.append(
-                BollingerBandsPoint(
-                    timestamp=timestamps[end_idx],
-                    upper_band=upper_band,
-                    middle_band=middle_band,
-                    lower_band=lower_band,
-                    bandwidth=bandwidth,
-                    percent_b=percent_b,
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            for start_idx in range(len(closes) - period + 1):
+                end_idx = start_idx + period - 1
+                window = closes[start_idx : start_idx + period]
+                mean = sum(window, Decimal("0")) / period_dec
+                variance = (
+                    sum(((x - mean) ** 2 for x in window), Decimal("0")) / denom_dec
                 )
-            )
+                std_dev = variance.sqrt()
+
+                middle_band = self._quantize(mean)
+                upper_band = self._quantize(mean + k_mult * std_dev)
+                lower_band = self._quantize(mean - k_mult * std_dev)
+
+                # Guard sub-pip rounding ties
+                if upper_band < middle_band:
+                    upper_band = middle_band
+                if lower_band > middle_band:
+                    lower_band = middle_band
+
+                band_span = upper_band - lower_band
+                if band_span == Decimal("0"):
+                    bandwidth = Decimal("0.0000")
+                    percent_b = Decimal("0.5000")
+                else:
+                    bandwidth = self._quantize(band_span / middle_band)
+                    percent_b = self._quantize((window[-1] - lower_band) / band_span)
+
+                points.append(
+                    BollingerBandsPoint(
+                        timestamp=timestamps[end_idx],
+                        upper_band=upper_band,
+                        middle_band=middle_band,
+                        lower_band=lower_band,
+                        bandwidth=bandwidth,
+                        percent_b=percent_b,
+                    )
+                )
 
         return points
 
@@ -693,34 +707,36 @@ class TechnicalIndicatorsService:
                 f"got {len(sorted_bars)}."
             )
 
-        true_ranges: list[Decimal] = []
-        first_high = self._to_positive_decimal(sorted_bars[0].high, "high")
-        first_low = self._to_positive_decimal(sorted_bars[0].low, "low")
-        prev_close = self._to_positive_decimal(sorted_bars[0].close, "close")
-        true_ranges.append(first_high - first_low)
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            true_ranges: list[Decimal] = []
+            first_high = self._to_positive_decimal(sorted_bars[0].high, "high")
+            first_low = self._to_positive_decimal(sorted_bars[0].low, "low")
+            prev_close = self._to_positive_decimal(sorted_bars[0].close, "close")
+            true_ranges.append(first_high - first_low)
 
-        for bar in sorted_bars[1:]:
-            high_p = self._to_positive_decimal(bar.high, "high")
-            low_p = self._to_positive_decimal(bar.low, "low")
-            close_p = self._to_positive_decimal(bar.close, "close")
+            for bar in sorted_bars[1:]:
+                high_p = self._to_positive_decimal(bar.high, "high")
+                low_p = self._to_positive_decimal(bar.low, "low")
+                close_p = self._to_positive_decimal(bar.close, "close")
 
-            tr = max(
-                high_p - low_p,
-                abs(high_p - prev_close),
-                abs(low_p - prev_close),
-            )
-            true_ranges.append(tr)
-            prev_close = close_p
+                tr = max(
+                    high_p - low_p,
+                    abs(high_p - prev_close),
+                    abs(low_p - prev_close),
+                )
+                true_ranges.append(tr)
+                prev_close = close_p
 
-        period_dec = Decimal(period)
-        prev_weight = Decimal(period - 1)
+            period_dec = Decimal(period)
+            prev_weight = Decimal(period - 1)
 
-        atr = sum(true_ranges[:period], Decimal("0")) / period_dec
-        atr_values: list[Decimal] = [self._quantize(atr)]
+            atr = sum(true_ranges[:period], Decimal("0")) / period_dec
+            atr_values: list[Decimal] = [self._quantize(atr)]
 
-        for tr_val in true_ranges[period:]:
-            atr = (atr * prev_weight + tr_val) / period_dec
-            atr_values.append(self._quantize(atr))
+            for tr_val in true_ranges[period:]:
+                atr = (atr * prev_weight + tr_val) / period_dec
+                atr_values.append(self._quantize(atr))
 
         return atr_values
 

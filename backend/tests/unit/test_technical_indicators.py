@@ -1,7 +1,8 @@
 """
-Unit test suite for Module 7.1 (Phases 1 & 2):
+Unit test suite for Module 7.1 (Phases 1, 2 & 3):
 - Vectorized Technical Indicators Library (`backend/app/domain/services/technical_indicators.py`)
 - Trading Signal Generation Engine (`backend/app/domain/services/signal_generator.py`)
+- Analytical Benchmark Reference Series & Scale Boundary Stress Tests
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ import unittest
 from pydantic import ValidationError
 import pytest
 
+import app.domain.services as domain_services_pkg
 from app.domain.services.signal_generator import (
     InvalidSignalParametersError,
     OrderFSMIntent,
@@ -23,12 +25,14 @@ from app.domain.services.signal_generator import (
     TradingSignalReport,
 )
 from app.domain.services.technical_indicators import (
+    MAX_VALID_BAR_PRICE,
     BollingerBandsPoint,
     InsufficientMarketDataError,
     InvalidIndicatorParameterError,
     InvalidMarketBarSequenceError,
     TechnicalIndicatorsService,
     TechnicalIndicatorsSnapshot,
+    _quantize,
 )
 from app.schemas.market_data import MarketBarDTO
 
@@ -706,5 +710,424 @@ class TestTechnicalIndicators(unittest.TestCase):
                 order_intent=valid_intent,
                 indicators=dummy_snapshot,
             )
+
+    def test_benchmark_wilder_14_period_rsi_and_atr_step_by_step_reference(self) -> None:
+        """
+        Verify Wilder RSI(14) and ATR(14) over an 18-bar OHLC benchmark series
+        against analytically precalculated arithmetic seed and recursive Wilder
+        smoothing (alpha = 1/14) reference values.
+        """
+        # First 14 price changes (bars 0 -> 14): 10 gains of +2.0 and 4 losses of -1.5
+        # Close progression:
+        # t=0: 100.0
+        # t=1..10: +2.0 each -> 102, 104, 106, 108, 110, 112, 114, 116, 118, 120
+        # t=11..14: -1.5 each -> 118.5, 117.0, 115.5, 114.0
+        # t=15: +8.0 (122.0), t=16: -7.5 (114.5), t=17: +3.5 (118.0)
+        closes_18 = [
+            Decimal("100.0"),
+            Decimal("102.0"),
+            Decimal("104.0"),
+            Decimal("106.0"),
+            Decimal("108.0"),
+            Decimal("110.0"),
+            Decimal("112.0"),
+            Decimal("114.0"),
+            Decimal("116.0"),
+            Decimal("118.0"),
+            Decimal("120.0"),
+            Decimal("118.5"),
+            Decimal("117.0"),
+            Decimal("115.5"),
+            Decimal("114.0"),
+            Decimal("122.0"),
+            Decimal("114.5"),
+            Decimal("118.0"),
+        ]
+
+        # Build 18 OHLC bars with exact True Ranges:
+        # Bars 0..13 (first 14 bars): TR = 4.0000 each -> ATR_0 (seed at t=13) = 4.0000
+        # Bar 14 (C_13=115.5, C_14=114.0): H=119.5, L=112.5 -> TR_14 = 7.0000
+        # Bar 15 (C_14=114.0, C_15=122.0, overnight gap up!): O=120.0, H=124.0, L=120.0 -> |H-C_14| = 10.0000
+        # Bar 16 (C_15=122.0, C_16=114.5): O=118.0, H=123.0, L=114.0 -> TR_16 = 9.0000
+        # Bar 17 (C_16=114.5, C_17=118.0): O=115.0, H=119.5, L=113.5 -> TR_17 = 6.0000
+        bars_18: list[MarketBarDTO] = []
+        for idx in range(14):
+            c_val = closes_18[idx]
+            prev_c = closes_18[idx - 1] if idx > 0 else c_val
+            hi = max(c_val, prev_c) + Decimal("1.0")
+            lo = hi - Decimal("4.0")
+            bars_18.append(_make_bar(idx, c_val, hi, lo, c_val))
+
+        bars_18.append(_make_bar(14, "114.5", "119.5", "112.5", "114.0"))
+        bars_18.append(_make_bar(15, "120.0", "124.0", "120.0", "122.0"))
+        bars_18.append(_make_bar(16, "118.0", "123.0", "114.0", "114.5"))
+        bars_18.append(_make_bar(17, "115.0", "119.5", "113.5", "118.0"))
+
+        rsi_14 = self.service.calculate_wilder_rsi(bars_18, period=14)
+        # Analytical reference values:
+        # t=14 (seed): AvgGain=20/14, AvgLoss=6/14 -> RS=10/3 -> RSI = 1000/13 = 76.9231
+        # t=15 (+8.0): AvgGain=372/196, AvgLoss=78/196 -> RS=62/13 -> RSI = 248/3 = 82.6667
+        # t=16 (-7.5): AvgGain=4836/2744, AvgLoss=2484/2744 -> RS=403/207 -> RSI = 4030/61 = 66.0656
+        # t=17 (+3.5): AvgGain=72472/38416, AvgLoss=32292/38416 -> RS=18118/8073 -> RSI = 69.1764
+        self.assertEqual(
+            rsi_14,
+            [
+                Decimal("76.9231"),
+                Decimal("82.6667"),
+                Decimal("66.0656"),
+                Decimal("69.1764"),
+            ],
+        )
+
+        atr_14 = self.service.calculate_atr(bars_18, period=14)
+        # Analytical reference values:
+        # t=13 (seed): 56/14 = 4.0000
+        # t=14 (TR=7): (4*13 + 7)/14 = 59/14 = 4.2143
+        # t=15 (TR=10): (59/14*13 + 10)/14 = 907/196 = 4.6276
+        # t=16 (TR=9): (907/196*13 + 9)/14 = 13555/2744 = 4.9399
+        # t=17 (TR=6): (13555/2744*13 + 6)/14 = 192679/38416 = 5.0156
+        self.assertEqual(
+            atr_14,
+            [
+                Decimal("4.0000"),
+                Decimal("4.2143"),
+                Decimal("4.6276"),
+                Decimal("4.9399"),
+                Decimal("5.0156"),
+            ],
+        )
+
+    def test_benchmark_sma_ema_linear_progression_and_asymptotic_lag_identity(self) -> None:
+        """
+        Verify SMA(5) and EMA(5) over a linear arithmetic progression P_t = 100 + 2t
+        and over a flat-to-linear ramp against exact recurrence and lag identities.
+        """
+        # 1. Pure linear progression P_t = 100 + 2t for t = 0..9
+        linear_prices = [Decimal(100 + 2 * t) for t in range(10)]
+        sma_5 = self.service.calculate_sma(linear_prices, period=5)
+        ema_5 = self.service.calculate_ema(linear_prices, period=5)
+
+        expected_linear = [
+            Decimal("104.0000"),
+            Decimal("106.0000"),
+            Decimal("108.0000"),
+            Decimal("110.0000"),
+            Decimal("112.0000"),
+            Decimal("114.0000"),
+        ]
+        self.assertEqual(sma_5, expected_linear)
+        self.assertEqual(ema_5, expected_linear)
+        # Theoretical steady-state lag for period=5 and slope=2 is ((5-1)/2)*2 = 4.0000
+        for idx, val in enumerate(ema_5):
+            current_price = linear_prices[idx + 4]
+            self.assertEqual(current_price - val, Decimal("4.0000"))
+
+        # 2. Flat seed followed by linear ramp: [100, 100, 100, 100, 100, 102, 104, 106, 108]
+        ramp_prices = [
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("102"),
+            Decimal("104"),
+            Decimal("106"),
+            Decimal("108"),
+        ]
+        ramp_ema_5 = self.service.calculate_ema(ramp_prices, period=5)
+        # Exact alpha = 1/3 recurrence:
+        # t=4: 100.0000
+        # t=5 (102): 302/3 = 100.6667
+        # t=6 (104): 916/9 = 101.7778
+        # t=7 (106): 2786/27 = 103.1852
+        # t=8 (108): 8488/81 = 104.7901
+        self.assertEqual(
+            ramp_ema_5,
+            [
+                Decimal("100.0000"),
+                Decimal("100.6667"),
+                Decimal("101.7778"),
+                Decimal("103.1852"),
+                Decimal("104.7901"),
+            ],
+        )
+
+    def test_benchmark_bollinger_bands_population_ddof0_vs_sample_ddof1_bessel_ratio(self) -> None:
+        """
+        Compare Bollinger Bands with ddof=0 vs ddof=1 over a 5-price window and verify
+        Bessel's ratio sqrt(5/4) scaling on half-width and bandwidth.
+        """
+        window_5 = [
+            Decimal("100"),
+            Decimal("102"),
+            Decimal("104"),
+            Decimal("106"),
+            Decimal("108"),
+        ]
+        bb_pop = self.service.calculate_bollinger_bands(
+            window_5, period=5, num_std_dev=Decimal("2"), ddof=0
+        )[0]
+        bb_samp = self.service.calculate_bollinger_bands(
+            window_5, period=5, num_std_dev=Decimal("2"), ddof=1
+        )[0]
+
+        # Exact precalculated ddof=0 values (sigma = sqrt(8)):
+        self.assertEqual(bb_pop.middle_band, Decimal("104.0000"))
+        self.assertEqual(bb_pop.upper_band, Decimal("109.6569"))
+        self.assertEqual(bb_pop.lower_band, Decimal("98.3431"))
+        self.assertEqual(bb_pop.bandwidth, Decimal("0.1088"))
+        self.assertEqual(bb_pop.percent_b, Decimal("0.8536"))
+
+        # Exact precalculated ddof=1 values (s = sqrt(10)):
+        self.assertEqual(bb_samp.middle_band, Decimal("104.0000"))
+        self.assertEqual(bb_samp.upper_band, Decimal("110.3246"))
+        self.assertEqual(bb_samp.lower_band, Decimal("97.6754"))
+        self.assertEqual(bb_samp.bandwidth, Decimal("0.1216"))
+        self.assertEqual(bb_samp.percent_b, Decimal("0.8162"))
+
+        # Bessel correction factor sqrt(5 / 4) = sqrt(1.25)
+        bessel_factor = (Decimal("5") / Decimal("4")).sqrt()
+        pop_half_width = bb_pop.upper_band - bb_pop.middle_band
+        samp_half_width = bb_samp.upper_band - bb_samp.middle_band
+        self.assertLessEqual(
+            abs(samp_half_width - (pop_half_width * bessel_factor)),
+            Decimal("0.0001"),
+        )
+        self.assertLessEqual(
+            abs(bb_samp.bandwidth - (bb_pop.bandwidth * bessel_factor)),
+            Decimal("0.0001"),
+        )
+
+    def test_signal_generator_progressive_window_activation_matrix(self) -> None:
+        """
+        Verify progressive rule activation across series prefixes of length
+        N = 5, 15, 20, 26, and 55 bars.
+        """
+        bars_55 = [
+            _make_bar(
+                idx,
+                Decimal(100 + idx),
+                Decimal(103 + idx),
+                Decimal(98 + idx),
+                Decimal(101 + idx),
+            )
+            for idx in range(55)
+        ]
+        generator = SignalGeneratorService()
+
+        # N = 5: 0 active rules -> HOLD, composite_score == 0.0000, components == []
+        rep_5 = generator.generate_signal(bars_55[:5], ticker="GGAL")
+        self.assertEqual(rep_5.action, SignalAction.HOLD)
+        self.assertEqual(rep_5.composite_score, Decimal("0.0000"))
+        self.assertEqual(rep_5.components, [])
+
+        # N = 15: 1 active rule (RSI_REGIME)
+        rep_15 = generator.generate_signal(bars_55[:15], ticker="GGAL")
+        self.assertEqual(
+            [c.rule for c in rep_15.components],
+            [SignalRuleType.RSI_REGIME],
+        )
+
+        # N = 20: 3 active rules (SMA_TREND via sma_20, RSI_REGIME, VOLATILITY_BOLLINGER)
+        rep_20 = generator.generate_signal(bars_55[:20], ticker="GGAL")
+        self.assertEqual(
+            [c.rule for c in rep_20.components],
+            [
+                SignalRuleType.SMA_TREND,
+                SignalRuleType.RSI_REGIME,
+                SignalRuleType.VOLATILITY_BOLLINGER,
+            ],
+        )
+        self.assertIsNotNone(rep_20.indicators.sma_20)
+        self.assertIsNone(rep_20.indicators.sma_50)
+
+        # N = 26: 4 active rules (EMA_CROSSOVER joins)
+        rep_26 = generator.generate_signal(bars_55[:26], ticker="GGAL")
+        self.assertEqual(
+            [c.rule for c in rep_26.components],
+            [
+                SignalRuleType.EMA_CROSSOVER,
+                SignalRuleType.SMA_TREND,
+                SignalRuleType.RSI_REGIME,
+                SignalRuleType.VOLATILITY_BOLLINGER,
+            ],
+        )
+        self.assertIsNotNone(rep_26.indicators.ema_12)
+        self.assertIsNotNone(rep_26.indicators.ema_26)
+        self.assertIsNone(rep_26.indicators.sma_50)
+
+        # N = 55: 4 active rules with full SMA(20) and SMA(50) pair active
+        rep_55 = generator.generate_signal(bars_55, ticker="GGAL")
+        self.assertEqual(len(rep_55.components), 4)
+        self.assertIsNotNone(rep_55.indicators.sma_20)
+        self.assertIsNotNone(rep_55.indicators.sma_50)
+        self.assertIsNotNone(rep_55.indicators.prev_sma_50)
+
+    def test_signal_generator_golden_cross_and_death_cross_exact_transition_bars(self) -> None:
+        """
+        Verify exact score transition from crossover bar t (score = ±1.0000) to
+        continuation bar t+1 (EMA score = ±0.4000, SMA score = ±0.6000).
+        """
+        generator = SignalGeneratorService()
+        as_of_t = datetime(2026, 4, 1, 18, 0, tzinfo=timezone.utc)
+        as_of_t1 = datetime(2026, 4, 2, 18, 0, tzinfo=timezone.utc)
+
+        # 1. Bullish Golden Cross at bar t -> Continuation at bar t+1
+        golden_cross_t = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of_t,
+            close=Decimal("105.0000"),
+            ema_12=Decimal("101.0000"),
+            prev_ema_12=Decimal("100.0000"),
+            ema_26=Decimal("100.5000"),
+            prev_ema_26=Decimal("100.0000"),
+            sma_20=Decimal("102.0000"),
+            prev_sma_20=Decimal("99.5000"),
+            sma_50=Decimal("101.0000"),
+            prev_sma_50=Decimal("99.5000"),
+        )
+        rep_gc_t = generator.evaluate_from_snapshot(golden_cross_t)
+        ema_gc_t = next(c for c in rep_gc_t.components if c.rule == SignalRuleType.EMA_CROSSOVER)
+        sma_gc_t = next(c for c in rep_gc_t.components if c.rule == SignalRuleType.SMA_TREND)
+        self.assertEqual(ema_gc_t.score, Decimal("1.0000"))
+        self.assertEqual(sma_gc_t.score, Decimal("1.0000"))
+
+        golden_cont_t1 = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of_t1,
+            close=Decimal("106.0000"),
+            ema_12=Decimal("102.0000"),
+            prev_ema_12=Decimal("101.0000"),
+            ema_26=Decimal("101.0000"),
+            prev_ema_26=Decimal("100.5000"),
+            sma_20=Decimal("103.0000"),
+            prev_sma_20=Decimal("102.0000"),
+            sma_50=Decimal("101.5000"),
+            prev_sma_50=Decimal("101.0000"),
+        )
+        rep_gc_t1 = generator.evaluate_from_snapshot(golden_cont_t1)
+        ema_gc_t1 = next(c for c in rep_gc_t1.components if c.rule == SignalRuleType.EMA_CROSSOVER)
+        sma_gc_t1 = next(c for c in rep_gc_t1.components if c.rule == SignalRuleType.SMA_TREND)
+        self.assertEqual(ema_gc_t1.score, Decimal("0.4000"))
+        self.assertEqual(sma_gc_t1.score, Decimal("0.6000"))
+
+        # 2. Bearish Death Cross at bar t -> Continuation at bar t+1
+        death_cross_t = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of_t,
+            close=Decimal("95.0000"),
+            ema_12=Decimal("99.0000"),
+            prev_ema_12=Decimal("100.0000"),
+            ema_26=Decimal("99.5000"),
+            prev_ema_26=Decimal("100.0000"),
+            sma_20=Decimal("98.0000"),
+            prev_sma_20=Decimal("100.5000"),
+            sma_50=Decimal("99.0000"),
+            prev_sma_50=Decimal("100.5000"),
+        )
+        rep_dc_t = generator.evaluate_from_snapshot(death_cross_t)
+        ema_dc_t = next(c for c in rep_dc_t.components if c.rule == SignalRuleType.EMA_CROSSOVER)
+        sma_dc_t = next(c for c in rep_dc_t.components if c.rule == SignalRuleType.SMA_TREND)
+        self.assertEqual(ema_dc_t.score, Decimal("-1.0000"))
+        self.assertEqual(sma_dc_t.score, Decimal("-1.0000"))
+
+        death_cont_t1 = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of_t1,
+            close=Decimal("94.0000"),
+            ema_12=Decimal("98.0000"),
+            prev_ema_12=Decimal("99.0000"),
+            ema_26=Decimal("99.0000"),
+            prev_ema_26=Decimal("99.5000"),
+            sma_20=Decimal("97.0000"),
+            prev_sma_20=Decimal("98.0000"),
+            sma_50=Decimal("98.5000"),
+            prev_sma_50=Decimal("99.0000"),
+        )
+        rep_dc_t1 = generator.evaluate_from_snapshot(death_cont_t1)
+        ema_dc_t1 = next(c for c in rep_dc_t1.components if c.rule == SignalRuleType.EMA_CROSSOVER)
+        sma_dc_t1 = next(c for c in rep_dc_t1.components if c.rule == SignalRuleType.SMA_TREND)
+        self.assertEqual(ema_dc_t1.score, Decimal("-0.4000"))
+        self.assertEqual(sma_dc_t1.score, Decimal("-0.6000"))
+
+    def test_long_series_500_bars_numerical_stability_and_scale_boundaries(self) -> None:
+        """
+        Verify 500-bar series stability, upper price ceiling (10^12) precision safety,
+        microscopic price (0.0001) bracket degradation, and domain package re-exports.
+        """
+        generator = SignalGeneratorService()
+
+        # 1. 500-bar deterministic series
+        bars_500: list[MarketBarDTO] = []
+        for idx in range(500):
+            wave = Decimal((idx % 17) - 8) * Decimal("0.75")
+            base_c = Decimal("150.0000") + Decimal(idx) * Decimal("0.25") + wave
+            open_p = base_c - Decimal("0.50")
+            high_p = base_c + Decimal("2.25")
+            low_p = base_c - Decimal("2.00")
+            bars_500.append(_make_bar(idx, open_p, high_p, low_p, base_c))
+
+        snap_500 = self.service.compute_snapshot(bars_500, ticker="SPY")
+        rep_500 = generator.generate_signal(bars_500, ticker="SPY")
+        expected_last_sma20 = _quantize(
+            sum((b.close for b in bars_500[-20:]), Decimal("0")) / Decimal("20")
+        )
+        self.assertEqual(snap_500.sma_20, expected_last_sma20)
+        self.assertEqual(rep_500.indicators.sma_20, expected_last_sma20)
+        self.assertEqual(len(rep_500.components), 4)
+
+        # 2. Upper scale boundary: prices up to MAX_VALID_BAR_PRICE (10^12)
+        upper_bars: list[MarketBarDTO] = []
+        for idx in range(30):
+            c_val = MAX_VALID_BAR_PRICE - Decimal((30 - idx) * 1_000_000)
+            hi_val = min(MAX_VALID_BAR_PRICE, c_val + Decimal("500000"))
+            lo_val = c_val - Decimal("500000")
+            upper_bars.append(_make_bar(idx, c_val, hi_val, lo_val, c_val))
+
+        bb_upper = self.service.calculate_bollinger_bands(upper_bars, period=20)
+        self.assertEqual(len(bb_upper), 11)
+        upper_rep = generator.generate_signal(upper_bars, ticker="BRK.A")
+        self.assertIsNotNone(upper_rep.indicators.bollinger_20_2)
+
+        # 3. Lower scale boundary: microscopic price close == Decimal("0.0001")
+        micro_as_of = datetime(2026, 5, 1, 18, 0, tzinfo=timezone.utc)
+        micro_buy_snapshot = TechnicalIndicatorsSnapshot(
+            ticker="PENNY",
+            as_of=micro_as_of,
+            close=Decimal("0.0001"),
+            rsi_14=Decimal("20.0000"),
+            atr_14=Decimal("0.0005"),
+        )
+        micro_buy_report = generator.evaluate_from_snapshot(micro_buy_snapshot)
+        self.assertEqual(micro_buy_report.action, SignalAction.BUY)
+        self.assertIsNone(micro_buy_report.stop_loss_price)
+        self.assertIsNotNone(micro_buy_report.take_profit_price)
+        assert micro_buy_report.order_intent is not None
+        self.assertIsNone(micro_buy_report.order_intent.suggested_stop_loss)
+
+        micro_sell_snapshot = TechnicalIndicatorsSnapshot(
+            ticker="PENNY",
+            as_of=micro_as_of,
+            close=Decimal("0.0001"),
+            rsi_14=Decimal("85.0000"),
+            atr_14=Decimal("0.0005"),
+        )
+        micro_sell_report = generator.evaluate_from_snapshot(micro_sell_snapshot)
+        self.assertEqual(micro_sell_report.action, SignalAction.SELL)
+        self.assertIsNotNone(micro_sell_report.stop_loss_price)
+        self.assertIsNone(micro_sell_report.take_profit_price)
+        assert micro_sell_report.order_intent is not None
+        self.assertIsNone(micro_sell_report.order_intent.suggested_take_profit)
+
+        # 4. Verify re-exports in app.domain.services
+        self.assertIs(
+            domain_services_pkg.TechnicalIndicatorsService,
+            TechnicalIndicatorsService,
+        )
+        self.assertIs(
+            domain_services_pkg.SignalGeneratorService,
+            SignalGeneratorService,
+        )
+
 
 

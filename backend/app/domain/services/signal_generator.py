@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from enum import Enum
 import math
 from typing import Any, Literal
@@ -19,6 +19,7 @@ from pydantic import Field, field_validator, model_validator
 
 from app.domain.services.technical_indicators import (
     INDICATOR_QUANTIZE,
+    INTERMEDIATE_DECIMAL_PRECISION,
     TechnicalIndicatorError,
     TechnicalIndicatorsService,
     TechnicalIndicatorsSnapshot,
@@ -510,22 +511,24 @@ class SignalGeneratorService:
         if bb_comp is not None:
             components.append(bb_comp)
 
-        if components:
-            total_weight = sum((c.weight for c in components), Decimal("0"))
-            weighted_sum = sum(
-                (c.score * c.weight for c in components), Decimal("0")
-            )
-            raw_score = weighted_sum / total_weight
-        else:
-            raw_score = Decimal("0.0000")
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            if components:
+                total_weight = sum((c.weight for c in components), Decimal("0"))
+                weighted_sum = sum(
+                    (c.score * c.weight for c in components), Decimal("0")
+                )
+                raw_score = weighted_sum / total_weight
+            else:
+                raw_score = Decimal("0.0000")
 
-        composite_score = _quantize(raw_score)
-        if composite_score > Decimal("1.0000"):
-            composite_score = Decimal("1.0000")
-        elif composite_score < Decimal("-1.0000"):
-            composite_score = Decimal("-1.0000")
+            composite_score = _quantize(raw_score)
+            if composite_score > Decimal("1.0000"):
+                composite_score = Decimal("1.0000")
+            elif composite_score < Decimal("-1.0000"):
+                composite_score = Decimal("-1.0000")
 
-        conviction = abs(composite_score)
+            conviction = abs(composite_score)
 
         if composite_score >= self._config.min_conviction_threshold:
             action = SignalAction.BUY
@@ -797,12 +800,14 @@ class SignalGeneratorService:
             return None
 
         prev_bb = snapshot.prev_bollinger_20_2
-        is_expanding = (
-            prev_bb is not None
-            and prev_bb.bandwidth > Decimal("0")
-            and bb.bandwidth
-            >= prev_bb.bandwidth * self._config.bollinger_breakout_expansion_ratio
-        )
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            is_expanding = (
+                prev_bb is not None
+                and prev_bb.bandwidth > Decimal("0")
+                and bb.bandwidth
+                >= prev_bb.bandwidth * self._config.bollinger_breakout_expansion_ratio
+            )
 
         has_emas = snapshot.ema_12 is not None and snapshot.ema_26 is not None
         is_bullish_momentum = (
@@ -884,26 +889,28 @@ class SignalGeneratorService:
         if atr_14 is None or atr_14 <= Decimal("0"):
             return None, None
 
-        sl_dist = max(
-            INDICATOR_QUANTIZE,
-            _quantize(atr_14 * self._config.atr_stop_loss_multiplier),
-        )
-        tp_dist = max(
-            INDICATOR_QUANTIZE,
-            _quantize(atr_14 * self._config.atr_take_profit_multiplier),
-        )
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            sl_dist = max(
+                INDICATOR_QUANTIZE,
+                _quantize(atr_14 * self._config.atr_stop_loss_multiplier),
+            )
+            tp_dist = max(
+                INDICATOR_QUANTIZE,
+                _quantize(atr_14 * self._config.atr_take_profit_multiplier),
+            )
 
-        if action == SignalAction.BUY:
-            candidate_sl = max(INDICATOR_QUANTIZE, _quantize(close - sl_dist))
-            stop_loss = candidate_sl if candidate_sl < close else None
-            take_profit = _quantize(close + tp_dist)
-            return stop_loss, take_profit
+            if action == SignalAction.BUY:
+                candidate_sl = max(INDICATOR_QUANTIZE, _quantize(close - sl_dist))
+                stop_loss = candidate_sl if candidate_sl < close else None
+                take_profit = _quantize(close + tp_dist)
+                return stop_loss, take_profit
 
-        if action == SignalAction.SELL:
-            stop_loss = _quantize(close + sl_dist)
-            candidate_tp = max(INDICATOR_QUANTIZE, _quantize(close - tp_dist))
-            take_profit = candidate_tp if candidate_tp < close else None
-            return stop_loss, take_profit
+            if action == SignalAction.SELL:
+                stop_loss = _quantize(close + sl_dist)
+                candidate_tp = max(INDICATOR_QUANTIZE, _quantize(close - tp_dist))
+                take_profit = candidate_tp if candidate_tp < close else None
+                return stop_loss, take_profit
 
         return None, None
 
