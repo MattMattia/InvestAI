@@ -805,3 +805,347 @@ class TestPortfolioValuation(unittest.TestCase):
         ), ValuationCurvePoint)
         self.assertEqual(curve_pt.drawdown_ars, Decimal("0.0000"))
 
+    def test_benchmark_cfa_gips_twr_positive_vs_mwr_negative_money_timing_divergence(
+        self,
+    ) -> None:
+        """
+        Certify the classic CFA/GIPS money-timing divergence benchmark:
+        Sub-period 1: +50% on small capital (1000 -> 1500).
+        Sub-period 2: +8500 contribution enters (1500 + 8500 = 10000), then -20% drop (10000 -> 8000).
+        TWR is +20.00% (1.50 * 0.80 - 1), while both Modified Dietz and IRR are negative
+        reflecting the investor's actual -1500 monetary loss.
+        """
+        slices = [
+            SubPeriodValuationSlice(
+                start_value=Decimal("1000"),
+                end_value=Decimal("1500"),
+                net_cash_flow=Decimal("0"),
+                cash_flow_timing="END",
+            ),
+            SubPeriodValuationSlice(
+                start_value=Decimal("1500"),
+                end_value=Decimal("8000"),
+                net_cash_flow=Decimal("8500"),
+                cash_flow_timing="START",
+            ),
+        ]
+        cash_flows = [
+            DatedCashFlowEvent(day_offset=50, amount=Decimal("8500")),
+        ]
+
+        perf = self.service.evaluate_performance_metrics(
+            slices=slices,
+            start_value=Decimal("1000"),
+            end_value=Decimal("8000"),
+            total_days=100,
+            cash_flows=cash_flows,
+        )
+
+        self.assertEqual(perf.twr, Decimal("0.2000"))
+        self.assertEqual(perf.twr_pct, Decimal("20.0000"))
+        self.assertLess(perf.mwr_dietz, Decimal("0"))
+        self.assertLess(perf.mwr_irr, Decimal("0"))
+        # Modified Dietz: (8000 - 1000 - 8500) / (1000 + 0.5 * 8500) = -1500 / 5250 = -0.2857
+        self.assertEqual(perf.mwr_dietz, Decimal("-0.2857"))
+
+    def test_benchmark_bimonetary_twr_equivalence_identity_across_hyperinflation_shock(
+        self,
+    ) -> None:
+        """
+        Verify exact equivalence between USD TWR (`performance_usd.twr`) and
+        FX-adjusted real USD TWR (`performance_ars.real_usd_twr`) across a 300%
+        exchange rate devaluation shock (FX 1000 -> 4000 ARS/USD).
+        """
+        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        t1 = datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+
+        snapshots = [
+            HistoricalValuationSnapshot(
+                as_of=t0,
+                net_worth_ars=Decimal("2000000"),
+                fx_rate_ars_per_usd=Decimal("1000"),
+            ),
+            HistoricalValuationSnapshot(
+                as_of=t1,
+                net_worth_ars=Decimal("3600000"),
+                fx_rate_ars_per_usd=Decimal("2000"),
+            ),
+            HistoricalValuationSnapshot(
+                as_of=t2,
+                net_worth_ars=Decimal("6400000"),
+                fx_rate_ars_per_usd=Decimal("4000"),
+            ),
+        ]
+
+        curve = self.service.evaluate_valuation_curve(snapshots)
+        self.assertIsNotNone(curve.performance_ars.real_usd_twr)
+        self.assertEqual(
+            curve.performance_usd.twr,
+            curve.performance_ars.real_usd_twr,
+        )
+        # USD net worth went from 2000 USD -> 1800 USD -> 1600 USD (-20.00%)
+        self.assertEqual(curve.performance_usd.twr, Decimal("-0.2000"))
+        self.assertEqual(curve.performance_ars.real_usd_twr, Decimal("-0.2000"))
+
+    def test_mixed_zero_cost_caja_de_valores_and_positive_cost_holdings_attribution(
+        self,
+    ) -> None:
+        """
+        Verify `value_holdings_from_quotes` handles Caja de Valores holdings with
+        `avg_price=None` (both `CleanHoldingRecord` and dict representations) alongside
+        priced holdings, setting individual percentage fields to `None` on zero-cost
+        positions while preserving exact portfolio-level Karnosky-Singer closure.
+        """
+        holdings = [
+            CleanHoldingRecord(
+                row_number=1,
+                ticker="AL30",
+                quantity=Decimal("1000"),
+                avg_price=None,  # Caja de Valores custody statement without purchase price
+                currency="ARS",
+            ),
+            {
+                "ticker": "GD30",
+                "quantity": Decimal("500"),
+                "avg_cost_price": None,
+                "avg_price": None,
+                "currency": "USD",
+            },
+            CleanHoldingRecord(
+                row_number=2,
+                ticker="GGAL",
+                quantity=Decimal("100"),
+                avg_price=Decimal("4000"),
+                currency="ARS",
+            ),
+            CleanHoldingRecord(
+                row_number=3,
+                ticker="AAPL",
+                quantity=Decimal("20"),
+                avg_price=Decimal("15"),
+                currency="USD",
+            ),
+        ]
+        market_quotes = {
+            "AL30.BA": Decimal("750"),
+            "GD30": Decimal("0.65"),
+            "GGAL": Decimal("5000"),
+            "AAPL": Decimal("18"),
+        }
+        entry_fx_rates = {
+            "GGAL": Decimal("1000"),
+            "AAPL": Decimal("1100"),
+        }
+
+        report = self.service.value_holdings_from_quotes(
+            holdings=holdings,  # type: ignore[arg-type]
+            market_quotes=market_quotes,
+            fx_rate_ars_per_usd=Decimal("1250"),
+            entry_fx_rates=entry_fx_rates,
+            as_of=self.as_of,
+        )
+
+        pos_by_ticker = {p.ticker: p for p in report.positions}
+        self.assertEqual(pos_by_ticker["AL30"].avg_cost_price_native, Decimal("0.0000"))
+        self.assertIsNone(pos_by_ticker["AL30"].unrealized_pnl_pct_ars)
+        self.assertIsNone(pos_by_ticker["AL30"].unrealized_pnl_pct_usd)
+        self.assertIsNone(pos_by_ticker["AL30"].fx_return_component)
+        self.assertIsNone(pos_by_ticker["AL30"].interaction_return_component)
+
+        self.assertEqual(pos_by_ticker["GD30"].avg_cost_price_native, Decimal("0.0000"))
+        self.assertIsNone(pos_by_ticker["GD30"].unrealized_pnl_pct_ars)
+
+        # Portfolio-level Karnosky-Singer closure holds exactly
+        assert report.total_unrealized_pnl_pct_ars is not None
+        assert report.total_unrealized_pnl_pct_usd is not None
+        assert report.total_fx_return_component is not None
+        assert report.total_interaction_return_component is not None
+        self.assertEqual(
+            report.total_unrealized_pnl_pct_usd
+            + report.total_fx_return_component
+            + report.total_interaction_return_component,
+            report.total_unrealized_pnl_pct_ars,
+        )
+
+    def test_nonlinear_irr_solver_when_dietz_overshoots_below_minus_100_pct_and_oscillating_flows(
+        self,
+    ) -> None:
+        """
+        Verify exact IRR solver convergence when:
+        Case A: Modified Dietz overshoots below -100% (-1.2667) while end_value = 100 > 0;
+                exact quadratic root is r = (0.6 - 0.1*sqrt(35)) - 1 = -0.9916 (-99.16%).
+        Case B: Oscillating cash flows (+, -, +) converge deterministically to NPV(r) ~ 0.
+        """
+        # Case A: V_start = 1000, CF = +1000 at t=15/30 (w=0.5), V_end = 100
+        cf_a = [DatedCashFlowEvent(day_offset=15, amount=Decimal("1000"))]
+        dietz_a = self.service.calculate_mwr_modified_dietz(
+            start_value=Decimal("1000"),
+            end_value=Decimal("100"),
+            total_days=30,
+            cash_flows=cf_a,
+        )
+        irr_a = self.service.calculate_mwr_irr(
+            start_value=Decimal("1000"),
+            end_value=Decimal("100"),
+            total_days=30,
+            cash_flows=cf_a,
+        )
+        self.assertEqual(dietz_a, Decimal("-1.2667"))
+        self.assertEqual(irr_a, Decimal("-0.9916"))
+        self.assertGreater(irr_a, Decimal("-1.0000"))
+
+        # Case B: Oscillating flows (+500 at day 20, -400 at day 50, +300 at day 80) over 100 days
+        cf_b = [
+            DatedCashFlowEvent(day_offset=20, amount=Decimal("500")),
+            DatedCashFlowEvent(day_offset=50, amount=Decimal("-400")),
+            DatedCashFlowEvent(day_offset=80, amount=Decimal("300")),
+        ]
+        irr_b = self.service.calculate_mwr_irr(
+            start_value=Decimal("1000"),
+            end_value=Decimal("1650"),
+            total_days=100,
+            cash_flows=cf_b,
+        )
+        u_b = Decimal("1") + irr_b
+        npv_b = (
+            Decimal("1000") * u_b
+            + Decimal("500") * (Decimal("0.8") * u_b.ln()).exp()
+            - Decimal("400") * (Decimal("0.5") * u_b.ln()).exp()
+            + Decimal("300") * (Decimal("0.2") * u_b.ln()).exp()
+            - Decimal("1650")
+        )
+        self.assertLess(abs(npv_b), Decimal("0.5"))
+
+    def test_full_year_365_daily_snapshots_valuation_curve_and_exact_annualization(
+        self,
+    ) -> None:
+        """
+        Evaluate a 366-point daily valuation curve (365 elapsed days) with an initial
+        rally, mid-year USD drawdown, recovery to a closing all-time high, and monthly
+        contributions, verifying exact 365-day annualization identity (`annualized == period`).
+        """
+        base_dt = datetime(2025, 1, 1, 18, 0, tzinfo=timezone.utc)
+        snapshots: list[HistoricalValuationSnapshot] = []
+        nw_usd = Decimal("10000")
+        fx = Decimal("1000")
+
+        for day in range(366):
+            curr_dt = base_dt + timedelta(days=day)
+            cf_usd = Decimal("0")
+            if day > 0:
+                if day <= 120:
+                    nw_usd = nw_usd * Decimal("1.002")
+                elif day <= 220:
+                    nw_usd = nw_usd * Decimal("0.997")
+                else:
+                    nw_usd = nw_usd * Decimal("1.0035")
+
+                if day % 30 == 0:
+                    cf_usd = Decimal("500")
+                    nw_usd += cf_usd
+
+            fx_day = fx + Decimal(day) * Decimal("1.5")
+            nw_ars = nw_usd * fx_day
+            cf_ars = cf_usd * fx_day
+
+            snapshots.append(
+                HistoricalValuationSnapshot(
+                    as_of=curr_dt,
+                    net_worth_ars=nw_ars,
+                    fx_rate_ars_per_usd=fx_day,
+                    net_cash_flow_ars=cf_ars,
+                    net_worth_usd=nw_usd,
+                    net_cash_flow_usd=cf_usd,
+                    cash_flow_timing="END",
+                )
+            )
+
+        curve = self.service.evaluate_valuation_curve(snapshots, portfolio_id="pf-365d")
+        self.assertEqual(curve.total_days, 365)
+        self.assertEqual(len(curve.points), 366)
+        self.assertLess(curve.max_drawdown_usd, Decimal("0.0000"))
+        self.assertGreater(abs(curve.max_drawdown_usd), Decimal("0.0000"))
+        self.assertEqual(curve.points[-1].drawdown_usd, Decimal("0.0000"))
+
+        # Exact 365-day identity: annualized_twr == twr and annualized_mwr_irr == mwr_irr
+        self.assertEqual(
+            curve.performance_ars.annualized_twr,
+            curve.performance_ars.twr,
+        )
+        self.assertEqual(
+            curve.performance_ars.annualized_mwr_irr,
+            curve.performance_ars.mwr_irr,
+        )
+        self.assertEqual(
+            curve.performance_usd.annualized_twr,
+            curve.performance_usd.twr,
+        )
+        self.assertEqual(
+            curve.performance_usd.annualized_mwr_irr,
+            curve.performance_usd.mwr_irr,
+        )
+
+    def test_scale_boundaries_10_pow_12_and_zero_initial_net_worth_start_deposit_curve(
+        self,
+    ) -> None:
+        """
+        Verify upper numeric scale boundary (`10^12`) without `InvalidOperation`
+        and evaluate a valuation curve starting at `net_worth_ars = 0` at $s_0$
+        with a founding `START`-timed deposit at $s_1$.
+        """
+        # 1. Scale boundary 10^12
+        pos_large = PositionValuationInput(
+            ticker="GGAL",
+            quantity=Decimal("1000000"),
+            avg_cost_price=Decimal("900000"),
+            market_price=Decimal("1000000"),  # 10^12 ARS market value
+            currency="ARS",
+            entry_fx_rate=Decimal("1000"),
+        )
+        report_large = self.service.value_portfolio_mark_to_market(
+            positions=[pos_large],
+            fx_rate_ars_per_usd=Decimal("1000"),
+            as_of=self.as_of,
+        )
+        self.assertEqual(
+            report_large.total_positions_value_ars,
+            Decimal("1000000000000.0000"),
+        )
+
+        # 2. Curve starting at 0 with founding deposit at s_1 (cash_flow_timing="START")
+        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        t1 = datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+
+        zero_start_snapshots = [
+            HistoricalValuationSnapshot(
+                as_of=t0,
+                net_worth_ars=Decimal("0"),
+                fx_rate_ars_per_usd=Decimal("1000"),
+            ),
+            HistoricalValuationSnapshot(
+                as_of=t1,
+                net_worth_ars=Decimal("1100000"),
+                fx_rate_ars_per_usd=Decimal("1000"),
+                net_cash_flow_ars=Decimal("1000000"),
+                cash_flow_timing="START",
+            ),
+            HistoricalValuationSnapshot(
+                as_of=t2,
+                net_worth_ars=Decimal("1210000"),
+                fx_rate_ars_per_usd=Decimal("1000"),
+                net_cash_flow_ars=Decimal("0"),
+                cash_flow_timing="END",
+            ),
+        ]
+
+        curve = self.service.evaluate_valuation_curve(zero_start_snapshots)
+        self.assertEqual(curve.points[0].drawdown_ars, Decimal("0.0000"))
+        self.assertEqual(curve.points[0].drawdown_usd, Decimal("0.0000"))
+        self.assertEqual(curve.max_drawdown_ars, Decimal("0.0000"))
+        self.assertEqual(curve.performance_ars.twr, Decimal("0.2100"))
+        self.assertEqual(curve.performance_ars.mwr_dietz, Decimal("0.2100"))
+        self.assertEqual(curve.performance_ars.mwr_irr, Decimal("0.2100"))
+
+

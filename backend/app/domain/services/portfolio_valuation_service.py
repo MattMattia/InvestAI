@@ -1092,12 +1092,38 @@ class PortfolioValuationService:
 
         position_inputs: list[PositionValuationInput] = []
         for idx, holding in enumerate(holdings):
-            if not isinstance(holding, CleanHoldingRecord):
+            if isinstance(holding, bool) or holding is None:
                 raise InvalidValuationInputError(
-                    f"Holding at index {idx} is not a CleanHoldingRecord instance."
+                    f"Holding at index {idx} cannot be boolean or None."
                 )
 
-            ticker_upper = holding.ticker.strip().upper()
+            if isinstance(holding, Mapping):
+                raw_ticker = holding.get("ticker")
+                raw_qty = holding.get("quantity")
+                raw_currency = holding.get("currency", "ARS")
+                raw_avg_cost = (
+                    holding.get("avg_cost_price")
+                    if holding.get("avg_cost_price") is not None
+                    else holding.get("avg_price")
+                )
+            elif hasattr(holding, "ticker") and hasattr(holding, "quantity"):
+                raw_ticker = getattr(holding, "ticker")
+                raw_qty = getattr(holding, "quantity")
+                raw_currency = getattr(holding, "currency", "ARS")
+                raw_avg_cost = getattr(holding, "avg_cost_price", None)
+                if raw_avg_cost is None:
+                    raw_avg_cost = getattr(holding, "avg_price", None)
+            else:
+                raise InvalidValuationInputError(
+                    f"Holding at index {idx} is not a CleanHoldingRecord or valid holding mapping."
+                )
+
+            if not isinstance(raw_ticker, str) or isinstance(raw_ticker, bool):
+                raise InvalidValuationInputError(
+                    f"Holding at index {idx} has an invalid ticker."
+                )
+
+            ticker_upper = raw_ticker.strip().upper()
             alt_ticker = (
                 ticker_upper[:-3]
                 if ticker_upper.endswith(".BA")
@@ -1138,21 +1164,24 @@ class PortfolioValuationService:
                 resolved_entry_fx = normalized_entry_fx[alt_ticker]
 
             avg_cost = (
-                holding.avg_price
-                if holding.avg_price is not None
+                raw_avg_cost
+                if raw_avg_cost is not None
                 else Decimal("0.0000")
             )
 
-            position_inputs.append(
-                PositionValuationInput(
-                    ticker=ticker_upper,
-                    quantity=holding.quantity,
-                    avg_cost_price=avg_cost,
-                    market_price=mkt_price,
-                    currency=holding.currency,
-                    entry_fx_rate=resolved_entry_fx,
+            try:
+                position_inputs.append(
+                    PositionValuationInput(
+                        ticker=ticker_upper,
+                        quantity=raw_qty,
+                        avg_cost_price=avg_cost,
+                        market_price=mkt_price,
+                        currency=raw_currency,
+                        entry_fx_rate=resolved_entry_fx,
+                    )
                 )
-            )
+            except ValidationError as exc:
+                raise InvalidValuationInputError(str(exc)) from exc
 
         return self.value_portfolio_mark_to_market(
             positions=position_inputs,
@@ -1355,7 +1384,9 @@ class PortfolioValuationService:
             u_guess = max(Decimal("0.0001"), Decimal("1") + dietz_return)
             grid = sorted(
                 {
+                    Decimal("0.00000001"),
                     Decimal("0.000001"),
+                    Decimal("0.0001"),
                     Decimal("0.001"),
                     Decimal("0.01"),
                     Decimal("0.1"),
@@ -1443,18 +1474,21 @@ class PortfolioValuationService:
         Compound a period return over `365 / total_days`:
         $$(1 + R)^{365 / D} - 1$$
         Returns `None` if `1 + R < 0` or if `365 / total_days > 20` (short-window overflow guard).
+        When `total_days == 365`, returns `_quantize(period_return)` directly.
         """
         with localcontext() as ctx:
             ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
-            exponent = Decimal(365) / Decimal(total_days)
-            if exponent > Decimal(20):
-                return None
-
             base = Decimal("1") + period_return
             if base < Decimal("0"):
                 return None
             if base == Decimal("0"):
                 return Decimal("-1.0000")
+            if total_days == 365:
+                return _quantize(period_return)
+
+            exponent = Decimal(365) / Decimal(total_days)
+            if exponent > Decimal(20):
+                return None
 
             annualized = (exponent * base.ln()).exp() - Decimal("1")
             return _quantize(annualized)

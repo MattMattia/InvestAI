@@ -1,10 +1,10 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 22 de 26 Módulos Completados (84.6%) — Capítulos 1 a 6 completados al 100%; Capítulo 7 en progreso (Módulo 7.1 completado al 100%, Módulo 7.2 Fases 1 y 2 completadas)  
+> **Progreso Consolidado:** 23 de 26 Módulos Completados (88.5%) — Capítulos 1 a 6 completados al 100%; Capítulo 7 en progreso (Módulos 7.1 y 7.2 completados al 100%)  
 > **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5 y 6 (100% completados)  
 > **Capítulos Pendientes / En Progreso:** Capítulo 7 (en progreso), Capítulos 8 y 9  
-> **Calidad y Suite de Pruebas:** **389 tests pasando al 100% en verde (311 unitarios + 78 de integración)**  
+> **Calidad y Suite de Pruebas:** **395 tests pasando al 100% en verde (317 unitarios + 78 de integración)**  
 > **Última Actualización:** 2026-10-21
 
 ---
@@ -25,7 +25,7 @@
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
 | **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 293 tests (+88) |
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 3 / 3 | 9 / 9 | **COMPLETADO** | 359 tests (+66) |
-| **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 1 / 3 | 5 / 9 | **EN PROGRESO** | 389 tests (+30) |
+| **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 2 / 3 | 6 / 9 | **EN PROGRESO** | 395 tests (+36) |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
 | **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 
@@ -154,10 +154,10 @@
   - [x] Fase 1: Biblioteca de Indicadores Numéricos Vectorizados (`backend/app/domain/services/technical_indicators.py`, `backend/tests/unit/test_technical_indicators.py` — SMA, EMA, RSI Wilder, Bollinger, ATR y `TechnicalIndicatorsSnapshot` con 6 pruebas unitarias)
   - [x] Fase 2: Motor de Generación de Señales de Negociación (`backend/app/domain/services/signal_generator.py`, `backend/tests/unit/test_technical_indicators.py` — reglas deterministas EMA/SMA/RSI/Bollinger, dimensionamiento ATR y `OrderFSMIntent` con 5 pruebas unitarias nuevas; 11 total en el módulo)
   - [x] Fase 3: Pruebas Unitarias de Precisión Numérica contra Benchmarks (`backend/tests/unit/test_technical_indicators.py`, `backend/app/domain/services/__init__.py` — endurecimiento de precisión intermedia `localcontext(prec=50)`, re-exportación limpia y 6 pruebas analíticas de benchmark y estrés; 17 pruebas totales cerrando el Módulo 7.1 al 100%)
-- [ ] **Módulo 7.2: Valuación Patrimonial Dinámica y PnL Multimoneda (TWR / MWR)**
+- [x] **Módulo 7.2: Valuación Patrimonial Dinámica y PnL Multimoneda (TWR / MWR)**
   - [x] Fase 1: Motor de Valuación Mark-to-Market Bimoneda (`backend/app/domain/services/portfolio_valuation_service.py`, `backend/tests/unit/test_portfolio_valuation.py` — valuación bimoneda ARS/USD, descomposición multiplicativa Karnosky-Singer, Largest Remainder weights, TWR GIPS, Modified Dietz e IRR exacto con 7 pruebas unitarias)
   - [x] Fase 2: Métricas de Rendimiento Ponderado, Curva de Valuación Histórica y Drawdown Bimonetario (`backend/app/domain/services/portfolio_valuation_service.py`, `backend/tests/unit/test_portfolio_valuation.py` — descomposición Karnosky-Singer a nivel cartera, aperturas en `$0` con timing `START`, `HistoricalValuationSnapshot`, `ValuationCurvePoint`, `PortfolioValuationCurveReport`, High-Water Mark / Drawdown bimonetario e integración `value_holdings_from_quotes` con 6 pruebas unitarias nuevas; 13 total en el módulo)
-  - [ ] Fase 3: Pruebas Unitarias y de Integración con Saltos Cambiarios
+  - [x] Fase 3: Pruebas Unitarias y de Integración con Saltos Cambiarios (`backend/tests/unit/test_portfolio_valuation.py`, `backend/app/domain/services/portfolio_valuation_service.py` — endurecimiento de casos de borde de rondas 1 a 5 y 6 pruebas analíticas de certificación GIPS, shock hiperinflacionario 300%, solver IRR no lineal con Dietz < -1.0, curva diaria de 365 días y frontera $10^{12}$; 19 pruebas totales cerrando el Módulo 7.2 al 100%)
 - [ ] **Módulo 7.3: Rebalanceo por Bandas de Tolerancia Dinámicas (Tolerance-Band Rebalance)**
   - [ ] Fase 1: Algoritmo de Bandas de Tolerancia Dinámicas (`tolerance_band_rebalancer.py`)
   - [ ] Fase 2: Determinación de Órdenes Óptimas de Rebalanceo con Costos ALyC
@@ -197,14 +197,14 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 7 — Módulo 7.2 (Fase 3): Pruebas Unitarias y de Integración con Saltos Cambiarios y Flujos Intermedios (`backend/tests/unit/test_portfolio_valuation.py`)**  
-> **Prioridad:** Alta (Cierre del Módulo 7.2 tras completar la Fase 2 con 389 tests en verde)  
-> **Objetivo:** Implementar la suite exhaustiva de pruebas de estrés con saltos cambiarios extremos (devaluaciones discretas del peso argentino), flujos de caja intermedios multipaso, reconciliación de valuación post-ingesta y cierre completo del Módulo 7.2.
+> **Foco Actual:** **CAPÍTULO 7 — Módulo 7.3 (Fase 1): Motor de Rebalanceo por Bandas de Tolerancia Dinámicas (`backend/app/domain/services/tolerance_band_rebalancer.py`)**  
+> **Prioridad:** Alta (Inicio del Módulo 7.3 tras completar el Módulo 7.2 al 100% con 395 tests en verde)  
+> **Objetivo:** Implementar el motor cuantitativo de rebalanceo por bandas de tolerancia dinámicas vinculadas al régimen de volatilidad de Markov, identificando desvíos de asignación (`drift`) respecto de los pesos objetivo del portafolio.
 
 ### Hoja de Ruta Inmediata para el Capítulo 7:
-1. **Módulo 7.2 (Fase 3)**: Implementar la suite exhaustiva de pruebas unitarias y de integración con saltos cambiarios y depósitos intermedios (`backend/tests/unit/test_portfolio_valuation.py`).
-2. **Módulo 7.3 (Fase 1)**: Implementar el algoritmo de rebalanceo por bandas de tolerancia dinámicas (`backend/app/domain/services/tolerance_band_rebalancer.py`).
-3. **Módulo 7.3 (Fase 2)**: Implementar la determinación de órdenes óptimas de rebalanceo con costos ALyC.
+1. **Módulo 7.3 (Fase 1)**: Implementar el algoritmo de rebalanceo por bandas de tolerancia dinámicas (`backend/app/domain/services/tolerance_band_rebalancer.py`).
+2. **Módulo 7.3 (Fase 2)**: Implementar la determinación de órdenes óptimas de rebalanceo con costos ALyC.
+3. **Módulo 7.3 (Fase 3)**: Implementar las pruebas de simulación de deriva de cartera (`backend/tests/unit/test_tolerance_rebalancer.py`), cerrando el Capítulo 7 al 100%.
 
 
 
