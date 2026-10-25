@@ -54,6 +54,22 @@ from app.domain.services.portfolio_optimizer import (
     minimum_variance_portfolio,
     risk_parity_portfolio,
 )
+from app.domain.services.portfolio_valuation_service import (
+    MAX_VALUATION_POSITIONS,
+    VALUATION_QUANTIZE,
+    DatedCashFlowEvent,
+    InvalidCashFlowPeriodError,
+    InvalidFXRateError,
+    InvalidValuationInputError,
+    MissingMarketPriceError,
+    PerformanceReturnReport,
+    PortfolioMarkToMarketReport,
+    PortfolioValuationError,
+    PortfolioValuationService,
+    PositionValuationInput,
+    SubPeriodValuationSlice,
+    ValuedPositionBreakdown,
+)
 from app.domain.services.quantitative_risk import (
     calculate_cvar,
     calculate_kurtosis,
@@ -163,5 +179,20 @@ __all__ = [
     "OrderFSMIntent",
     "TradingSignalReport",
     "SignalGeneratorService",
+    "VALUATION_QUANTIZE",
+    "MAX_VALUATION_POSITIONS",
+    "PortfolioValuationError",
+    "InvalidValuationInputError",
+    "MissingMarketPriceError",
+    "InvalidFXRateError",
+    "InvalidCashFlowPeriodError",
+    "PositionValuationInput",
+    "ValuedPositionBreakdown",
+    "PortfolioMarkToMarketReport",
+    "SubPeriodValuationSlice",
+    "DatedCashFlowEvent",
+    "PerformanceReturnReport",
+    "PortfolioValuationService",
 ]
+
 
