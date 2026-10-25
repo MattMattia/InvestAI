@@ -1,28 +1,34 @@
 """
-Dynamic Mark-to-Market Bimonetary Portfolio Valuation & Performance Attribution Engine
-(Module 7.2 - Phase 1).
+Dynamic Mark-to-Market Bimonetary Portfolio Valuation, Performance Attribution &
+Historical Valuation Curve Engine (Module 7.2 - Phases 1 & 2).
 
 Implements:
 - Bimonetary (ARS / USD) Mark-to-Market position consolidation and valuation.
 - Multiplicative Karnosky-Singer currency vs. local asset return decomposition
-  with exact horizontal and vertical accounting closure.
+  with exact horizontal and vertical accounting closure (position & portfolio level).
 - Largest Remainder Method weight allocation guaranteeing zero rounding drift.
-- GIPS-compliant Time-Weighted Return (TWR) with geometric sub-period chaining.
+- GIPS-compliant Time-Weighted Return (TWR) with geometric sub-period chaining,
+  including zero-initial-capital account openings with START-timed deposits.
 - Money-Weighted Return (MWR) via both Modified Dietz and an exact non-linear
   Internal Rate of Return (IRR) solver in arbitrary-precision `Decimal`.
+- Historical valuation curve evaluation with bimonetary High-Water Mark and
+  Drawdown tracking, plus direct valuation of ingested `CleanHoldingRecord` items.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
 import math
 from typing import Any, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 
+from app.domain.services.ingestion.data_cleaning_pipeline import CleanHoldingRecord
 from app.schemas.envelope import BaseSchema
+
+CleanedHoldingRecord = CleanHoldingRecord
 
 # ============================================================================
 # Quantitative Constants & Defensive Boundaries
@@ -30,6 +36,7 @@ from app.schemas.envelope import BaseSchema
 VALUATION_QUANTIZE: Decimal = Decimal("0.0001")
 INTERMEDIATE_DECIMAL_PRECISION: int = 50
 MAX_VALUATION_POSITIONS: int = 10_000
+MAX_VALUATION_SLICES: int = 10_000
 
 
 # ============================================================================
@@ -325,7 +332,8 @@ class ValuedPositionBreakdown(BaseSchema):
 class PortfolioMarkToMarketReport(BaseSchema):
     """
     Immutable consolidated Mark-to-Market valuation report in ARS and USD,
-    enforcing vertical accounting closure and weight normalization invariants.
+    enforcing vertical accounting closure, portfolio-level Karnosky-Singer
+    attribution, and weight normalization invariants.
     """
 
     portfolio_id: str | None = None
@@ -343,6 +351,8 @@ class PortfolioMarkToMarketReport(BaseSchema):
     total_unrealized_pnl_usd: Decimal
     total_unrealized_pnl_pct_ars: Decimal | None = None
     total_unrealized_pnl_pct_usd: Decimal | None = None
+    total_fx_return_component: Decimal | None = None
+    total_interaction_return_component: Decimal | None = None
     positions: list[ValuedPositionBreakdown] = Field(default_factory=list)
 
     @field_validator(
@@ -366,6 +376,8 @@ class PortfolioMarkToMarketReport(BaseSchema):
     @field_validator(
         "total_unrealized_pnl_pct_ars",
         "total_unrealized_pnl_pct_usd",
+        "total_fx_return_component",
+        "total_interaction_return_component",
         mode="before",
     )
     @classmethod
@@ -425,6 +437,38 @@ class PortfolioMarkToMarketReport(BaseSchema):
                 "total_unrealized_pnl_usd must equal total_positions_value_usd - total_cost_basis_usd."
             )
 
+        portfolio_attr_fields = (
+            self.total_unrealized_pnl_pct_ars,
+            self.total_unrealized_pnl_pct_usd,
+            self.total_fx_return_component,
+            self.total_interaction_return_component,
+        )
+        attr_none_count = sum(1 for item in portfolio_attr_fields if item is None)
+        if attr_none_count not in (0, 4):
+            raise ValueError(
+                "Portfolio percentage attribution fields (total_unrealized_pnl_pct_ars, "
+                "total_unrealized_pnl_pct_usd, total_fx_return_component, "
+                "total_interaction_return_component) must either be all None or all finite Decimal values."
+            )
+        if attr_none_count == 0:
+            assert self.total_unrealized_pnl_pct_ars is not None
+            assert self.total_unrealized_pnl_pct_usd is not None
+            assert self.total_fx_return_component is not None
+            assert self.total_interaction_return_component is not None
+            total_decomposed_sum = (
+                self.total_unrealized_pnl_pct_usd
+                + self.total_fx_return_component
+                + self.total_interaction_return_component
+            )
+            if total_decomposed_sum != self.total_unrealized_pnl_pct_ars:
+                raise ValueError(
+                    "Portfolio Karnosky-Singer additive closure violated: "
+                    f"total_unrealized_pnl_pct_usd ({self.total_unrealized_pnl_pct_usd}) + "
+                    f"total_fx_return_component ({self.total_fx_return_component}) + "
+                    f"total_interaction_return_component ({self.total_interaction_return_component}) "
+                    f"= {total_decomposed_sum} != total_unrealized_pnl_pct_ars ({self.total_unrealized_pnl_pct_ars})."
+                )
+
         if self.positions:
             sum_w_pos = sum(
                 (p.weight_in_positions for p in self.positions), Decimal("0.0000")
@@ -447,9 +491,11 @@ class PortfolioMarkToMarketReport(BaseSchema):
 class SubPeriodValuationSlice(BaseSchema):
     """
     Immutable sub-period valuation slice for GIPS-compliant Time-Weighted Return (TWR).
+    Supports `start_value == 0` when `cash_flow_timing == "START"` and a positive
+    initial deposit (`start_value + net_cash_flow > 0`) opens the account.
     """
 
-    start_value: Decimal = Field(gt=Decimal("0"))
+    start_value: Decimal = Field(ge=Decimal("0"))
     end_value: Decimal = Field(ge=Decimal("0"))
     net_cash_flow: Decimal = Field(default=Decimal("0.0000"))
     cash_flow_timing: Literal["START", "END"] = "END"
@@ -458,6 +504,21 @@ class SubPeriodValuationSlice(BaseSchema):
     @classmethod
     def _validate_decimals(cls, v: Any, info: Any) -> Decimal:
         return _coerce_finite_decimal(v, str(info.field_name))
+
+    @model_validator(mode="after")
+    def _enforce_capital_base(self) -> SubPeriodValuationSlice:
+        if self.cash_flow_timing == "END":
+            if self.start_value <= Decimal("0"):
+                raise ValueError(
+                    "start_value must be strictly positive when cash_flow_timing is 'END'."
+                )
+        elif self.cash_flow_timing == "START":
+            if self.start_value + self.net_cash_flow <= Decimal("0"):
+                raise ValueError(
+                    "Adjusted capital base (start_value + net_cash_flow) must be strictly "
+                    "positive when cash_flow_timing is 'START'."
+                )
+        return self
 
 
 class DatedCashFlowEvent(BaseSchema):
@@ -524,6 +585,143 @@ class PerformanceReturnReport(BaseSchema):
     def _validate_optional_decimals(cls, v: Any, info: Any) -> Decimal | None:
         if v is None:
             return None
+        return _coerce_finite_decimal(v, str(info.field_name))
+
+
+class HistoricalValuationSnapshot(BaseSchema):
+    """
+    Immutable historical portfolio snapshot for bimonetary valuation curve
+    and High-Water Mark / Drawdown tracking.
+    """
+
+    as_of: datetime
+    net_worth_ars: Decimal = Field(ge=Decimal("0"))
+    fx_rate_ars_per_usd: Decimal = Field(gt=Decimal("0"))
+    net_cash_flow_ars: Decimal = Field(default=Decimal("0.0000"))
+    net_worth_usd: Decimal | None = Field(default=None, ge=Decimal("0"))
+    net_cash_flow_usd: Decimal | None = None
+    cash_flow_timing: Literal["START", "END"] = "END"
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def _validate_as_of(cls, v: Any) -> Any:
+        if isinstance(v, bool) or v is None:
+            raise ValueError("as_of must be a valid datetime (boolean or None is not permitted).")
+        return v
+
+    @field_validator(
+        "net_worth_ars",
+        "fx_rate_ars_per_usd",
+        "net_cash_flow_ars",
+        mode="before",
+    )
+    @classmethod
+    def _validate_required_decimals(cls, v: Any, info: Any) -> Decimal:
+        return _coerce_finite_decimal(v, str(info.field_name))
+
+    @field_validator("net_worth_usd", "net_cash_flow_usd", mode="before")
+    @classmethod
+    def _validate_optional_decimals(cls, v: Any, info: Any) -> Decimal | None:
+        if v is None:
+            return None
+        return _coerce_finite_decimal(v, str(info.field_name))
+
+    @model_validator(mode="after")
+    def _populate_bimonetary_usd_equivalents(self) -> HistoricalValuationSnapshot:
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            if self.net_worth_usd is None:
+                computed_nw_usd = _quantize(
+                    self.net_worth_ars / self.fx_rate_ars_per_usd
+                )
+                object.__setattr__(self, "net_worth_usd", computed_nw_usd)
+            if self.net_cash_flow_usd is None:
+                computed_cf_usd = _quantize(
+                    self.net_cash_flow_ars / self.fx_rate_ars_per_usd
+                )
+                object.__setattr__(self, "net_cash_flow_usd", computed_cf_usd)
+        return self
+
+
+class ValuationCurvePoint(BaseSchema):
+    """
+    Immutable point along the historical bimonetary valuation curve, including
+    sub-period returns, cumulative TWR, High-Water Mark, and Drawdown.
+    """
+
+    as_of: datetime
+    fx_rate_ars_per_usd: Decimal = Field(gt=Decimal("0"))
+    net_worth_ars: Decimal = Field(ge=Decimal("0"))
+    net_worth_usd: Decimal = Field(ge=Decimal("0"))
+    period_return_ars: Decimal
+    period_return_usd: Decimal
+    cumulative_twr_ars: Decimal
+    cumulative_twr_usd: Decimal
+    high_water_mark_ars: Decimal = Field(ge=Decimal("0"))
+    high_water_mark_usd: Decimal = Field(ge=Decimal("0"))
+    drawdown_ars: Decimal = Field(le=Decimal("0.0000"), ge=Decimal("-1.0000"))
+    drawdown_usd: Decimal = Field(le=Decimal("0.0000"), ge=Decimal("-1.0000"))
+
+    @field_validator("as_of", mode="before")
+    @classmethod
+    def _validate_as_of(cls, v: Any) -> Any:
+        if isinstance(v, bool) or v is None:
+            raise ValueError("as_of must be a valid datetime (boolean or None is not permitted).")
+        return v
+
+    @field_validator(
+        "fx_rate_ars_per_usd",
+        "net_worth_ars",
+        "net_worth_usd",
+        "period_return_ars",
+        "period_return_usd",
+        "cumulative_twr_ars",
+        "cumulative_twr_usd",
+        "high_water_mark_ars",
+        "high_water_mark_usd",
+        "drawdown_ars",
+        "drawdown_usd",
+        mode="before",
+    )
+    @classmethod
+    def _validate_required_decimals(cls, v: Any, info: Any) -> Decimal:
+        return _coerce_finite_decimal(v, str(info.field_name))
+
+
+class PortfolioValuationCurveReport(BaseSchema):
+    """
+    Immutable consolidated historical valuation curve report with bimonetary
+    performance attribution, High-Water Marks, and Maximum Drawdowns.
+    """
+
+    portfolio_id: str | None = None
+    start_date: datetime
+    end_date: datetime
+    total_days: int = Field(ge=1)
+    points: list[ValuationCurvePoint] = Field(min_length=2)
+    performance_ars: PerformanceReturnReport
+    performance_usd: PerformanceReturnReport
+    max_drawdown_ars: Decimal = Field(le=Decimal("0.0000"), ge=Decimal("-1.0000"))
+    max_drawdown_usd: Decimal = Field(le=Decimal("0.0000"), ge=Decimal("-1.0000"))
+    high_water_mark_ars: Decimal = Field(ge=Decimal("0"))
+    high_water_mark_usd: Decimal = Field(ge=Decimal("0"))
+
+    @field_validator("total_days", mode="before")
+    @classmethod
+    def _validate_total_days(cls, v: Any) -> int:
+        if isinstance(v, bool) or not isinstance(v, int):
+            raise ValueError("total_days must be an integer (boolean is not permitted).")
+        return v
+
+    @field_validator(
+        "max_drawdown_ars",
+        "max_drawdown_usd",
+        "high_water_mark_ars",
+        "high_water_mark_usd",
+        mode="before",
+    )
+    @classmethod
+    def _validate_required_decimals(cls, v: Any, info: Any) -> Decimal:
         return _coerce_finite_decimal(v, str(info.field_name))
 
 
@@ -787,16 +985,33 @@ class PortfolioValuationService:
             total_pnl_ars = _quantize(total_pos_ars - total_cost_ars)
             total_pnl_usd = _quantize(total_pos_usd - total_cost_usd)
 
-            total_pnl_pct_ars = (
-                _quantize(total_pnl_ars / total_cost_ars)
-                if total_cost_ars > Decimal("0")
-                else None
+            raw_total_cost_ars = sum(
+                (item.raw_cost_ars for item in consolidated_list), Decimal("0")
             )
-            total_pnl_pct_usd = (
-                _quantize(total_pnl_usd / total_cost_usd)
-                if total_cost_usd > Decimal("0")
-                else None
+            raw_total_cost_usd = sum(
+                (item.raw_cost_usd for item in consolidated_list), Decimal("0")
             )
+
+            if (
+                total_cost_ars > Decimal("0")
+                and total_cost_usd > Decimal("0")
+                and raw_total_cost_ars > Decimal("0")
+                and raw_total_cost_usd > Decimal("0")
+            ):
+                total_pnl_pct_ars = _quantize(total_pnl_ars / total_cost_ars)
+                total_pnl_pct_usd = _quantize(total_pnl_usd / total_cost_usd)
+                effective_portfolio_entry_fx = raw_total_cost_ars / raw_total_cost_usd
+                total_fx_return_comp = _quantize(
+                    (fx_rate / effective_portfolio_entry_fx) - Decimal("1")
+                )
+                total_inter_return_comp = _quantize(
+                    total_pnl_pct_ars - total_pnl_pct_usd - total_fx_return_comp
+                )
+            else:
+                total_pnl_pct_ars = None
+                total_pnl_pct_usd = None
+                total_fx_return_comp = None
+                total_inter_return_comp = None
 
         return PortfolioMarkToMarketReport(
             portfolio_id=portfolio_id,
@@ -814,7 +1029,138 @@ class PortfolioValuationService:
             total_unrealized_pnl_usd=total_pnl_usd,
             total_unrealized_pnl_pct_ars=total_pnl_pct_ars,
             total_unrealized_pnl_pct_usd=total_pnl_pct_usd,
+            total_fx_return_component=total_fx_return_comp,
+            total_interaction_return_component=total_inter_return_comp,
             positions=valued_positions,
+        )
+
+    def value_holdings_from_quotes(
+        self,
+        holdings: Sequence[CleanedHoldingRecord],
+        market_quotes: Mapping[str, Decimal],
+        fx_rate_ars_per_usd: Decimal,
+        entry_fx_rates: Mapping[str, Decimal] | None = None,
+        cash_balance_ars: Decimal = Decimal("0"),
+        cash_balance_usd: Decimal = Decimal("0"),
+        portfolio_id: str | None = None,
+        as_of: datetime | None = None,
+    ) -> PortfolioMarkToMarketReport:
+        """
+        Value sanitized ingestion holdings (`CleanHoldingRecord`) directly against
+        a mapping of market quotes, resolving case-insensitive tickers and `.BA`
+        exchange suffixes automatically.
+        """
+        if isinstance(holdings, (str, bytes)) or not isinstance(holdings, Sequence):
+            raise InvalidValuationInputError(
+                "holdings must be a sequence of CleanHoldingRecord instances."
+            )
+        if len(holdings) > MAX_VALUATION_POSITIONS:
+            raise InvalidValuationInputError(
+                f"holdings count ({len(holdings)}) exceeds maximum allowed ({MAX_VALUATION_POSITIONS})."
+            )
+        if not isinstance(market_quotes, Mapping):
+            raise InvalidValuationInputError(
+                "market_quotes must be a mapping of ticker -> market price."
+            )
+
+        normalized_quotes: dict[str, Any] = {}
+        for raw_key, raw_val in market_quotes.items():
+            if not isinstance(raw_key, str) or isinstance(raw_key, bool):
+                raise InvalidValuationInputError(
+                    "market_quotes keys must be valid strings."
+                )
+            clean_key = raw_key.strip().upper()
+            if clean_key:
+                normalized_quotes[clean_key] = raw_val
+
+        normalized_entry_fx: dict[str, Decimal] = {}
+        if entry_fx_rates is not None:
+            if not isinstance(entry_fx_rates, Mapping):
+                raise InvalidValuationInputError(
+                    "entry_fx_rates must be a mapping of ticker -> FX rate or None."
+                )
+            for raw_key, raw_fx in entry_fx_rates.items():
+                if not isinstance(raw_key, str) or isinstance(raw_key, bool):
+                    raise InvalidValuationInputError(
+                        "entry_fx_rates keys must be valid strings."
+                    )
+                clean_key = raw_key.strip().upper()
+                if clean_key:
+                    normalized_entry_fx[clean_key] = self._validate_fx_rate(
+                        raw_fx, f"entry_fx_rates['{clean_key}']"
+                    )
+
+        position_inputs: list[PositionValuationInput] = []
+        for idx, holding in enumerate(holdings):
+            if not isinstance(holding, CleanHoldingRecord):
+                raise InvalidValuationInputError(
+                    f"Holding at index {idx} is not a CleanHoldingRecord instance."
+                )
+
+            ticker_upper = holding.ticker.strip().upper()
+            alt_ticker = (
+                ticker_upper[:-3]
+                if ticker_upper.endswith(".BA")
+                else f"{ticker_upper}.BA"
+            )
+
+            if ticker_upper in normalized_quotes:
+                raw_price = normalized_quotes[ticker_upper]
+            elif alt_ticker in normalized_quotes:
+                raw_price = normalized_quotes[alt_ticker]
+            else:
+                raise MissingMarketPriceError(
+                    f"Missing market quote for ticker '{ticker_upper}' (also checked '{alt_ticker}')."
+                )
+
+            if isinstance(raw_price, bool) or raw_price is None:
+                raise MissingMarketPriceError(
+                    f"Invalid market quote for ticker '{ticker_upper}': boolean or None is not permitted."
+                )
+            try:
+                mkt_price = _coerce_finite_decimal(
+                    raw_price, f"market_quotes['{ticker_upper}']"
+                )
+            except ValueError as exc:
+                raise MissingMarketPriceError(
+                    f"Invalid market quote for ticker '{ticker_upper}': {exc}"
+                ) from exc
+
+            if mkt_price <= Decimal("0"):
+                raise MissingMarketPriceError(
+                    f"Market quote for ticker '{ticker_upper}' must be > 0 (got {mkt_price})."
+                )
+
+            resolved_entry_fx: Decimal | None = None
+            if ticker_upper in normalized_entry_fx:
+                resolved_entry_fx = normalized_entry_fx[ticker_upper]
+            elif alt_ticker in normalized_entry_fx:
+                resolved_entry_fx = normalized_entry_fx[alt_ticker]
+
+            avg_cost = (
+                holding.avg_price
+                if holding.avg_price is not None
+                else Decimal("0.0000")
+            )
+
+            position_inputs.append(
+                PositionValuationInput(
+                    ticker=ticker_upper,
+                    quantity=holding.quantity,
+                    avg_cost_price=avg_cost,
+                    market_price=mkt_price,
+                    currency=holding.currency,
+                    entry_fx_rate=resolved_entry_fx,
+                )
+            )
+
+        return self.value_portfolio_mark_to_market(
+            positions=position_inputs,
+            fx_rate_ars_per_usd=fx_rate_ars_per_usd,
+            cash_balance_ars=cash_balance_ars,
+            cash_balance_usd=cash_balance_usd,
+            portfolio_id=portfolio_id,
+            as_of=as_of,
         )
 
     def calculate_twr(self, slices: Sequence[SubPeriodValuationSlice]) -> Decimal:
@@ -832,6 +1178,10 @@ class PortfolioValuationService:
             raise InvalidCashFlowPeriodError(
                 "slices must be a non-empty sequence of SubPeriodValuationSlice."
             )
+        if len(slices) > MAX_VALUATION_SLICES:
+            raise InvalidValuationInputError(
+                f"slices count ({len(slices)}) exceeds maximum allowed ({MAX_VALUATION_SLICES})."
+            )
 
         with localcontext() as ctx:
             ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
@@ -842,12 +1192,16 @@ class PortfolioValuationService:
                     raise InvalidCashFlowPeriodError(
                         f"Slice at index {idx} is not a SubPeriodValuationSlice instance."
                     )
-                if sl.start_value <= Decimal("0"):
+                if sl.start_value < Decimal("0"):
                     raise InvalidCashFlowPeriodError(
-                        f"Slice at index {idx} has non-positive start_value ({sl.start_value})."
+                        f"Slice at index {idx} has negative start_value ({sl.start_value})."
                     )
 
                 if sl.cash_flow_timing == "END":
+                    if sl.start_value <= Decimal("0"):
+                        raise InvalidCashFlowPeriodError(
+                            f"Slice at index {idx} has non-positive start_value ({sl.start_value}) with END timing."
+                        )
                     r_t = (
                         sl.end_value - sl.net_cash_flow - sl.start_value
                     ) / sl.start_value
@@ -894,6 +1248,10 @@ class PortfolioValuationService:
         if isinstance(cash_flows, (str, bytes)) or not isinstance(cash_flows, Sequence):
             raise InvalidCashFlowPeriodError(
                 "cash_flows must be a sequence of DatedCashFlowEvent instances."
+            )
+        if len(cash_flows) > MAX_VALUATION_SLICES:
+            raise InvalidValuationInputError(
+                f"cash_flows count ({len(cash_flows)}) exceeds maximum allowed ({MAX_VALUATION_SLICES})."
             )
 
         with localcontext() as ctx:
@@ -1170,4 +1528,214 @@ class PortfolioValuationService:
             annualized_mwr_irr=ann_irr,
             fx_devaluation_return=fx_deval,
             real_usd_twr=real_usd_twr,
+        )
+
+    def evaluate_valuation_curve(
+        self,
+        snapshots: Sequence[HistoricalValuationSnapshot],
+        portfolio_id: str | None = None,
+    ) -> PortfolioValuationCurveReport:
+        """
+        Evaluate a chronological valuation curve of bimonetary snapshots,
+        computing sub-period and cumulative TWR, Modified Dietz & Exact IRR
+        performance reports in both ARS and USD, and tracking High-Water Marks
+        and Drawdowns across both currencies.
+        """
+        if isinstance(snapshots, (str, bytes)) or not isinstance(snapshots, Sequence):
+            raise InvalidValuationInputError(
+                "snapshots must be a sequence of HistoricalValuationSnapshot instances."
+            )
+        if len(snapshots) < 2:
+            raise InvalidValuationInputError(
+                "snapshots must contain at least 2 HistoricalValuationSnapshot elements."
+            )
+        if len(snapshots) > MAX_VALUATION_SLICES:
+            raise InvalidValuationInputError(
+                f"snapshots count ({len(snapshots)}) exceeds maximum allowed ({MAX_VALUATION_SLICES})."
+            )
+
+        for idx, snap in enumerate(snapshots):
+            if not isinstance(snap, HistoricalValuationSnapshot):
+                raise InvalidValuationInputError(
+                    f"Element at index {idx} is not a HistoricalValuationSnapshot instance."
+                )
+
+        first_aware = (
+            snapshots[0].as_of.tzinfo is not None
+            and snapshots[0].as_of.tzinfo.utcoffset(snapshots[0].as_of) is not None
+        )
+        for idx, snap in enumerate(snapshots[1:], start=1):
+            is_aware = (
+                snap.as_of.tzinfo is not None
+                and snap.as_of.tzinfo.utcoffset(snap.as_of) is not None
+            )
+            if is_aware != first_aware:
+                raise InvalidCashFlowPeriodError(
+                    f"Mixed timezone-naive and timezone-aware timestamps at index {idx}."
+                )
+
+        ordered = sorted(snapshots, key=lambda s: s.as_of)
+        for idx in range(1, len(ordered)):
+            if ordered[idx].as_of <= ordered[idx - 1].as_of:
+                raise InvalidCashFlowPeriodError(
+                    f"Duplicate or non-increasing snapshot timestamp detected: {ordered[idx].as_of.isoformat()}."
+                )
+
+        total_days = max(
+            1, int((ordered[-1].as_of - ordered[0].as_of).total_seconds() // 86400)
+        )
+
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+
+            first_snap = ordered[0]
+            assert first_snap.net_worth_usd is not None
+            hwm_ars = _quantize(first_snap.net_worth_ars)
+            hwm_usd = _quantize(first_snap.net_worth_usd)
+
+            points: list[ValuationCurvePoint] = [
+                ValuationCurvePoint(
+                    as_of=first_snap.as_of,
+                    fx_rate_ars_per_usd=_quantize(first_snap.fx_rate_ars_per_usd),
+                    net_worth_ars=hwm_ars,
+                    net_worth_usd=hwm_usd,
+                    period_return_ars=Decimal("0.0000"),
+                    period_return_usd=Decimal("0.0000"),
+                    cumulative_twr_ars=Decimal("0.0000"),
+                    cumulative_twr_usd=Decimal("0.0000"),
+                    high_water_mark_ars=hwm_ars,
+                    high_water_mark_usd=hwm_usd,
+                    drawdown_ars=Decimal("0.0000"),
+                    drawdown_usd=Decimal("0.0000"),
+                )
+            ]
+
+            slices_ars: list[SubPeriodValuationSlice] = []
+            slices_usd: list[SubPeriodValuationSlice] = []
+            cash_flows_ars: list[DatedCashFlowEvent] = []
+            cash_flows_usd: list[DatedCashFlowEvent] = []
+
+            for idx in range(1, len(ordered)):
+                prev = ordered[idx - 1]
+                curr = ordered[idx]
+                assert prev.net_worth_usd is not None
+                assert curr.net_worth_usd is not None
+                assert curr.net_cash_flow_usd is not None
+
+                try:
+                    slice_ars_i = SubPeriodValuationSlice(
+                        start_value=prev.net_worth_ars,
+                        end_value=curr.net_worth_ars,
+                        net_cash_flow=curr.net_cash_flow_ars,
+                        cash_flow_timing=curr.cash_flow_timing,
+                    )
+                    slice_usd_i = SubPeriodValuationSlice(
+                        start_value=prev.net_worth_usd,
+                        end_value=curr.net_worth_usd,
+                        net_cash_flow=curr.net_cash_flow_usd,
+                        cash_flow_timing=curr.cash_flow_timing,
+                    )
+                except ValidationError as exc:
+                    raise InvalidCashFlowPeriodError(str(exc)) from exc
+
+                slices_ars.append(slice_ars_i)
+                slices_usd.append(slice_usd_i)
+
+                r_ars_i = self.calculate_twr([slice_ars_i])
+                r_usd_i = self.calculate_twr([slice_usd_i])
+                cum_twr_ars = self.calculate_twr(slices_ars)
+                cum_twr_usd = self.calculate_twr(slices_usd)
+
+                curr_nw_ars = _quantize(curr.net_worth_ars)
+                curr_nw_usd = _quantize(curr.net_worth_usd)
+                hwm_ars = max(hwm_ars, curr_nw_ars)
+                hwm_usd = max(hwm_usd, curr_nw_usd)
+
+                dd_ars = (
+                    _quantize((curr_nw_ars - hwm_ars) / hwm_ars)
+                    if hwm_ars > Decimal("0")
+                    else Decimal("0.0000")
+                )
+                dd_usd = (
+                    _quantize((curr_nw_usd - hwm_usd) / hwm_usd)
+                    if hwm_usd > Decimal("0")
+                    else Decimal("0.0000")
+                )
+
+                points.append(
+                    ValuationCurvePoint(
+                        as_of=curr.as_of,
+                        fx_rate_ars_per_usd=_quantize(curr.fx_rate_ars_per_usd),
+                        net_worth_ars=curr_nw_ars,
+                        net_worth_usd=curr_nw_usd,
+                        period_return_ars=r_ars_i,
+                        period_return_usd=r_usd_i,
+                        cumulative_twr_ars=cum_twr_ars,
+                        cumulative_twr_usd=cum_twr_usd,
+                        high_water_mark_ars=hwm_ars,
+                        high_water_mark_usd=hwm_usd,
+                        drawdown_ars=dd_ars,
+                        drawdown_usd=dd_usd,
+                    )
+                )
+
+                if curr.cash_flow_timing == "START":
+                    raw_offset = int(
+                        (prev.as_of - ordered[0].as_of).total_seconds() // 86400
+                    )
+                else:
+                    raw_offset = int(
+                        (curr.as_of - ordered[0].as_of).total_seconds() // 86400
+                    )
+                day_offset = min(max(0, raw_offset), total_days)
+
+                if curr.net_cash_flow_ars != Decimal("0"):
+                    cash_flows_ars.append(
+                        DatedCashFlowEvent(
+                            day_offset=day_offset,
+                            amount=curr.net_cash_flow_ars,
+                        )
+                    )
+                if curr.net_cash_flow_usd != Decimal("0"):
+                    cash_flows_usd.append(
+                        DatedCashFlowEvent(
+                            day_offset=day_offset,
+                            amount=curr.net_cash_flow_usd,
+                        )
+                    )
+
+            max_dd_ars = min(p.drawdown_ars for p in points)
+            max_dd_usd = min(p.drawdown_usd for p in points)
+
+            assert ordered[0].net_worth_usd is not None
+            assert ordered[-1].net_worth_usd is not None
+            performance_ars = self.evaluate_performance_metrics(
+                slices=slices_ars,
+                start_value=ordered[0].net_worth_ars,
+                end_value=ordered[-1].net_worth_ars,
+                total_days=total_days,
+                cash_flows=cash_flows_ars,
+                start_fx_rate=ordered[0].fx_rate_ars_per_usd,
+                end_fx_rate=ordered[-1].fx_rate_ars_per_usd,
+            )
+            performance_usd = self.evaluate_performance_metrics(
+                slices=slices_usd,
+                start_value=ordered[0].net_worth_usd,
+                end_value=ordered[-1].net_worth_usd,
+                total_days=total_days,
+                cash_flows=cash_flows_usd,
+            )
+
+        return PortfolioValuationCurveReport(
+            portfolio_id=portfolio_id,
+            start_date=ordered[0].as_of,
+            end_date=ordered[-1].as_of,
+            total_days=total_days,
+            points=points,
+            performance_ars=performance_ars,
+            performance_usd=performance_usd,
+            max_drawdown_ars=max_dd_ars,
+            max_drawdown_usd=max_dd_usd,
+            high_water_mark_ars=hwm_ars,
+            high_water_mark_usd=hwm_usd,
         )

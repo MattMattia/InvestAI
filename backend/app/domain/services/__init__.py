@@ -56,18 +56,22 @@ from app.domain.services.portfolio_optimizer import (
 )
 from app.domain.services.portfolio_valuation_service import (
     MAX_VALUATION_POSITIONS,
+    MAX_VALUATION_SLICES,
     VALUATION_QUANTIZE,
     DatedCashFlowEvent,
+    HistoricalValuationSnapshot,
     InvalidCashFlowPeriodError,
     InvalidFXRateError,
     InvalidValuationInputError,
     MissingMarketPriceError,
     PerformanceReturnReport,
     PortfolioMarkToMarketReport,
+    PortfolioValuationCurveReport,
     PortfolioValuationError,
     PortfolioValuationService,
     PositionValuationInput,
     SubPeriodValuationSlice,
+    ValuationCurvePoint,
     ValuedPositionBreakdown,
 )
 from app.domain.services.quantitative_risk import (
@@ -181,6 +185,7 @@ __all__ = [
     "SignalGeneratorService",
     "VALUATION_QUANTIZE",
     "MAX_VALUATION_POSITIONS",
+    "MAX_VALUATION_SLICES",
     "PortfolioValuationError",
     "InvalidValuationInputError",
     "MissingMarketPriceError",
@@ -192,6 +197,9 @@ __all__ = [
     "SubPeriodValuationSlice",
     "DatedCashFlowEvent",
     "PerformanceReturnReport",
+    "HistoricalValuationSnapshot",
+    "ValuationCurvePoint",
+    "PortfolioValuationCurveReport",
     "PortfolioValuationService",
 ]
 

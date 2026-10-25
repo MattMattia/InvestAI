@@ -1,11 +1,11 @@
 """
-Unit test suite for Module 7.2 Phase 1:
-Dynamic Mark-to-Market Bimonetary Portfolio Valuation & TWR/MWR Attribution Engine
-(`backend/app/domain/services/portfolio_valuation_service.py`).
+Unit test suite for Module 7.2 (Phases 1 & 2):
+Dynamic Mark-to-Market Bimonetary Portfolio Valuation, TWR/MWR Attribution &
+Historical Valuation Curve Engine (`backend/app/domain/services/portfolio_valuation_service.py`).
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import unittest
 
@@ -13,15 +13,22 @@ from pydantic import ValidationError
 import pytest
 
 import app.domain.services as domain_services_pkg
+from app.domain.services.ingestion.data_cleaning_pipeline import CleanHoldingRecord
 from app.domain.services.portfolio_valuation_service import (
+    MAX_VALUATION_SLICES,
+    CleanedHoldingRecord,
     DatedCashFlowEvent,
+    HistoricalValuationSnapshot,
     InvalidCashFlowPeriodError,
     InvalidFXRateError,
     InvalidValuationInputError,
+    MissingMarketPriceError,
     PortfolioMarkToMarketReport,
+    PortfolioValuationCurveReport,
     PortfolioValuationService,
     PositionValuationInput,
     SubPeriodValuationSlice,
+    ValuationCurvePoint,
     ValuedPositionBreakdown,
 )
 
@@ -405,10 +412,21 @@ class TestPortfolioValuation(unittest.TestCase):
             )
 
         # 2. Negative capital base in TWR (START withdrawal >= start_value) and Modified Dietz
-        with self.assertRaises(InvalidCashFlowPeriodError):
+        with self.assertRaises((InvalidCashFlowPeriodError, ValidationError)):
             self.service.calculate_twr(
                 [
                     SubPeriodValuationSlice(
+                        start_value=Decimal("1000"),
+                        end_value=Decimal("500"),
+                        net_cash_flow=Decimal("-1000"),
+                        cash_flow_timing="START",
+                    )
+                ]
+            )
+        with self.assertRaises(InvalidCashFlowPeriodError):
+            self.service.calculate_twr(
+                [
+                    SubPeriodValuationSlice.model_construct(
                         start_value=Decimal("1000"),
                         end_value=Decimal("500"),
                         net_cash_flow=Decimal("-1000"),
@@ -478,3 +496,312 @@ class TestPortfolioValuation(unittest.TestCase):
                 total_unrealized_pnl_usd=Decimal("0"),
                 positions=[],
             )
+
+    def test_portfolio_level_karnosky_singer_attribution_in_mtm_report(self) -> None:
+        """
+        Verify portfolio-level Karnosky-Singer decomposition across multiple positions
+        with distinct entry FX rates ("GGAL" at 1000 and "AAPL" at 1100, valued at 1200).
+        """
+        positions = [
+            PositionValuationInput(
+                ticker="GGAL",
+                quantity=Decimal("100"),
+                avg_cost_price=Decimal("1000"),  # 100,000 ARS -> 100 USD at FX 1000
+                market_price=Decimal("1500"),    # 150,000 ARS -> 125 USD at FX 1200
+                currency="ARS",
+                entry_fx_rate=Decimal("1000"),
+            ),
+            PositionValuationInput(
+                ticker="AAPL",
+                quantity=Decimal("10"),
+                avg_cost_price=Decimal("10"),    # 100 USD -> 110,000 ARS at FX 1100
+                market_price=Decimal("12"),      # 120 USD -> 144,000 ARS at FX 1200
+                currency="USD",
+                entry_fx_rate=Decimal("1100"),
+            ),
+        ]
+
+        report = self.service.value_portfolio_mark_to_market(
+            positions=positions,
+            fx_rate_ars_per_usd=Decimal("1200"),
+            as_of=self.as_of,
+        )
+
+        self.assertIsNotNone(report.total_unrealized_pnl_pct_ars)
+        self.assertIsNotNone(report.total_unrealized_pnl_pct_usd)
+        self.assertIsNotNone(report.total_fx_return_component)
+        self.assertIsNotNone(report.total_interaction_return_component)
+        assert report.total_unrealized_pnl_pct_ars is not None
+        assert report.total_unrealized_pnl_pct_usd is not None
+        assert report.total_fx_return_component is not None
+        assert report.total_interaction_return_component is not None
+
+        # Total cost ARS = 100,000 + 110,000 = 210,000; Total cost USD = 100 + 100 = 200
+        # Effective portfolio entry FX = 210,000 / 200 = 1050
+        # FX return component = (1200 / 1050) - 1 = 0.1429
+        self.assertEqual(report.total_cost_basis_ars, Decimal("210000.0000"))
+        self.assertEqual(report.total_cost_basis_usd, Decimal("200.0000"))
+        self.assertEqual(report.total_fx_return_component, Decimal("0.1429"))
+        self.assertEqual(
+            report.total_unrealized_pnl_pct_usd
+            + report.total_fx_return_component
+            + report.total_interaction_return_component,
+            report.total_unrealized_pnl_pct_ars,
+        )
+
+    def test_value_holdings_from_quotes_resolves_ba_suffix_and_raises_missing_price(
+        self,
+    ) -> None:
+        """
+        Verify `value_holdings_from_quotes` resolves `.BA` suffixes bidirectionally,
+        handles `avg_price=None` as zero cost basis, and raises `MissingMarketPriceError`
+        when a quote is missing or non-positive.
+        """
+        holdings = [
+            CleanedHoldingRecord(
+                row_number=1,
+                ticker="GGAL",
+                quantity=Decimal("10"),
+                avg_price=Decimal("4000"),
+                currency="ARS",
+            ),
+            CleanHoldingRecord(
+                row_number=2,
+                ticker="YPFD.BA",
+                quantity=Decimal("5"),
+                avg_price=Decimal("30000"),
+                currency="ARS",
+            ),
+        ]
+        market_quotes = {
+            "GGAL.BA": Decimal("5200"),
+            "YPFD": Decimal("38000"),
+        }
+
+        report = self.service.value_holdings_from_quotes(
+            holdings=holdings,
+            market_quotes=market_quotes,
+            fx_rate_ars_per_usd=Decimal("1000"),
+            entry_fx_rates={"GGAL.BA": Decimal("900"), "YPFD": Decimal("950")},
+            cash_balance_ars=Decimal("10000"),
+            portfolio_id="pf-quotes-01",
+            as_of=self.as_of,
+        )
+
+        self.assertEqual(len(report.positions), 2)
+        # GGAL: 10 * 5200 = 52,000 ARS; YPFD.BA: 5 * 38000 = 190,000 ARS -> Total = 242,000 ARS
+        self.assertEqual(report.total_positions_value_ars, Decimal("242000.0000"))
+        self.assertEqual(report.total_positions_value_usd, Decimal("242.0000"))
+        self.assertEqual(report.total_net_worth_ars, Decimal("252000.0000"))
+        self.assertEqual(report.total_net_worth_usd, Decimal("252.0000"))
+
+        with self.assertRaises(MissingMarketPriceError):
+            self.service.value_holdings_from_quotes(
+                holdings=holdings,
+                market_quotes={"GGAL.BA": Decimal("5200")},  # YPFD missing
+                fx_rate_ars_per_usd=Decimal("1000"),
+            )
+
+        with self.assertRaises(MissingMarketPriceError):
+            self.service.value_holdings_from_quotes(
+                holdings=holdings,
+                market_quotes={"GGAL.BA": Decimal("5200"), "YPFD": Decimal("0")},
+                fx_rate_ars_per_usd=Decimal("1000"),
+            )
+
+    def test_evaluate_valuation_curve_bimonetary_drawdown_illusion_ars_ath_vs_usd_drawdown(
+        self,
+    ) -> None:
+        """
+        Verify Argentine "Monetary Illusion" scenario along a valuation curve:
+        nominal ARS reaches an all-time high (+80%, 0% drawdown) while real USD
+        suffers a -28.00% drawdown from peak ($1250 -> $900) and -10.00% total TWR.
+        """
+        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        t1 = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 12, 31, 12, 0, tzinfo=timezone.utc)
+
+        snapshots = [
+            HistoricalValuationSnapshot(
+                as_of=t0,
+                net_worth_ars=Decimal("1000000"),
+                fx_rate_ars_per_usd=Decimal("1000"),
+            ),
+            HistoricalValuationSnapshot(
+                as_of=t1,
+                net_worth_ars=Decimal("1500000"),
+                fx_rate_ars_per_usd=Decimal("1200"),
+            ),
+            HistoricalValuationSnapshot(
+                as_of=t2,
+                net_worth_ars=Decimal("1800000"),
+                fx_rate_ars_per_usd=Decimal("2000"),
+            ),
+        ]
+
+        # Auto-computed USD net worths: 1000.0000, 1250.0000, 900.0000
+        self.assertEqual(snapshots[0].net_worth_usd, Decimal("1000.0000"))
+        self.assertEqual(snapshots[1].net_worth_usd, Decimal("1250.0000"))
+        self.assertEqual(snapshots[2].net_worth_usd, Decimal("900.0000"))
+
+        curve = self.service.evaluate_valuation_curve(
+            snapshots=snapshots,
+            portfolio_id="pf-illusion-01",
+        )
+
+        self.assertIsInstance(curve, PortfolioValuationCurveReport)
+        self.assertEqual(len(curve.points), 3)
+
+        # At t2: ARS is at ATH (drawdown 0.0000), USD is down -28.00% from 1250 peak
+        pt2 = curve.points[2]
+        self.assertEqual(pt2.drawdown_ars, Decimal("0.0000"))
+        self.assertEqual(curve.max_drawdown_ars, Decimal("0.0000"))
+        self.assertEqual(curve.high_water_mark_ars, Decimal("1800000.0000"))
+
+        self.assertEqual(pt2.drawdown_usd, Decimal("-0.2800"))
+        self.assertEqual(curve.max_drawdown_usd, Decimal("-0.2800"))
+        self.assertEqual(curve.high_water_mark_usd, Decimal("1250.0000"))
+
+        # Cumulative TWR: +80% in ARS, -10% in USD
+        self.assertEqual(curve.performance_ars.twr, Decimal("0.8000"))
+        self.assertEqual(curve.performance_usd.twr, Decimal("-0.1000"))
+        self.assertEqual(curve.performance_ars.real_usd_twr, Decimal("-0.1000"))
+
+    def test_subperiod_slice_zero_start_value_with_start_timing_deposit(self) -> None:
+        """
+        Verify account opening with `start_value = 0` and a positive `START`-timed
+        deposit succeeds, while `start_value = 0` with `END` timing or zero deposit fails.
+        """
+        opening_slice = SubPeriodValuationSlice(
+            start_value=Decimal("0"),
+            end_value=Decimal("1150"),
+            net_cash_flow=Decimal("1000"),
+            cash_flow_timing="START",
+        )
+        twr = self.service.calculate_twr([opening_slice])
+        self.assertEqual(twr, Decimal("0.1500"))
+
+        with self.assertRaises((ValidationError, InvalidCashFlowPeriodError)):
+            SubPeriodValuationSlice(
+                start_value=Decimal("0"),
+                end_value=Decimal("1150"),
+                net_cash_flow=Decimal("1000"),
+                cash_flow_timing="END",
+            )
+
+        with self.assertRaises((ValidationError, InvalidCashFlowPeriodError)):
+            SubPeriodValuationSlice(
+                start_value=Decimal("0"),
+                end_value=Decimal("1150"),
+                net_cash_flow=Decimal("0"),
+                cash_flow_timing="START",
+            )
+
+    def test_evaluate_valuation_curve_unsorted_snapshots_and_intraday_offset_handling(
+        self,
+    ) -> None:
+        """
+        Verify `evaluate_valuation_curve` sorts unsorted snapshots chronologically,
+        matches `points[-1].cumulative_twr_ars == curve.performance_ars.twr`, and
+        handles sub-24-hour intervals (`total_days == 1`) without `ZeroDivisionError`.
+        """
+        t0 = datetime(2026, 5, 10, 10, 0, tzinfo=timezone.utc)
+        t1 = t0 + timedelta(hours=6)
+        t2 = t0 + timedelta(hours=12)
+
+        # Pass out-of-order snapshots [t2, t0, t1]
+        unsorted_snapshots = [
+            HistoricalValuationSnapshot(
+                as_of=t2,
+                net_worth_ars=Decimal("231000"),
+                fx_rate_ars_per_usd=Decimal("1000"),
+                net_cash_flow_ars=Decimal("0"),
+                cash_flow_timing="END",
+            ),
+            HistoricalValuationSnapshot(
+                as_of=t0,
+                net_worth_ars=Decimal("100000"),
+                fx_rate_ars_per_usd=Decimal("1000"),
+            ),
+            HistoricalValuationSnapshot(
+                as_of=t1,
+                net_worth_ars=Decimal("210000"),
+                fx_rate_ars_per_usd=Decimal("1000"),
+                net_cash_flow_ars=Decimal("100000"),
+                cash_flow_timing="START",
+            ),
+        ]
+
+        curve = self.service.evaluate_valuation_curve(unsorted_snapshots)
+        self.assertEqual(curve.total_days, 1)
+        self.assertEqual(curve.start_date, t0)
+        self.assertEqual(curve.end_date, t2)
+        self.assertEqual([p.as_of for p in curve.points], [t0, t1, t2])
+        self.assertEqual(
+            curve.points[-1].cumulative_twr_ars,
+            curve.performance_ars.twr,
+        )
+        # Sub-period 1: (210,000 - (100,000 + 100,000)) / 200,000 = +5%
+        # Sub-period 2: (231,000 - 210,000) / 210,000 = +10%
+        # Cumulative TWR: 1.05 * 1.10 - 1 = 0.1550 (+15.50%)
+        self.assertEqual(curve.performance_ars.twr, Decimal("0.1550"))
+
+    def test_phase2_validation_guards_duplicate_timestamps_insufficient_snapshots_and_dos_bounds(
+        self,
+    ) -> None:
+        """
+        Verify Phase 2 validation guards (`< 2` snapshots, duplicate timestamps,
+        naive/aware datetime mixing) and re-exports in `app.domain.services`.
+        """
+        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        snap0 = HistoricalValuationSnapshot(
+            as_of=t0,
+            net_worth_ars=Decimal("100000"),
+            fx_rate_ars_per_usd=Decimal("1000"),
+        )
+
+        # < 2 snapshots rejected
+        with self.assertRaises(InvalidValuationInputError):
+            self.service.evaluate_valuation_curve([snap0])
+
+        # Duplicate timestamps rejected
+        with self.assertRaises(InvalidCashFlowPeriodError):
+            self.service.evaluate_valuation_curve([snap0, snap0])
+
+        # Mixed naive and timezone-aware timestamps rejected
+        snap_naive = HistoricalValuationSnapshot(
+            as_of=datetime(2026, 1, 2, 12, 0),
+            net_worth_ars=Decimal("110000"),
+            fx_rate_ars_per_usd=Decimal("1000"),
+        )
+        with self.assertRaises(InvalidCashFlowPeriodError):
+            self.service.evaluate_valuation_curve([snap0, snap_naive])
+
+        # Verify Phase 2 symbols are re-exported in app.domain.services
+        for symbol in (
+            "MAX_VALUATION_SLICES",
+            "HistoricalValuationSnapshot",
+            "ValuationCurvePoint",
+            "PortfolioValuationCurveReport",
+        ):
+            self.assertTrue(
+                hasattr(domain_services_pkg, symbol),
+                f"Expected '{symbol}' to be re-exported in app.domain.services",
+            )
+        self.assertEqual(MAX_VALUATION_SLICES, 10_000)
+        self.assertIsInstance(curve_pt := ValuationCurvePoint(
+            as_of=t0,
+            fx_rate_ars_per_usd=Decimal("1000"),
+            net_worth_ars=Decimal("100000"),
+            net_worth_usd=Decimal("100"),
+            period_return_ars=Decimal("0"),
+            period_return_usd=Decimal("0"),
+            cumulative_twr_ars=Decimal("0"),
+            cumulative_twr_usd=Decimal("0"),
+            high_water_mark_ars=Decimal("100000"),
+            high_water_mark_usd=Decimal("100"),
+            drawdown_ars=Decimal("0"),
+            drawdown_usd=Decimal("0"),
+        ), ValuationCurvePoint)
+        self.assertEqual(curve_pt.drawdown_ars, Decimal("0.0000"))
+
