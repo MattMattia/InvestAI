@@ -109,6 +109,25 @@ from app.domain.services.technical_indicators import (
     TechnicalIndicatorsService,
     TechnicalIndicatorsSnapshot,
 )
+from app.domain.services.tolerance_band_rebalancer import (
+    MAX_REBALANCE_ASSETS,
+    REBALANCE_QUANTIZE,
+    AssetBandEvaluation,
+    AssetTargetBandSpec,
+    BandBreachDirection,
+    BandType,
+    InsufficientLiquidityForRebalanceError,
+    InvalidTargetAllocationError,
+    InvalidToleranceBandConfigError,
+    MissingRebalancePriceError,
+    RebalanceMode,
+    RebalancePositionInput,
+    RebalanceTradeOrder,
+    RebalancingError,
+    ToleranceBandRebalanceReport,
+    ToleranceBandRebalancerConfig,
+    ToleranceBandRebalancerService,
+)
 
 __all__ = [
     "BacktestEngine",
@@ -201,6 +220,23 @@ __all__ = [
     "ValuationCurvePoint",
     "PortfolioValuationCurveReport",
     "PortfolioValuationService",
+    "REBALANCE_QUANTIZE",
+    "MAX_REBALANCE_ASSETS",
+    "RebalancingError",
+    "InvalidTargetAllocationError",
+    "InvalidToleranceBandConfigError",
+    "MissingRebalancePriceError",
+    "InsufficientLiquidityForRebalanceError",
+    "BandType",
+    "RebalanceMode",
+    "BandBreachDirection",
+    "RebalancePositionInput",
+    "AssetTargetBandSpec",
+    "ToleranceBandRebalancerConfig",
+    "AssetBandEvaluation",
+    "RebalanceTradeOrder",
+    "ToleranceBandRebalanceReport",
+    "ToleranceBandRebalancerService",
 ]
 
 
