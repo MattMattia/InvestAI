@@ -120,6 +120,8 @@ from app.domain.services.tolerance_band_rebalancer import (
     InvalidTargetAllocationError,
     InvalidToleranceBandConfigError,
     MissingRebalancePriceError,
+    RebalanceFSMExecutionBatch,
+    RebalanceFSMOrderTicket,
     RebalanceMode,
     RebalancePositionInput,
     RebalanceTradeOrder,
@@ -236,7 +238,10 @@ __all__ = [
     "AssetBandEvaluation",
     "RebalanceTradeOrder",
     "ToleranceBandRebalanceReport",
+    "RebalanceFSMOrderTicket",
+    "RebalanceFSMExecutionBatch",
     "ToleranceBandRebalancerService",
 ]
+
 
 

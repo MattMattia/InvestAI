@@ -1,16 +1,19 @@
 """
-Dynamic Tolerance-Band Portfolio Rebalancing Engine (Module 7.3 - Phase 1).
+Dynamic Tolerance-Band Portfolio Rebalancing Engine (Module 7.3 - Phases 1 & 2).
 
 Implements:
 - Absolute, Relative, and Dynamic Volatility-Scaled tolerance corridors
   ($w_i^* \\pm \\theta_i$) with configurable minimum/maximum half-width bounds.
+- Dynamic ATR Volatility Band Calibration (`calibrate_specs_from_indicators`)
+  bridging `TechnicalIndicatorsSnapshot` (`atr_14 / close`) from Module 7.1.
 - Full-to-Target (`FULL_TO_TARGET`) and Minimum-Turnover Band-Boundary
-  (`TO_BAND_BOUNDARY`) rebalancing modes.
+  (`TO_BAND_BOUNDARY`) rebalancing modes, plus Excess-Cash Inflow Deployment
+  (`deploy_excess_cash_when_inside_bands`).
 - Self-Financing Liquidity Waterfall (Sell-Before-Buy) guaranteeing zero cash
-  overdraft (`projected_ending_cash >= 0`) after transaction commissions and
-  target cash buffer reserves.
+  overdraft (`projected_ending_cash >= 0`), Post-Trade Weight/Drift Projections,
+  and Realized PnL Estimation (`estimated_realized_pnl`).
 - Direct integration with `PortfolioMarkToMarketReport` (Module 7.2) and
-  `OrderFSMIntent` (Module 7.1 / Module 1.3).
+  idempotent two-phase Order FSM execution batching (`RebalanceFSMExecutionBatch`).
 """
 from __future__ import annotations
 
@@ -19,6 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_FLOOR, ROUND_HALF_UP, localcontext
 from enum import Enum
+import hashlib
 import math
 from typing import Any, Literal
 
@@ -26,6 +30,7 @@ from pydantic import Field, ValidationError, field_validator, model_validator
 
 from app.domain.services.portfolio_valuation_service import PortfolioMarkToMarketReport
 from app.domain.services.signal_generator import OrderFSMIntent
+from app.domain.services.technical_indicators import TechnicalIndicatorsSnapshot
 from app.schemas.envelope import BaseSchema
 
 # ============================================================================
@@ -160,12 +165,14 @@ def _validate_clean_currency(value: Any) -> str:
 # ============================================================================
 class RebalancePositionInput(BaseSchema):
     """
-    Immutable current holding position input for tolerance-band evaluation.
+    Immutable current holding position input for tolerance-band evaluation,
+    optionally carrying `avg_cost_price` for realized PnL estimation on sales.
     """
 
     ticker: str = Field(min_length=1, max_length=20)
     quantity: Decimal = Field(ge=Decimal("0"))
     market_price: Decimal = Field(gt=Decimal("0"))
+    avg_cost_price: Decimal | None = Field(default=None, ge=Decimal("0"))
 
     @field_validator("ticker", mode="before")
     @classmethod
@@ -176,6 +183,13 @@ class RebalancePositionInput(BaseSchema):
     @classmethod
     def _validate_decimals(cls, v: Any, info: Any) -> Decimal:
         return _coerce_finite_decimal(v, str(info.field_name))
+
+    @field_validator("avg_cost_price", mode="before")
+    @classmethod
+    def _validate_optional_avg_cost(cls, v: Any) -> Decimal | None:
+        if v is None:
+            return None
+        return _coerce_finite_decimal(v, "avg_cost_price")
 
 
 class AssetTargetBandSpec(BaseSchema):
@@ -222,7 +236,8 @@ class AssetTargetBandSpec(BaseSchema):
 class ToleranceBandRebalancerConfig(BaseSchema):
     """
     Immutable configuration governing tolerance corridor geometry, rebalance
-    destination mode, transaction commissions, lot rounding, and cash buffer.
+    destination mode, transaction commissions, lot rounding, cash buffer, and
+    excess-cash deployment.
     """
 
     band_type: BandType = BandType.RELATIVE
@@ -248,6 +263,7 @@ class ToleranceBandRebalancerConfig(BaseSchema):
         default=Decimal("0.0000"), ge=Decimal("0"), lt=Decimal("1.0000")
     )
     liquidate_unlisted_holdings: bool = True
+    deploy_excess_cash_when_inside_bands: bool = False
 
     @field_validator(
         "default_absolute_tolerance",
@@ -263,7 +279,12 @@ class ToleranceBandRebalancerConfig(BaseSchema):
     def _validate_decimals(cls, v: Any, info: Any) -> Decimal:
         return _coerce_finite_decimal(v, str(info.field_name))
 
-    @field_validator("allow_fractional_shares", "liquidate_unlisted_holdings", mode="before")
+    @field_validator(
+        "allow_fractional_shares",
+        "liquidate_unlisted_holdings",
+        "deploy_excess_cash_when_inside_bands",
+        mode="before",
+    )
     @classmethod
     def _validate_strict_booleans(cls, v: Any, info: Any) -> bool:
         if not isinstance(v, bool):
@@ -282,7 +303,8 @@ class ToleranceBandRebalancerConfig(BaseSchema):
 
 class AssetBandEvaluation(BaseSchema):
     """
-    Immutable per-asset corridor evaluation, drift measurement, and destination weight.
+    Immutable per-asset corridor evaluation, pre-trade drift measurement,
+    destination weight, and projected post-trade state after rebalance execution.
     """
 
     ticker: str = Field(min_length=1, max_length=20)
@@ -297,6 +319,10 @@ class AssetBandEvaluation(BaseSchema):
     is_breached: bool
     breach_direction: BandBreachDirection
     destination_weight: Decimal = Field(ge=Decimal("0"), le=Decimal("1.0000"))
+    post_trade_quantity: Decimal = Field(ge=Decimal("0"))
+    post_trade_value: Decimal = Field(ge=Decimal("0"))
+    post_trade_weight: Decimal = Field(ge=Decimal("0"), le=Decimal("1.0000"))
+    post_trade_drift_weight: Decimal
 
     @field_validator("ticker", mode="before")
     @classmethod
@@ -313,6 +339,10 @@ class AssetBandEvaluation(BaseSchema):
         "upper_band",
         "drift_weight",
         "destination_weight",
+        "post_trade_quantity",
+        "post_trade_value",
+        "post_trade_weight",
+        "post_trade_drift_weight",
         mode="before",
     )
     @classmethod
@@ -323,7 +353,7 @@ class AssetBandEvaluation(BaseSchema):
 class RebalanceTradeOrder(BaseSchema):
     """
     Immutable rebalance trade order with gross notional, estimated commission,
-    net cash impact, and transactional `OrderFSMIntent`.
+    net cash impact, estimated realized PnL, and transactional `OrderFSMIntent`.
     """
 
     ticker: str = Field(min_length=1, max_length=20)
@@ -333,6 +363,7 @@ class RebalanceTradeOrder(BaseSchema):
     gross_amount: Decimal = Field(gt=Decimal("0"))
     estimated_commission: Decimal = Field(ge=Decimal("0"))
     net_cash_impact: Decimal
+    estimated_realized_pnl: Decimal | None = None
     order_intent: OrderFSMIntent
 
     @field_validator("ticker", mode="before")
@@ -351,6 +382,13 @@ class RebalanceTradeOrder(BaseSchema):
     @classmethod
     def _validate_decimals(cls, v: Any, info: Any) -> Decimal:
         return _coerce_finite_decimal(v, str(info.field_name))
+
+    @field_validator("estimated_realized_pnl", mode="before")
+    @classmethod
+    def _validate_optional_realized_pnl(cls, v: Any) -> Decimal | None:
+        if v is None:
+            return None
+        return _coerce_finite_decimal(v, "estimated_realized_pnl")
 
     @model_validator(mode="after")
     def _enforce_order_accounting_and_fsm_sync(self) -> RebalanceTradeOrder:
@@ -384,13 +422,20 @@ class RebalanceTradeOrder(BaseSchema):
                     f"BUY net_cash_impact ({self.net_cash_impact}) must equal "
                     f"-(gross_amount + estimated_commission) ({expected_impact})."
                 )
+            if self.estimated_realized_pnl is None:
+                object.__setattr__(self, "estimated_realized_pnl", Decimal("0.0000"))
+            elif self.estimated_realized_pnl != Decimal("0.0000"):
+                raise ValueError(
+                    f"BUY order estimated_realized_pnl must be 0.0000 (got {self.estimated_realized_pnl})."
+                )
         return self
 
 
 class ToleranceBandRebalanceReport(BaseSchema):
     """
     Immutable consolidated tolerance-band rebalancing report enforcing exact
-    cash accounting closure, zero overdraft, and Sell-Before-Buy ordering.
+    cash accounting closure, post-trade net worth identity, realized PnL
+    aggregation, zero overdraft, and Sell-Before-Buy ordering.
     """
 
     portfolio_id: str | None = None
@@ -401,11 +446,13 @@ class ToleranceBandRebalanceReport(BaseSchema):
     needs_rebalancing: bool
     breached_tickers: list[str] = Field(default_factory=list)
     total_portfolio_value: Decimal = Field(gt=Decimal("0"))
+    projected_post_trade_portfolio_value: Decimal = Field(gt=Decimal("0"))
     initial_cash: Decimal = Field(ge=Decimal("0"))
     projected_ending_cash: Decimal = Field(ge=Decimal("0"))
     total_sell_gross: Decimal = Field(ge=Decimal("0"))
     total_buy_gross: Decimal = Field(ge=Decimal("0"))
     total_estimated_commissions: Decimal = Field(ge=Decimal("0"))
+    total_estimated_realized_pnl: Decimal = Field(default=Decimal("0.0000"))
     portfolio_turnover: Decimal = Field(ge=Decimal("0"))
     evaluations: list[AssetBandEvaluation] = Field(default_factory=list)
     orders: list[RebalanceTradeOrder] = Field(default_factory=list)
@@ -417,11 +464,13 @@ class ToleranceBandRebalanceReport(BaseSchema):
 
     @field_validator(
         "total_portfolio_value",
+        "projected_post_trade_portfolio_value",
         "initial_cash",
         "projected_ending_cash",
         "total_sell_gross",
         "total_buy_gross",
         "total_estimated_commissions",
+        "total_estimated_realized_pnl",
         "portfolio_turnover",
         mode="before",
     )
@@ -449,6 +498,33 @@ class ToleranceBandRebalanceReport(BaseSchema):
                 f"Overdraft violation: projected_ending_cash ({self.projected_ending_cash}) < 0."
             )
 
+        expected_post_trade_val = (
+            self.total_portfolio_value - self.total_estimated_commissions
+        )
+        if (
+            abs(self.projected_post_trade_portfolio_value - expected_post_trade_val)
+            > REBALANCE_QUANTIZE
+        ):
+            raise ValueError(
+                f"Post-trade portfolio value closure violated: "
+                f"projected_post_trade_portfolio_value ({self.projected_post_trade_portfolio_value}) "
+                f"differs from total_portfolio_value - total_estimated_commissions ({expected_post_trade_val})."
+            )
+
+        expected_realized_pnl = sum(
+            (
+                o.estimated_realized_pnl
+                for o in self.orders
+                if o.side == "SELL" and o.estimated_realized_pnl is not None
+            ),
+            Decimal("0.0000"),
+        )
+        if self.total_estimated_realized_pnl != expected_realized_pnl:
+            raise ValueError(
+                f"Realized PnL aggregation violated: total_estimated_realized_pnl "
+                f"({self.total_estimated_realized_pnl}) != sum of SELL order realized PnL ({expected_realized_pnl})."
+            )
+
         seen_buy = False
         for order in self.orders:
             if order.side == "BUY":
@@ -471,6 +547,166 @@ class ToleranceBandRebalanceReport(BaseSchema):
         return self
 
 
+class RebalanceFSMOrderTicket(BaseSchema):
+    """
+    Immutable, idempotency-keyed execution ticket ready for two-phase submission
+    into the transactional Order Finite State Machine (`PENDING` state).
+    """
+
+    sequence_number: int = Field(ge=1)
+    execution_phase: Literal["LIQUIDATION_SELL", "ACQUISITION_BUY"]
+    idempotency_key: str = Field(min_length=16, max_length=64)
+    ticker: str = Field(min_length=1, max_length=20)
+    side: Literal["SELL", "BUY"]
+    quantity: Decimal = Field(gt=Decimal("0"))
+    execution_price: Decimal = Field(gt=Decimal("0"))
+    estimated_commission: Decimal = Field(ge=Decimal("0"))
+    estimated_realized_pnl: Decimal | None = None
+    order_payload: dict[str, Any]
+
+    @field_validator("sequence_number", mode="before")
+    @classmethod
+    def _validate_strict_sequence_int(cls, v: Any) -> int:
+        if isinstance(v, bool) or not isinstance(v, int):
+            raise ValueError("sequence_number must be a strict integer.")
+        return v
+
+    @field_validator("idempotency_key", mode="before")
+    @classmethod
+    def _validate_idempotency_key(cls, v: Any) -> str:
+        if not isinstance(v, str) or isinstance(v, bool):
+            raise ValueError("idempotency_key must be a valid string.")
+        if any(ord(ch) < 32 for ch in v):
+            raise ValueError("Control characters are not permitted in idempotency_key.")
+        cleaned = v.strip()
+        if len(cleaned) < 16 or len(cleaned) > 64:
+            raise ValueError("idempotency_key must be between 16 and 64 characters.")
+        return cleaned
+
+    @field_validator("ticker", mode="before")
+    @classmethod
+    def _normalize_ticker(cls, v: Any) -> str:
+        return _validate_clean_ticker(v)
+
+    @field_validator(
+        "quantity", "execution_price", "estimated_commission", mode="before"
+    )
+    @classmethod
+    def _validate_decimals(cls, v: Any, info: Any) -> Decimal:
+        return _coerce_finite_decimal(v, str(info.field_name))
+
+    @field_validator("estimated_realized_pnl", mode="before")
+    @classmethod
+    def _validate_optional_pnl(cls, v: Any) -> Decimal | None:
+        if v is None:
+            return None
+        return _coerce_finite_decimal(v, "estimated_realized_pnl")
+
+    @model_validator(mode="after")
+    def _enforce_phase_and_payload_sync(self) -> RebalanceFSMOrderTicket:
+        if self.side == "SELL" and self.execution_phase != "LIQUIDATION_SELL":
+            raise ValueError(
+                "SELL ticket must have execution_phase == 'LIQUIDATION_SELL'."
+            )
+        if self.side == "BUY" and self.execution_phase != "ACQUISITION_BUY":
+            raise ValueError(
+                "BUY ticket must have execution_phase == 'ACQUISITION_BUY'."
+            )
+        if self.side == "BUY":
+            if self.estimated_realized_pnl is None:
+                object.__setattr__(self, "estimated_realized_pnl", Decimal("0.0000"))
+            elif self.estimated_realized_pnl != Decimal("0.0000"):
+                raise ValueError("BUY ticket estimated_realized_pnl must be 0.0000.")
+        return self
+
+
+class RebalanceFSMExecutionBatch(BaseSchema):
+    """
+    Immutable two-phase (`LIQUIDATION_SELL` -> `ACQUISITION_BUY`) execution batch
+    carrying deterministic batch and order idempotency keys for FSM persistence.
+    """
+
+    batch_id: str = Field(min_length=16, max_length=64)
+    portfolio_id: str | None = None
+    as_of: datetime
+    base_currency: str = Field(default="USD", pattern=r"^(ARS|USD)$")
+    total_orders: int = Field(ge=0)
+    sell_orders_count: int = Field(ge=0)
+    buy_orders_count: int = Field(ge=0)
+    tickets: list[RebalanceFSMOrderTicket] = Field(default_factory=list)
+
+    @field_validator("batch_id", mode="before")
+    @classmethod
+    def _validate_batch_id(cls, v: Any) -> str:
+        if not isinstance(v, str) or isinstance(v, bool):
+            raise ValueError("batch_id must be a valid string.")
+        if any(ord(ch) < 32 for ch in v):
+            raise ValueError("Control characters are not permitted in batch_id.")
+        cleaned = v.strip()
+        if len(cleaned) < 16 or len(cleaned) > 64:
+            raise ValueError("batch_id must be between 16 and 64 characters.")
+        return cleaned
+
+    @field_validator("base_currency", mode="before")
+    @classmethod
+    def _normalize_base_currency(cls, v: Any) -> str:
+        return _validate_clean_currency(v)
+
+    @field_validator(
+        "total_orders", "sell_orders_count", "buy_orders_count", mode="before"
+    )
+    @classmethod
+    def _validate_strict_counts(cls, v: Any, info: Any) -> int:
+        if isinstance(v, bool) or not isinstance(v, int):
+            raise ValueError(f"'{info.field_name}' must be a strict integer.")
+        return v
+
+    @model_validator(mode="after")
+    def _enforce_batch_integrity_and_phase_ordering(
+        self,
+    ) -> RebalanceFSMExecutionBatch:
+        if self.total_orders != len(self.tickets):
+            raise ValueError(
+                f"total_orders ({self.total_orders}) must equal len(tickets) ({len(self.tickets)})."
+            )
+        actual_sells = sum(1 for t in self.tickets if t.side == "SELL")
+        actual_buys = sum(1 for t in self.tickets if t.side == "BUY")
+        if self.sell_orders_count != actual_sells:
+            raise ValueError(
+                f"sell_orders_count ({self.sell_orders_count}) != actual SELL tickets ({actual_sells})."
+            )
+        if self.buy_orders_count != actual_buys:
+            raise ValueError(
+                f"buy_orders_count ({self.buy_orders_count}) != actual BUY tickets ({actual_buys})."
+            )
+        if self.sell_orders_count + self.buy_orders_count != self.total_orders:
+            raise ValueError(
+                "sell_orders_count + buy_orders_count must equal total_orders."
+            )
+
+        expected_seq = list(range(1, len(self.tickets) + 1))
+        actual_seq = [t.sequence_number for t in self.tickets]
+        if actual_seq != expected_seq:
+            raise ValueError(
+                f"Ticket sequence_number values must be contiguous {expected_seq} (got {actual_seq})."
+            )
+
+        idem_keys = [t.idempotency_key for t in self.tickets]
+        if len(set(idem_keys)) != len(idem_keys):
+            raise ValueError("Duplicate idempotency_key detected in batch tickets.")
+
+        seen_buy = False
+        for ticket in self.tickets:
+            if ticket.side == "BUY":
+                seen_buy = True
+            elif ticket.side == "SELL" and seen_buy:
+                raise ValueError(
+                    "Batch phase ordering violated: all 'LIQUIDATION_SELL' tickets must precede 'ACQUISITION_BUY' tickets."
+                )
+
+        return self
+
+
 @dataclass
 class _PositionAccumulator:
     """Internal accumulator for consolidating duplicate position lots."""
@@ -478,6 +714,9 @@ class _PositionAccumulator:
     ticker: str
     raw_qty: Decimal = Decimal("0")
     raw_val: Decimal = Decimal("0")
+    raw_cost_val: Decimal = Decimal("0")
+    has_any_cost: bool = False
+    has_missing_cost: bool = False
     last_price: Decimal = Decimal("0")
 
 
@@ -487,8 +726,9 @@ class _PositionAccumulator:
 class ToleranceBandRebalancerService:
     """
     Stateless quantitative domain service monitoring portfolio drift against
-    absolute, relative, or volatility-scaled tolerance bands and generating
-    self-financing rebalance trade orders.
+    absolute, relative, or volatility-scaled tolerance bands, calibrating
+    volatility multipliers from ATR snapshots, and generating self-financing
+    rebalance trade orders and idempotent FSM execution batches.
     """
 
     def __init__(self, config: ToleranceBandRebalancerConfig | None = None) -> None:
@@ -505,6 +745,134 @@ class ToleranceBandRebalancerService:
     def config(self) -> ToleranceBandRebalancerConfig:
         """Return the active immutable rebalancer configuration."""
         return self._config
+
+    def calibrate_specs_from_indicators(
+        self,
+        target_specs: Sequence[AssetTargetBandSpec],
+        indicators_by_ticker: Mapping[str, TechnicalIndicatorsSnapshot],
+        baseline_atr_pct: Decimal = Decimal("0.0200"),
+        min_multiplier: Decimal = Decimal("0.5000"),
+        max_multiplier: Decimal = Decimal("3.0000"),
+    ) -> list[AssetTargetBandSpec]:
+        """
+        Dynamically calibrate each `AssetTargetBandSpec.volatility_multiplier`
+        and fallback `reference_price` from `TechnicalIndicatorsSnapshot` (Module 7.1)
+        based on normalized ATR volatility (`(atr_14 / close) / baseline_atr_pct`),
+        clamped to `[min_multiplier, max_multiplier]`.
+        """
+        if (
+            isinstance(target_specs, (str, bytes))
+            or not isinstance(target_specs, Sequence)
+            or len(target_specs) == 0
+        ):
+            raise InvalidTargetAllocationError(
+                "target_specs must be a non-empty sequence of AssetTargetBandSpec instances."
+            )
+        if len(target_specs) > MAX_REBALANCE_ASSETS:
+            raise InvalidTargetAllocationError(
+                f"target_specs count ({len(target_specs)}) exceeds maximum allowed ({MAX_REBALANCE_ASSETS})."
+            )
+
+        if not isinstance(indicators_by_ticker, Mapping):
+            raise InvalidToleranceBandConfigError(
+                "indicators_by_ticker must be a mapping of ticker -> TechnicalIndicatorsSnapshot."
+            )
+
+        try:
+            dec_baseline = _coerce_finite_decimal(baseline_atr_pct, "baseline_atr_pct")
+            dec_min_mult = _coerce_finite_decimal(min_multiplier, "min_multiplier")
+            dec_max_mult = _coerce_finite_decimal(max_multiplier, "max_multiplier")
+        except ValueError as exc:
+            raise InvalidToleranceBandConfigError(str(exc)) from exc
+
+        if dec_baseline <= Decimal("0") or dec_baseline > Decimal("1.0000"):
+            raise InvalidToleranceBandConfigError(
+                f"baseline_atr_pct must be in (0, 1.0000] (got {dec_baseline})."
+            )
+        if (
+            dec_min_mult <= Decimal("0")
+            or dec_min_mult > dec_max_mult
+            or dec_max_mult > Decimal("5.0000")
+        ):
+            raise InvalidToleranceBandConfigError(
+                f"Multiplier bounds must satisfy 0 < min_multiplier ({dec_min_mult}) "
+                f"<= max_multiplier ({dec_max_mult}) <= 5.0000."
+            )
+
+        normalized_snapshots: dict[str, TechnicalIndicatorsSnapshot] = {}
+        for raw_key, snap in indicators_by_ticker.items():
+            if not isinstance(raw_key, str) or isinstance(raw_key, bool):
+                raise InvalidToleranceBandConfigError(
+                    "indicators_by_ticker keys must be valid ticker strings."
+                )
+            if not isinstance(snap, TechnicalIndicatorsSnapshot):
+                raise InvalidToleranceBandConfigError(
+                    f"Value for ticker '{raw_key}' must be a TechnicalIndicatorsSnapshot instance."
+                )
+            clean_key = raw_key.strip().upper()
+            if clean_key:
+                normalized_snapshots[clean_key] = snap
+
+        calibrated_specs: list[AssetTargetBandSpec] = []
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            for idx, spec in enumerate(target_specs):
+                if not isinstance(spec, AssetTargetBandSpec):
+                    raise InvalidTargetAllocationError(
+                        f"Element at index {idx} in target_specs is not an AssetTargetBandSpec instance."
+                    )
+                alt_ticker = (
+                    spec.ticker[:-3]
+                    if spec.ticker.endswith(".BA")
+                    else f"{spec.ticker}.BA"
+                )
+                snap = normalized_snapshots.get(
+                    spec.ticker
+                ) or normalized_snapshots.get(alt_ticker)
+
+                if snap is None:
+                    calibrated_specs.append(spec)
+                    continue
+
+                ref_price = (
+                    spec.reference_price
+                    if spec.reference_price is not None
+                    else (_quantize(snap.close) if snap.close > Decimal("0") else None)
+                )
+
+                if (
+                    snap.atr_14 is not None
+                    and snap.atr_14 > Decimal("0")
+                    and snap.close > Decimal("0")
+                ):
+                    atr_pct = snap.atr_14 / snap.close
+                    raw_mult = atr_pct / dec_baseline
+                    clamped_mult = _quantize(
+                        min(dec_max_mult, max(dec_min_mult, raw_mult))
+                    )
+                    calibrated_specs.append(
+                        AssetTargetBandSpec(
+                            ticker=spec.ticker,
+                            target_weight=spec.target_weight,
+                            reference_price=ref_price,
+                            absolute_tolerance_override=spec.absolute_tolerance_override,
+                            relative_tolerance_override=spec.relative_tolerance_override,
+                            volatility_multiplier=clamped_mult,
+                        )
+                    )
+                else:
+                    calibrated_specs.append(
+                        AssetTargetBandSpec(
+                            ticker=spec.ticker,
+                            target_weight=spec.target_weight,
+                            reference_price=ref_price,
+                            absolute_tolerance_override=spec.absolute_tolerance_override,
+                            relative_tolerance_override=spec.relative_tolerance_override,
+                            volatility_multiplier=spec.volatility_multiplier,
+                        )
+                    )
+
+        return calibrated_specs
 
     def _compute_band_bounds(
         self, spec: AssetTargetBandSpec
@@ -617,7 +985,7 @@ class ToleranceBandRebalancerService:
         """
         Evaluate portfolio drift against configured tolerance bands and generate
         optimal self-financing rebalance orders (`SELL` before `BUY`) if any
-        asset breaches its corridor.
+        asset breaches its corridor or if excess liquidity deployment is enabled.
         """
         try:
             clean_currency = _validate_clean_currency(base_currency)
@@ -727,6 +1095,12 @@ class ToleranceBandRebalancerService:
                 acc.raw_qty += pos.quantity
                 acc.raw_val += pos.quantity * pos.market_price
                 acc.last_price = pos.market_price
+                if pos.quantity > Decimal("0"):
+                    if pos.avg_cost_price is not None:
+                        acc.raw_cost_val += pos.quantity * pos.avg_cost_price
+                        acc.has_any_cost = True
+                    else:
+                        acc.has_missing_cost = True
 
             q_initial_cash = _quantize(clean_initial_cash)
             total_positions_val = sum(
@@ -757,12 +1131,18 @@ class ToleranceBandRebalancerService:
                     curr_qty = _quantize(acc.raw_qty)
                     mkt_price = _quantize(acc.raw_val / acc.raw_qty)
                     curr_val = _quantize(acc.raw_val)
+                    avg_cost: Decimal | None = (
+                        _quantize(acc.raw_cost_val / acc.raw_qty)
+                        if (acc.has_any_cost and not acc.has_missing_cost)
+                        else None
+                    )
                 else:
                     curr_qty = Decimal("0.0000")
                     mkt_price = self._resolve_external_price(
                         ticker, spec, normalized_prices
                     )
                     curr_val = Decimal("0.0000")
+                    avg_cost = None
 
                 curr_weight = _quantize(curr_val / total_portfolio_value)
 
@@ -805,6 +1185,7 @@ class ToleranceBandRebalancerService:
                         "ticker": ticker,
                         "current_quantity": curr_qty,
                         "market_price": mkt_price,
+                        "avg_cost_price": avg_cost,
                         "current_value": curr_val,
                         "current_weight": curr_weight,
                         "target_weight": tgt_weight,
@@ -816,12 +1197,31 @@ class ToleranceBandRebalancerService:
                     }
                 )
 
-            needs_rebalancing = len(breached_tickers) > 0
-            evaluations: list[AssetBandEvaluation] = []
+            initial_cash_weight = _quantize(q_initial_cash / total_portfolio_value)
+            excess_cash_threshold = _quantize(
+                q_cash_buffer_weight + _quantize(self._config.min_band_half_width)
+            )
+            triggered_by_excess_cash = (
+                len(breached_tickers) == 0
+                and self._config.deploy_excess_cash_when_inside_bands
+                and initial_cash_weight > excess_cash_threshold
+            )
+            should_attempt_trades = (
+                len(breached_tickers) > 0 or triggered_by_excess_cash
+            )
 
             for item in prelim_evals:
-                if not needs_rebalancing:
+                if not should_attempt_trades:
                     dest_weight = item["current_weight"]
+                elif triggered_by_excess_cash:
+                    # Allocate excess liquidity strictly into underweighted target assets without selling
+                    if (
+                        item["ticker"] in target_map
+                        and item["current_weight"] < item["target_weight"]
+                    ):
+                        dest_weight = item["target_weight"]
+                    else:
+                        dest_weight = item["current_weight"]
                 elif self._config.rebalance_mode == RebalanceMode.FULL_TO_TARGET:
                     if (
                         item["ticker"] not in target_map
@@ -839,7 +1239,10 @@ class ToleranceBandRebalancerService:
                     else:
                         dest_weight = item["current_weight"]
 
-                evaluations.append(
+                item["destination_weight"] = dest_weight
+
+            if not should_attempt_trades:
+                no_trade_evals = [
                     AssetBandEvaluation(
                         ticker=item["ticker"],
                         current_quantity=item["current_quantity"],
@@ -852,11 +1255,14 @@ class ToleranceBandRebalancerService:
                         drift_weight=item["drift_weight"],
                         is_breached=item["is_breached"],
                         breach_direction=item["breach_direction"],
-                        destination_weight=dest_weight,
+                        destination_weight=item["destination_weight"],
+                        post_trade_quantity=item["current_quantity"],
+                        post_trade_value=item["current_value"],
+                        post_trade_weight=item["current_weight"],
+                        post_trade_drift_weight=item["drift_weight"],
                     )
-                )
-
-            if not needs_rebalancing:
+                    for item in prelim_evals
+                ]
                 return ToleranceBandRebalanceReport(
                     portfolio_id=portfolio_id,
                     as_of=effective_as_of,
@@ -866,13 +1272,15 @@ class ToleranceBandRebalancerService:
                     needs_rebalancing=False,
                     breached_tickers=[],
                     total_portfolio_value=total_portfolio_value,
+                    projected_post_trade_portfolio_value=total_portfolio_value,
                     initial_cash=q_initial_cash,
                     projected_ending_cash=q_initial_cash,
                     total_sell_gross=Decimal("0.0000"),
                     total_buy_gross=Decimal("0.0000"),
                     total_estimated_commissions=Decimal("0.0000"),
+                    total_estimated_realized_pnl=Decimal("0.0000"),
                     portfolio_turnover=Decimal("0.0000"),
-                    evaluations=evaluations,
+                    evaluations=no_trade_evals,
                     orders=[],
                 )
 
@@ -884,58 +1292,74 @@ class ToleranceBandRebalancerService:
             )
             comm_rate = self._config.commission_bps / Decimal("10000")
             sell_orders: list[RebalanceTradeOrder] = []
-            buy_candidates: list[tuple[Decimal, AssetBandEvaluation]] = []
+            buy_candidates: list[tuple[Decimal, dict[str, Any]]] = []
 
-            for ev in evaluations:
-                dest_value = total_portfolio_value * ev.destination_weight
-                if ev.current_value > dest_value and ev.current_quantity > Decimal("0"):
-                    if ev.destination_weight == Decimal("0.0000"):
+            for item in prelim_evals:
+                dest_value = total_portfolio_value * item["destination_weight"]
+                curr_val = item["current_value"]
+                curr_qty = item["current_quantity"]
+                mkt_price = item["market_price"]
+                avg_cost = item["avg_cost_price"]
+
+                if curr_val > dest_value and curr_qty > Decimal("0"):
+                    if item["destination_weight"] == Decimal("0.0000"):
                         if self._config.allow_fractional_shares:
-                            sell_qty = ev.current_quantity
+                            sell_qty = curr_qty
                         else:
-                            sell_qty = ev.current_quantity.quantize(
+                            sell_qty = curr_qty.quantize(
                                 qty_step, rounding=ROUND_FLOOR
                             )
                     else:
-                        raw_sell_qty = (ev.current_value - dest_value) / ev.market_price
+                        raw_sell_qty = (curr_val - dest_value) / mkt_price
                         floored_qty = raw_sell_qty.quantize(
                             qty_step, rounding=ROUND_FLOOR
                         )
-                        sell_qty = min(ev.current_quantity, floored_qty)
+                        sell_qty = min(curr_qty, floored_qty)
 
                     q_sell_qty = _quantize(sell_qty)
                     if q_sell_qty > Decimal("0"):
-                        gross = _quantize(q_sell_qty * ev.market_price)
+                        gross = _quantize(q_sell_qty * mkt_price)
                         if gross >= self._config.min_trade_notional:
                             commission = _quantize(gross * comm_rate)
                             net_impact = _quantize(gross - commission)
+                            est_realized_pnl = (
+                                _quantize(
+                                    q_sell_qty * (mkt_price - avg_cost) - commission
+                                )
+                                if avg_cost is not None
+                                else None
+                            )
                             conviction = min(
                                 Decimal("1.0000"),
-                                max(Decimal("0.0001"), _quantize(abs(ev.drift_weight))),
+                                max(
+                                    Decimal("0.0001"),
+                                    _quantize(abs(item["drift_weight"])),
+                                ),
                             )
                             intent = OrderFSMIntent(
-                                ticker=ev.ticker,
+                                ticker=item["ticker"],
                                 side="SELL",
                                 target_status="PENDING",
-                                reference_price=ev.market_price,
+                                reference_price=mkt_price,
                                 signal_conviction=conviction,
                             )
                             sell_orders.append(
                                 RebalanceTradeOrder(
-                                    ticker=ev.ticker,
+                                    ticker=item["ticker"],
                                     side="SELL",
                                     quantity=q_sell_qty,
-                                    execution_price=ev.market_price,
+                                    execution_price=mkt_price,
                                     gross_amount=gross,
                                     estimated_commission=commission,
                                     net_cash_impact=net_impact,
+                                    estimated_realized_pnl=est_realized_pnl,
                                     order_intent=intent,
                                 )
                             )
-                elif dest_value > ev.current_value:
-                    deficit = dest_value - ev.current_value
+                elif dest_value > curr_val:
+                    deficit = dest_value - curr_val
                     if deficit > Decimal("0"):
-                        buy_candidates.append((deficit, ev))
+                        buy_candidates.append((deficit, item))
 
             # Sort SELL orders deterministically by (-gross_amount, ticker)
             sell_orders.sort(key=lambda o: (-o.gross_amount, o.ticker))
@@ -976,9 +1400,9 @@ class ToleranceBandRebalancerService:
                 remaining_cash = available_cash_for_buys
 
                 # Deterministic priority: largest deficit first, then ticker alphabetically
-                buy_candidates.sort(key=lambda item: (-item[0], item[1].ticker))
+                buy_candidates.sort(key=lambda pair: (-pair[0], pair[1]["ticker"]))
 
-                for deficit, ev in buy_candidates:
+                for deficit, item in buy_candidates:
                     if remaining_cash <= Decimal("0"):
                         break
                     allocated_gross_budget = min(
@@ -988,13 +1412,14 @@ class ToleranceBandRebalancerService:
                     if allocated_gross_budget <= Decimal("0"):
                         continue
 
-                    raw_buy_qty = allocated_gross_budget / ev.market_price
+                    mkt_price = item["market_price"]
+                    raw_buy_qty = allocated_gross_budget / mkt_price
                     buy_qty = raw_buy_qty.quantize(qty_step, rounding=ROUND_FLOOR)
 
                     gross = Decimal("0.0000")
                     commission = Decimal("0.0000")
                     while buy_qty > Decimal("0"):
-                        gross = _quantize(buy_qty * ev.market_price)
+                        gross = _quantize(buy_qty * mkt_price)
                         commission = _quantize(gross * comm_rate)
                         if gross + commission <= remaining_cash:
                             break
@@ -1011,30 +1436,41 @@ class ToleranceBandRebalancerService:
                         remaining_cash = _quantize(remaining_cash - total_outflow)
                         conviction = min(
                             Decimal("1.0000"),
-                            max(Decimal("0.0001"), _quantize(abs(ev.drift_weight))),
+                            max(
+                                Decimal("0.0001"),
+                                _quantize(abs(item["drift_weight"])),
+                            ),
                         )
                         intent = OrderFSMIntent(
-                            ticker=ev.ticker,
+                            ticker=item["ticker"],
                             side="BUY",
                             target_status="PENDING",
-                            reference_price=ev.market_price,
+                            reference_price=mkt_price,
                             signal_conviction=conviction,
                         )
                         buy_orders.append(
                             RebalanceTradeOrder(
-                                ticker=ev.ticker,
+                                ticker=item["ticker"],
                                 side="BUY",
                                 quantity=q_buy_qty,
-                                execution_price=ev.market_price,
+                                execution_price=mkt_price,
                                 gross_amount=gross,
                                 estimated_commission=commission,
                                 net_cash_impact=-total_outflow,
+                                estimated_realized_pnl=Decimal("0.0000"),
                                 order_intent=intent,
                             )
                         )
 
             buy_orders.sort(key=lambda o: (-o.gross_amount, o.ticker))
             all_orders = sell_orders + buy_orders
+
+            needs_rebalancing = (
+                True if len(breached_tickers) > 0 else (len(all_orders) > 0)
+            )
+            if not needs_rebalancing:
+                for item in prelim_evals:
+                    item["destination_weight"] = item["current_weight"]
 
             total_sell_gross = sum(
                 (o.gross_amount for o in sell_orders), Decimal("0.0000")
@@ -1045,16 +1481,88 @@ class ToleranceBandRebalancerService:
             total_commissions = sum(
                 (o.estimated_commission for o in all_orders), Decimal("0.0000")
             )
+            total_estimated_realized_pnl = _quantize(
+                sum(
+                    (
+                        o.estimated_realized_pnl
+                        for o in sell_orders
+                        if o.estimated_realized_pnl is not None
+                    ),
+                    Decimal("0.0000"),
+                )
+            )
             projected_ending_cash = _quantize(
                 q_initial_cash
                 + total_sell_gross
                 - total_buy_gross
                 - total_commissions
             )
+            projected_post_trade_portfolio_value = _quantize(
+                total_portfolio_value - total_commissions
+            )
+            if projected_post_trade_portfolio_value <= Decimal("0"):
+                raise InsufficientLiquidityForRebalanceError(
+                    f"Projected post-trade portfolio value must be > 0 (got {projected_post_trade_portfolio_value})."
+                )
+
             portfolio_turnover = _quantize(
                 (total_sell_gross + total_buy_gross)
                 / (Decimal("2") * total_portfolio_value)
             )
+
+            # Build per-asset post-trade evaluation snapshots
+            sell_by_ticker = {o.ticker: o for o in sell_orders}
+            buy_by_ticker = {o.ticker: o for o in buy_orders}
+            evaluations: list[AssetBandEvaluation] = []
+
+            for item in prelim_evals:
+                ticker = item["ticker"]
+                s_ord = sell_by_ticker.get(ticker)
+                b_ord = buy_by_ticker.get(ticker)
+
+                sold_qty = s_ord.quantity if s_ord is not None else Decimal("0.0000")
+                bought_qty = b_ord.quantity if b_ord is not None else Decimal("0.0000")
+                sell_gross = (
+                    s_ord.gross_amount if s_ord is not None else Decimal("0.0000")
+                )
+                buy_gross = (
+                    b_ord.gross_amount if b_ord is not None else Decimal("0.0000")
+                )
+
+                post_qty = _quantize(
+                    item["current_quantity"] - sold_qty + bought_qty
+                )
+                post_val = _quantize(
+                    item["current_value"] - sell_gross + buy_gross
+                )
+                raw_post_weight = _quantize(
+                    post_val / projected_post_trade_portfolio_value
+                )
+                post_weight = min(
+                    Decimal("1.0000"), max(Decimal("0.0000"), raw_post_weight)
+                )
+                post_drift = _quantize(post_weight - item["target_weight"])
+
+                evaluations.append(
+                    AssetBandEvaluation(
+                        ticker=ticker,
+                        current_quantity=item["current_quantity"],
+                        market_price=item["market_price"],
+                        current_value=item["current_value"],
+                        current_weight=item["current_weight"],
+                        target_weight=item["target_weight"],
+                        lower_band=item["lower_band"],
+                        upper_band=item["upper_band"],
+                        drift_weight=item["drift_weight"],
+                        is_breached=item["is_breached"],
+                        breach_direction=item["breach_direction"],
+                        destination_weight=item["destination_weight"],
+                        post_trade_quantity=post_qty,
+                        post_trade_value=post_val,
+                        post_trade_weight=post_weight,
+                        post_trade_drift_weight=post_drift,
+                    )
+                )
 
         return ToleranceBandRebalanceReport(
             portfolio_id=portfolio_id,
@@ -1062,14 +1570,16 @@ class ToleranceBandRebalancerService:
             base_currency=clean_currency,
             rebalance_mode=self._config.rebalance_mode,
             band_type=self._config.band_type,
-            needs_rebalancing=True,
+            needs_rebalancing=needs_rebalancing,
             breached_tickers=breached_tickers,
             total_portfolio_value=total_portfolio_value,
+            projected_post_trade_portfolio_value=projected_post_trade_portfolio_value,
             initial_cash=q_initial_cash,
             projected_ending_cash=projected_ending_cash,
             total_sell_gross=total_sell_gross,
             total_buy_gross=total_buy_gross,
             total_estimated_commissions=total_commissions,
+            total_estimated_realized_pnl=total_estimated_realized_pnl,
             portfolio_turnover=portfolio_turnover,
             evaluations=evaluations,
             orders=all_orders,
@@ -1085,7 +1595,8 @@ class ToleranceBandRebalancerService:
         """
         Evaluate tolerance bands and generate self-financing rebalance orders
         directly from a consolidated `PortfolioMarkToMarketReport` (Module 7.2)
-        in either `'USD'` or `'ARS'` base currency.
+        in either `'USD'` or `'ARS'` base currency, propagating unit cost basis
+        for realized PnL estimation on partial or full sales.
         """
         if not isinstance(mtm_report, PortfolioMarkToMarketReport):
             raise InvalidTargetAllocationError(
@@ -1103,14 +1614,17 @@ class ToleranceBandRebalancerService:
             for pos in mtm_report.positions:
                 if clean_currency == "USD":
                     unit_price = _quantize(pos.market_value_usd / pos.quantity)
+                    unit_cost = _quantize(pos.cost_basis_usd / pos.quantity)
                 else:
                     unit_price = _quantize(pos.market_value_ars / pos.quantity)
+                    unit_cost = _quantize(pos.cost_basis_ars / pos.quantity)
 
                 rebalance_positions.append(
                     RebalancePositionInput(
                         ticker=pos.ticker,
                         quantity=pos.quantity,
                         market_price=unit_price,
+                        avg_cost_price=unit_cost,
                     )
                 )
 
@@ -1134,3 +1648,100 @@ class ToleranceBandRebalancerService:
             base_currency=clean_currency,
             as_of=mtm_report.as_of,
         )
+
+    def build_fsm_execution_batch(
+        self,
+        report: ToleranceBandRebalanceReport,
+        portfolio_id: str | None = None,
+    ) -> RebalanceFSMExecutionBatch:
+        """
+        Transform a `ToleranceBandRebalanceReport` into a deterministic,
+        idempotency-keyed two-phase execution batch (`LIQUIDATION_SELL` followed
+        by `ACQUISITION_BUY`) ready for Order FSM persistence (`PENDING` state).
+        """
+        if not isinstance(report, ToleranceBandRebalanceReport):
+            raise InvalidToleranceBandConfigError(
+                "report must be a ToleranceBandRebalanceReport instance."
+            )
+
+        raw_pid = portfolio_id if portfolio_id is not None else report.portfolio_id
+        effective_portfolio_id: str | None = None
+        if raw_pid is not None:
+            if (
+                not isinstance(raw_pid, str)
+                or isinstance(raw_pid, bool)
+                or any(ord(ch) < 32 for ch in raw_pid)
+            ):
+                raise InvalidToleranceBandConfigError(
+                    "portfolio_id must be a valid string without control characters."
+                )
+            cleaned_pid = raw_pid.strip()
+            if not cleaned_pid:
+                raise InvalidToleranceBandConfigError(
+                    "portfolio_id cannot be empty or whitespace."
+                )
+            effective_portfolio_id = cleaned_pid
+
+        orders_fingerprint = "|".join(
+            f"{o.ticker}:{o.side}:{o.quantity}:{o.execution_price}"
+            for o in report.orders
+        )
+        batch_seed = (
+            f"{effective_portfolio_id or 'default'}|"
+            f"{report.as_of.isoformat()}|"
+            f"{report.base_currency}|"
+            f"{report.rebalance_mode.value}|"
+            f"{len(report.orders)}|"
+            f"{orders_fingerprint}"
+        )
+        batch_id = (
+            "reb-batch-"
+            + hashlib.sha256(batch_seed.encode("utf-8")).hexdigest()[:32]
+        )
+
+        tickets: list[RebalanceFSMOrderTicket] = []
+        for idx, order in enumerate(report.orders, start=1):
+            phase: Literal["LIQUIDATION_SELL", "ACQUISITION_BUY"] = (
+                "LIQUIDATION_SELL" if order.side == "SELL" else "ACQUISITION_BUY"
+            )
+            idem_seed = (
+                f"{batch_id}:{idx}:{order.ticker}:{order.side}:"
+                f"{order.quantity}:{order.execution_price}"
+            )
+            idempotency_key = (
+                "reb-ord-"
+                + hashlib.sha256(idem_seed.encode("utf-8")).hexdigest()[:32]
+            )
+            payload = order.order_intent.to_order_payload(
+                quantity=order.quantity,
+                portfolio_id=effective_portfolio_id,
+            )
+            tickets.append(
+                RebalanceFSMOrderTicket(
+                    sequence_number=idx,
+                    execution_phase=phase,
+                    idempotency_key=idempotency_key,
+                    ticker=order.ticker,
+                    side=order.side,
+                    quantity=order.quantity,
+                    execution_price=order.execution_price,
+                    estimated_commission=order.estimated_commission,
+                    estimated_realized_pnl=order.estimated_realized_pnl,
+                    order_payload=payload,
+                )
+            )
+
+        sell_count = sum(1 for t in tickets if t.side == "SELL")
+        buy_count = sum(1 for t in tickets if t.side == "BUY")
+
+        return RebalanceFSMExecutionBatch(
+            batch_id=batch_id,
+            portfolio_id=effective_portfolio_id,
+            as_of=report.as_of,
+            base_currency=report.base_currency,
+            total_orders=len(tickets),
+            sell_orders_count=sell_count,
+            buy_orders_count=buy_count,
+            tickets=tickets,
+        )
+

@@ -1,6 +1,8 @@
 """
-Unit test suite for Module 7.3 Phase 1:
-Dynamic Tolerance-Band Portfolio Rebalancing Engine
+Unit test suite for Module 7.3 (Phases 1 & 2):
+Dynamic Tolerance-Band Portfolio Rebalancing Engine, ATR Volatility Calibration,
+Post-Trade Drift & Realized PnL Accounting, Excess Cash Deployment, and
+Idempotent Order FSM Execution Batching
 (`backend/app/domain/services/tolerance_band_rebalancer.py`).
 """
 from __future__ import annotations
@@ -17,6 +19,7 @@ from app.domain.services.portfolio_valuation_service import (
     PortfolioValuationService,
     PositionValuationInput,
 )
+from app.domain.services.technical_indicators import TechnicalIndicatorsSnapshot
 from app.domain.services.tolerance_band_rebalancer import (
     MAX_REBALANCE_ASSETS,
     REBALANCE_QUANTIZE,
@@ -28,6 +31,8 @@ from app.domain.services.tolerance_band_rebalancer import (
     InvalidTargetAllocationError,
     InvalidToleranceBandConfigError,
     MissingRebalancePriceError,
+    RebalanceFSMExecutionBatch,
+    RebalanceFSMOrderTicket,
     RebalanceMode,
     RebalancePositionInput,
     RebalanceTradeOrder,
@@ -498,6 +503,8 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             "AssetBandEvaluation",
             "RebalanceTradeOrder",
             "ToleranceBandRebalanceReport",
+            "RebalanceFSMOrderTicket",
+            "RebalanceFSMExecutionBatch",
             "ToleranceBandRebalancerService",
         ):
             self.assertTrue(
@@ -508,3 +515,459 @@ class TestToleranceBandRebalancer(unittest.TestCase):
         self.assertEqual(MAX_REBALANCE_ASSETS, 5_000)
         self.assertTrue(issubclass(RebalanceTradeOrder, object))
         self.assertTrue(issubclass(AssetBandEvaluation, object))
+
+    def test_calibrate_specs_from_indicators_scales_bands_by_atr_volatility(
+        self,
+    ) -> None:
+        """
+        Verify `calibrate_specs_from_indicators` bridges `TechnicalIndicatorsSnapshot`
+        (`atr_14 / close` vs `baseline_atr_pct`), clamping multipliers to
+        `[min_multiplier, max_multiplier]`, matching `.BA` suffixes, and populating
+        fallback `reference_price` from `snapshot.close`.
+        """
+        specs = [
+            AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("0.4000")),
+            AssetTargetBandSpec(ticker="YPFD", target_weight=Decimal("0.3500")),
+            AssetTargetBandSpec(ticker="KO", target_weight=Decimal("0.2500")),
+        ]
+        indicators = {
+            # GGAL.BA: atr_14 = 8.00, close = 100.00 -> atr_pct = 8% -> 0.08 / 0.02 = 4.0 -> clamped to 3.0000
+            "GGAL.BA": TechnicalIndicatorsSnapshot(
+                ticker="GGAL.BA",
+                as_of=self.as_of,
+                close=Decimal("100.0000"),
+                atr_14=Decimal("8.0000"),
+            ),
+            # YPFD: atr_14 = 3.00, close = 100.00 -> atr_pct = 3% -> 0.03 / 0.02 = 1.5000
+            "YPFD": TechnicalIndicatorsSnapshot(
+                ticker="YPFD",
+                as_of=self.as_of,
+                close=Decimal("100.0000"),
+                atr_14=Decimal("3.0000"),
+            ),
+            # KO: atr_14 = 0.25, close = 50.00 -> atr_pct = 0.5% -> 0.005 / 0.02 = 0.25 -> clamped to 0.5000
+            "KO": TechnicalIndicatorsSnapshot(
+                ticker="KO",
+                as_of=self.as_of,
+                close=Decimal("50.0000"),
+                atr_14=Decimal("0.2500"),
+            ),
+        }
+
+        svc = ToleranceBandRebalancerService(
+            ToleranceBandRebalancerConfig(
+                band_type=BandType.DYNAMIC_VOLATILITY,
+                default_relative_tolerance=Decimal("0.1000"),
+                min_band_half_width=Decimal("0.0050"),
+                max_band_half_width=Decimal("0.2500"),
+            )
+        )
+        calibrated = svc.calibrate_specs_from_indicators(
+            target_specs=specs,
+            indicators_by_ticker=indicators,
+            baseline_atr_pct=Decimal("0.0200"),
+            min_multiplier=Decimal("0.5000"),
+            max_multiplier=Decimal("3.0000"),
+        )
+
+        cal_map = {s.ticker: s for s in calibrated}
+        self.assertEqual(cal_map["GGAL"].volatility_multiplier, Decimal("3.0000"))
+        self.assertEqual(cal_map["GGAL"].reference_price, Decimal("100.0000"))
+        self.assertEqual(cal_map["YPFD"].volatility_multiplier, Decimal("1.5000"))
+        self.assertEqual(cal_map["YPFD"].reference_price, Decimal("100.0000"))
+        self.assertEqual(cal_map["KO"].volatility_multiplier, Decimal("0.5000"))
+        self.assertEqual(cal_map["KO"].reference_price, Decimal("50.0000"))
+
+        # Evaluate using calibrated specs without passing external market_prices (uses calibrated reference_price)
+        report = svc.evaluate_and_rebalance(
+            positions=[],
+            target_specs=calibrated,
+            initial_cash=Decimal("10000"),
+            as_of=self.as_of,
+        )
+        eval_map = {e.ticker: e for e in report.evaluations}
+        # GGAL: target 0.4000, half = 0.40 * 0.10 * 3.0 = 0.1200 -> [0.2800, 0.5200]
+        self.assertEqual(eval_map["GGAL"].lower_band, Decimal("0.2800"))
+        self.assertEqual(eval_map["GGAL"].upper_band, Decimal("0.5200"))
+        # KO: target 0.2500, half = 0.25 * 0.10 * 0.5 = 0.0125 -> [0.2375, 0.2625]
+        self.assertEqual(eval_map["KO"].lower_band, Decimal("0.2375"))
+        self.assertEqual(eval_map["KO"].upper_band, Decimal("0.2625"))
+
+    def test_post_trade_weights_and_residual_drift_accounting_with_commissions(
+        self,
+    ) -> None:
+        """
+        Verify projected post-trade state (`post_trade_quantity`, `post_trade_value`,
+        `post_trade_weight`, `post_trade_drift_weight`) and exact net worth conservation:
+        `projected_post_trade_portfolio_value == total_portfolio_value - total_estimated_commissions`
+        `== sum(e.post_trade_value for e in evaluations) + projected_ending_cash`.
+        """
+        svc = ToleranceBandRebalancerService(
+            ToleranceBandRebalancerConfig(
+                band_type=BandType.ABSOLUTE,
+                default_absolute_tolerance=Decimal("0.0500"),
+                rebalance_mode=RebalanceMode.FULL_TO_TARGET,
+                commission_bps=Decimal("50.0000"),  # 0.50%
+            )
+        )
+        positions = [
+            RebalancePositionInput(
+                ticker="GGAL", quantity=Decimal("70"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="YPFD", quantity=Decimal("30"), market_price=Decimal("100")
+            ),
+        ]
+        targets = [
+            AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("0.5000")),
+            AssetTargetBandSpec(ticker="YPFD", target_weight=Decimal("0.5000")),
+        ]
+
+        report = svc.evaluate_and_rebalance(
+            positions=positions,
+            target_specs=targets,
+            initial_cash=Decimal("0"),
+            as_of=self.as_of,
+        )
+
+        # Total pre-trade = $10,000; GGAL sells 20 shares ($2,000 gross, $10 comm -> $1,990 net cash)
+        # YPFD buys $1,990 / (1.005 * 100) = 19.8009 shares ($1,980.0900 gross, $9.9005 comm)
+        sum_post_trade_values = sum(
+            (e.post_trade_value for e in report.evaluations), Decimal("0.0000")
+        )
+        self.assertEqual(
+            report.projected_post_trade_portfolio_value,
+            report.total_portfolio_value - report.total_estimated_commissions,
+        )
+        self.assertEqual(
+            sum_post_trade_values + report.projected_ending_cash,
+            report.projected_post_trade_portfolio_value,
+        )
+
+        eval_map = {e.ticker: e for e in report.evaluations}
+        self.assertEqual(eval_map["GGAL"].post_trade_quantity, Decimal("50.0000"))
+        self.assertEqual(eval_map["GGAL"].post_trade_value, Decimal("5000.0000"))
+        self.assertLess(
+            abs(eval_map["GGAL"].post_trade_drift_weight),
+            abs(eval_map["GGAL"].drift_weight),
+        )
+        self.assertLess(
+            abs(eval_map["YPFD"].post_trade_drift_weight),
+            abs(eval_map["YPFD"].drift_weight),
+        )
+
+    def test_realized_pnl_estimation_on_partial_and_full_sells_from_mtm_report(
+        self,
+    ) -> None:
+        """
+        Verify `estimated_realized_pnl` on SELL and BUY orders and `total_estimated_realized_pnl`
+        when rebalancing both from direct `RebalancePositionInput` lots (with weighted-average
+        cost consolidation) and from `PortfolioMarkToMarketReport` in USD and ARS.
+        """
+        svc = ToleranceBandRebalancerService(
+            ToleranceBandRebalancerConfig(
+                band_type=BandType.ABSOLUTE,
+                default_absolute_tolerance=Decimal("0.0500"),
+                commission_bps=Decimal("100.0000"),  # 1.00% commission
+            )
+        )
+        # Two GGAL lots: 30 @ cost $60 + 40 @ cost $95 -> 70 shares, weighted avg cost = $80.0000, market = $100
+        # YPFD: 30 shares @ cost $120, market = $100
+        positions = [
+            RebalancePositionInput(
+                ticker="GGAL",
+                quantity=Decimal("30"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("60"),
+            ),
+            RebalancePositionInput(
+                ticker="GGAL",
+                quantity=Decimal("40"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("95"),
+            ),
+            RebalancePositionInput(
+                ticker="YPFD",
+                quantity=Decimal("30"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("120"),
+            ),
+        ]
+        targets = [
+            AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("0.5000")),
+            AssetTargetBandSpec(ticker="YPFD", target_weight=Decimal("0.5000")),
+        ]
+
+        report = svc.evaluate_and_rebalance(
+            positions=positions,
+            target_specs=targets,
+            as_of=self.as_of,
+        )
+
+        # GGAL sells 20 shares @ $100 (avg cost $80) -> gross gain = 20 * 20 = $400; comm = 1% of $2,000 = $20 -> net realized PnL = $380.0000
+        orders_by_side = {o.side: o for o in report.orders}
+        self.assertEqual(
+            orders_by_side["SELL"].estimated_realized_pnl, Decimal("380.0000")
+        )
+        self.assertEqual(
+            orders_by_side["BUY"].estimated_realized_pnl, Decimal("0.0000")
+        )
+        self.assertEqual(report.total_estimated_realized_pnl, Decimal("380.0000"))
+
+        # Verify propagation from PortfolioMarkToMarketReport in ARS
+        val_svc = PortfolioValuationService()
+        mtm_report = val_svc.value_portfolio_mark_to_market(
+            positions=[
+                PositionValuationInput(
+                    ticker="GGAL",
+                    quantity=Decimal("70"),
+                    avg_cost_price=Decimal("80000"),
+                    market_price=Decimal("100000"),
+                    currency="ARS",
+                    entry_fx_rate=Decimal("1000"),
+                ),
+                PositionValuationInput(
+                    ticker="YPFD",
+                    quantity=Decimal("30"),
+                    avg_cost_price=Decimal("110000"),
+                    market_price=Decimal("100000"),
+                    currency="ARS",
+                    entry_fx_rate=Decimal("1000"),
+                ),
+            ],
+            fx_rate_ars_per_usd=Decimal("1000"),
+            as_of=self.as_of,
+        )
+        ars_report = svc.rebalance_from_mtm_report(
+            mtm_report=mtm_report,
+            target_specs=targets,
+            base_currency="ARS",
+        )
+        # In ARS: sells 20 GGAL @ 100,000 (cost 80,000) -> gain 400,000 - 20,000 comm = 380,000.0000 ARS
+        self.assertEqual(
+            ars_report.total_estimated_realized_pnl, Decimal("380000.0000")
+        )
+
+    def test_deploy_excess_cash_when_inside_bands_allocates_inflow_without_sells(
+        self,
+    ) -> None:
+        """
+        Verify `deploy_excess_cash_when_inside_bands=True`:
+        When all positions sit inside their tolerance bands (`breached_tickers == []`)
+        but `initial_cash / total_portfolio_value > cash_buffer_weight + min_band_half_width`,
+        the engine triggers BUY-only orders to allocate the excess cash into underweighted
+        target assets without selling any position.
+        """
+        # Portfolio = $10,000 total: GGAL = $4,500 (45%), YPFD = $4,500 (45%), Cash = $1,000 (10%)
+        # Target = 48% GGAL, 48% YPFD, 4% cash buffer; relative tolerance 20% -> bands [0.3840, 0.5760]
+        # Both GGAL (0.4500) and YPFD (0.4500) are strictly INSIDE their bands!
+        positions = [
+            RebalancePositionInput(
+                ticker="GGAL", quantity=Decimal("45"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="YPFD", quantity=Decimal("45"), market_price=Decimal("100")
+            ),
+        ]
+        targets = [
+            AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("0.4800")),
+            AssetTargetBandSpec(ticker="YPFD", target_weight=Decimal("0.4800")),
+        ]
+
+        # 1. With deploy_excess_cash_when_inside_bands=False (default): no rebalance
+        default_Cash_svc = ToleranceBandRebalancerService(
+            ToleranceBandRebalancerConfig(
+                cash_buffer_weight=Decimal("0.0400"),
+                deploy_excess_cash_when_inside_bands=False,
+            )
+        )
+        rep_idle = default_Cash_svc.evaluate_and_rebalance(
+            positions=positions,
+            target_specs=targets,
+            initial_cash=Decimal("1000"),
+            as_of=self.as_of,
+        )
+        self.assertFalse(rep_idle.needs_rebalancing)
+        self.assertEqual(rep_idle.orders, [])
+
+        # 2. With deploy_excess_cash_when_inside_bands=True: allocates $600 excess cash ($300 GGAL, $300 YPFD)
+        deploy_svc = ToleranceBandRebalancerService(
+            ToleranceBandRebalancerConfig(
+                cash_buffer_weight=Decimal("0.0400"),
+                deploy_excess_cash_when_inside_bands=True,
+                commission_bps=Decimal("0"),
+            )
+        )
+        rep_deploy = deploy_svc.evaluate_and_rebalance(
+            positions=positions,
+            target_specs=targets,
+            initial_cash=Decimal("1000"),
+            as_of=self.as_of,
+        )
+        self.assertTrue(rep_deploy.needs_rebalancing)
+        self.assertEqual(rep_deploy.breached_tickers, [])
+        self.assertEqual(len(rep_deploy.orders), 2)
+        self.assertTrue(all(o.side == "BUY" for o in rep_deploy.orders))
+        self.assertEqual(rep_deploy.total_sell_gross, Decimal("0.0000"))
+        self.assertEqual(rep_deploy.total_buy_gross, Decimal("600.0000"))
+        self.assertEqual(rep_deploy.projected_ending_cash, Decimal("400.0000"))
+
+    def test_build_fsm_execution_batch_deterministic_idempotency_and_phase_ordering(
+        self,
+    ) -> None:
+        """
+        Verify `build_fsm_execution_batch` produces deterministic `batch_id` and
+        per-ticket `idempotency_key` hashes across repeated invocations, contiguous
+        `sequence_number` ordering, two-phase separation (`LIQUIDATION_SELL` before
+        `ACQUISITION_BUY`), and validated `PENDING` order payloads.
+        """
+        positions = [
+            RebalancePositionInput(
+                ticker="GGAL",
+                quantity=Decimal("70"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("80"),
+            ),
+            RebalancePositionInput(
+                ticker="YPFD",
+                quantity=Decimal("20"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("90"),
+            ),
+            RebalancePositionInput(
+                ticker="AAPL",
+                quantity=Decimal("10"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("95"),
+            ),
+        ]
+        targets = [
+            AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("0.4000")),
+            AssetTargetBandSpec(ticker="YPFD", target_weight=Decimal("0.3500")),
+            AssetTargetBandSpec(ticker="AAPL", target_weight=Decimal("0.2500")),
+        ]
+
+        report = self.default_service.evaluate_and_rebalance(
+            positions=positions,
+            target_specs=targets,
+            portfolio_id="pf-fsm-batch-01",
+            as_of=self.as_of,
+        )
+
+        batch_1 = self.default_service.build_fsm_execution_batch(report)
+        batch_2 = self.default_service.build_fsm_execution_batch(report)
+
+        self.assertIsInstance(batch_1, RebalanceFSMExecutionBatch)
+        self.assertEqual(batch_1.batch_id, batch_2.batch_id)
+        self.assertTrue(batch_1.batch_id.startswith("reb-batch-"))
+        self.assertEqual(batch_1.portfolio_id, "pf-fsm-batch-01")
+        self.assertEqual(batch_1.total_orders, 3)
+        self.assertEqual(batch_1.sell_orders_count, 1)
+        self.assertEqual(batch_1.buy_orders_count, 2)
+        self.assertEqual(
+            [t.sequence_number for t in batch_1.tickets],
+            [1, 2, 3],
+        )
+        self.assertEqual(
+            [t.execution_phase for t in batch_1.tickets],
+            ["LIQUIDATION_SELL", "ACQUISITION_BUY", "ACQUISITION_BUY"],
+        )
+        self.assertEqual(
+            [t.idempotency_key for t in batch_1.tickets],
+            [t.idempotency_key for t in batch_2.tickets],
+        )
+        for ticket in batch_1.tickets:
+            self.assertTrue(ticket.idempotency_key.startswith("reb-ord-"))
+            self.assertEqual(ticket.order_payload["status"], "PENDING")
+            self.assertEqual(ticket.order_payload["portfolio_id"], "pf-fsm-batch-01")
+            self.assertEqual(ticket.order_payload["ticker"], ticket.ticker)
+            self.assertEqual(ticket.order_payload["side"], ticket.side)
+            self.assertEqual(ticket.order_payload["quantity"], ticket.quantity)
+
+    def test_phase2_validation_guards_invalid_calibration_bounds_and_batch_invariants(
+        self,
+    ) -> None:
+        """
+        Verify Phase 2 validation guards across `calibrate_specs_from_indicators`,
+        `RebalanceFSMOrderTicket`, `RebalanceFSMExecutionBatch`, and `build_fsm_execution_batch`.
+        """
+        specs = [AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("1.0000"))]
+        snap = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=self.as_of,
+            close=Decimal("100"),
+            atr_14=Decimal("2.0"),
+        )
+
+        # 1. Invalid calibration bounds and types
+        with self.assertRaises(InvalidToleranceBandConfigError):
+            self.default_service.calibrate_specs_from_indicators(
+                target_specs=specs,
+                indicators_by_ticker={"GGAL": snap},
+                baseline_atr_pct=Decimal("0"),
+            )
+        with self.assertRaises(InvalidToleranceBandConfigError):
+            self.default_service.calibrate_specs_from_indicators(
+                target_specs=specs,
+                indicators_by_ticker={"GGAL": snap},
+                min_multiplier=Decimal("2.5000"),
+                max_multiplier=Decimal("1.5000"),
+            )
+        with self.assertRaises(InvalidToleranceBandConfigError):
+            self.default_service.calibrate_specs_from_indicators(
+                target_specs=specs,
+                indicators_by_ticker={"GGAL": "not-a-snapshot"},  # type: ignore[dict-item]
+            )
+
+        # 2. Invalid RebalanceFSMOrderTicket phase / side mismatch
+        with self.assertRaises(ValidationError):
+            RebalanceFSMOrderTicket(
+                sequence_number=1,
+                execution_phase="ACQUISITION_BUY",
+                idempotency_key="reb-ord-0123456789abcdef01234567",
+                ticker="GGAL",
+                side="SELL",
+                quantity=Decimal("10.0000"),
+                execution_price=Decimal("100.0000"),
+                estimated_commission=Decimal("0.0000"),
+                order_payload={"ticker": "GGAL", "side": "SELL"},
+            )
+
+        # 3. Invalid RebalanceFSMExecutionBatch phase ordering (SELL after BUY)
+        buy_ticket = RebalanceFSMOrderTicket(
+            sequence_number=1,
+            execution_phase="ACQUISITION_BUY",
+            idempotency_key="reb-ord-111111111111111111111111",
+            ticker="YPFD",
+            side="BUY",
+            quantity=Decimal("10.0000"),
+            execution_price=Decimal("100.0000"),
+            estimated_commission=Decimal("0.0000"),
+            order_payload={"ticker": "YPFD", "side": "BUY"},
+        )
+        sell_ticket = RebalanceFSMOrderTicket(
+            sequence_number=2,
+            execution_phase="LIQUIDATION_SELL",
+            idempotency_key="reb-ord-222222222222222222222222",
+            ticker="GGAL",
+            side="SELL",
+            quantity=Decimal("10.0000"),
+            execution_price=Decimal("100.0000"),
+            estimated_commission=Decimal("0.0000"),
+            order_payload={"ticker": "GGAL", "side": "SELL"},
+        )
+        with self.assertRaises(ValidationError):
+            RebalanceFSMExecutionBatch(
+                batch_id="reb-batch-0123456789abcdef01234567",
+                as_of=self.as_of,
+                base_currency="USD",
+                total_orders=2,
+                sell_orders_count=1,
+                buy_orders_count=1,
+                tickets=[buy_ticket, sell_ticket],
+            )
+
+        # 4. Invalid report or control character in build_fsm_execution_batch
+        with self.assertRaises(InvalidToleranceBandConfigError):
+            self.default_service.build_fsm_execution_batch(report="invalid")  # type: ignore[arg-type]
+
