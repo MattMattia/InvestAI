@@ -126,6 +126,7 @@ from app.domain.services.tolerance_band_rebalancer import (
     RebalancePositionInput,
     RebalanceTradeOrder,
     RebalancingError,
+    TaxLotSelectionPolicy,
     ToleranceBandRebalanceReport,
     ToleranceBandRebalancerConfig,
     ToleranceBandRebalancerService,
@@ -232,6 +233,7 @@ __all__ = [
     "BandType",
     "RebalanceMode",
     "BandBreachDirection",
+    "TaxLotSelectionPolicy",
     "RebalancePositionInput",
     "AssetTargetBandSpec",
     "ToleranceBandRebalancerConfig",
@@ -242,6 +244,3 @@ __all__ = [
     "RebalanceFSMExecutionBatch",
     "ToleranceBandRebalancerService",
 ]
-
-
-
