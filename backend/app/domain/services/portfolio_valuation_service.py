@@ -92,7 +92,7 @@ def _coerce_finite_decimal(value: Any, field_name: str) -> Decimal:
         dec = Decimal(str(value))
     elif isinstance(value, str):
         cleaned = value.strip()
-        if not cleaned or len(cleaned) > 64:
+        if not cleaned or len(cleaned) > 32:
             raise ValueError(f"Empty or oversized numeric string for '{field_name}'.")
         try:
             dec = Decimal(cleaned)
@@ -108,15 +108,31 @@ def _coerce_finite_decimal(value: Any, field_name: str) -> Decimal:
     return dec
 
 
+def _validate_optional_portfolio_id(value: Any) -> str | None:
+    """Validate optional portfolio_id, rejecting booleans and ASCII control characters."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or isinstance(value, bool):
+        raise ValueError("portfolio_id must be a valid string or None.")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ValueError("Control characters are not permitted in portfolio_id.")
+    cleaned = value.strip()
+    if not cleaned or len(cleaned) > 128:
+        raise ValueError("portfolio_id must be between 1 and 128 characters.")
+    return cleaned
+
+
 def _validate_clean_ticker(value: Any) -> str:
-    """Normalize and validate ticker strings, rejecting control characters and booleans."""
+    """Normalize and validate ticker strings, rejecting control/injection characters and booleans."""
     if not isinstance(value, str) or isinstance(value, bool):
         raise ValueError("ticker must be a valid string.")
-    if any(ord(ch) < 32 for ch in value):
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         raise ValueError("Control characters are not permitted in ticker.")
     cleaned = value.strip().upper()
     if not cleaned or len(cleaned) > 20:
         raise ValueError("ticker must be between 1 and 20 characters after trimming.")
+    if not all(ch.isalnum() or ch in "._-" for ch in cleaned) or not cleaned[0].isalnum():
+        raise ValueError(f"Invalid ticker format '{cleaned}'.")
     return cleaned
 
 
@@ -278,53 +294,55 @@ class ValuedPositionBreakdown(BaseSchema):
     def _enforce_horizontal_accounting_and_karnosky_singer_closure(
         self,
     ) -> ValuedPositionBreakdown:
-        expected_pnl_ars = self.market_value_ars - self.cost_basis_ars
-        if self.unrealized_pnl_ars != expected_pnl_ars:
-            raise ValueError(
-                f"Horizontal ARS PnL closure violated for '{self.ticker}': "
-                f"unrealized_pnl_ars ({self.unrealized_pnl_ars}) != "
-                f"market_value_ars ({self.market_value_ars}) - cost_basis_ars ({self.cost_basis_ars})."
-            )
-
-        expected_pnl_usd = self.market_value_usd - self.cost_basis_usd
-        if self.unrealized_pnl_usd != expected_pnl_usd:
-            raise ValueError(
-                f"Horizontal USD PnL closure violated for '{self.ticker}': "
-                f"unrealized_pnl_usd ({self.unrealized_pnl_usd}) != "
-                f"market_value_usd ({self.market_value_usd}) - cost_basis_usd ({self.cost_basis_usd})."
-            )
-
-        attribution_fields = (
-            self.unrealized_pnl_pct_ars,
-            self.unrealized_pnl_pct_usd,
-            self.fx_return_component,
-            self.interaction_return_component,
-        )
-        none_count = sum(1 for item in attribution_fields if item is None)
-        if none_count not in (0, 4):
-            raise ValueError(
-                "Percentage attribution fields (unrealized_pnl_pct_ars, "
-                "unrealized_pnl_pct_usd, fx_return_component, interaction_return_component) "
-                "must either be all None or all finite Decimal values."
-            )
-
-        if none_count == 0:
-            assert self.unrealized_pnl_pct_ars is not None
-            assert self.unrealized_pnl_pct_usd is not None
-            assert self.fx_return_component is not None
-            assert self.interaction_return_component is not None
-            decomposed_sum = (
-                self.unrealized_pnl_pct_usd
-                + self.fx_return_component
-                + self.interaction_return_component
-            )
-            if decomposed_sum != self.unrealized_pnl_pct_ars:
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            expected_pnl_ars = self.market_value_ars - self.cost_basis_ars
+            if self.unrealized_pnl_ars != expected_pnl_ars:
                 raise ValueError(
-                    f"Karnosky-Singer additive closure violated for '{self.ticker}': "
-                    f"r_usd ({self.unrealized_pnl_pct_usd}) + r_fx ({self.fx_return_component}) "
-                    f"+ r_inter ({self.interaction_return_component}) = {decomposed_sum} "
-                    f"!= r_ars ({self.unrealized_pnl_pct_ars})."
+                    f"Horizontal ARS PnL closure violated for '{self.ticker}': "
+                    f"unrealized_pnl_ars ({self.unrealized_pnl_ars}) != "
+                    f"market_value_ars ({self.market_value_ars}) - cost_basis_ars ({self.cost_basis_ars})."
                 )
+
+            expected_pnl_usd = self.market_value_usd - self.cost_basis_usd
+            if self.unrealized_pnl_usd != expected_pnl_usd:
+                raise ValueError(
+                    f"Horizontal USD PnL closure violated for '{self.ticker}': "
+                    f"unrealized_pnl_usd ({self.unrealized_pnl_usd}) != "
+                    f"market_value_usd ({self.market_value_usd}) - cost_basis_usd ({self.cost_basis_usd})."
+                )
+
+            attribution_fields = (
+                self.unrealized_pnl_pct_ars,
+                self.unrealized_pnl_pct_usd,
+                self.fx_return_component,
+                self.interaction_return_component,
+            )
+            none_count = sum(1 for item in attribution_fields if item is None)
+            if none_count not in (0, 4):
+                raise ValueError(
+                    "Percentage attribution fields (unrealized_pnl_pct_ars, "
+                    "unrealized_pnl_pct_usd, fx_return_component, interaction_return_component) "
+                    "must either be all None or all finite Decimal values."
+                )
+
+            if none_count == 0:
+                assert self.unrealized_pnl_pct_ars is not None
+                assert self.unrealized_pnl_pct_usd is not None
+                assert self.fx_return_component is not None
+                assert self.interaction_return_component is not None
+                decomposed_sum = (
+                    self.unrealized_pnl_pct_usd
+                    + self.fx_return_component
+                    + self.interaction_return_component
+                )
+                if decomposed_sum != self.unrealized_pnl_pct_ars:
+                    raise ValueError(
+                        f"Karnosky-Singer additive closure violated for '{self.ticker}': "
+                        f"r_usd ({self.unrealized_pnl_pct_usd}) + r_fx ({self.fx_return_component}) "
+                        f"+ r_inter ({self.interaction_return_component}) = {decomposed_sum} "
+                        f"!= r_ars ({self.unrealized_pnl_pct_ars})."
+                    )
 
         return self
 
@@ -388,102 +406,125 @@ class PortfolioMarkToMarketReport(BaseSchema):
 
     @model_validator(mode="after")
     def _enforce_vertical_accounting_and_weights(self) -> PortfolioMarkToMarketReport:
-        sum_cost_ars = sum(
-            (p.cost_basis_ars for p in self.positions), Decimal("0.0000")
-        )
-        sum_cost_usd = sum(
-            (p.cost_basis_usd for p in self.positions), Decimal("0.0000")
-        )
-        sum_mkt_ars = sum(
-            (p.market_value_ars for p in self.positions), Decimal("0.0000")
-        )
-        sum_mkt_usd = sum(
-            (p.market_value_usd for p in self.positions), Decimal("0.0000")
-        )
-
-        if self.total_cost_basis_ars != sum_cost_ars:
-            raise ValueError(
-                f"Vertical closure error: total_cost_basis_ars ({self.total_cost_basis_ars}) "
-                f"!= sum of positions ({sum_cost_ars})."
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            sum_cost_ars = sum(
+                (p.cost_basis_ars for p in self.positions), Decimal("0.0000")
             )
-        if self.total_cost_basis_usd != sum_cost_usd:
-            raise ValueError(
-                f"Vertical closure error: total_cost_basis_usd ({self.total_cost_basis_usd}) "
-                f"!= sum of positions ({sum_cost_usd})."
+            sum_cost_usd = sum(
+                (p.cost_basis_usd for p in self.positions), Decimal("0.0000")
             )
-        if self.total_positions_value_ars != sum_mkt_ars:
-            raise ValueError(
-                f"Vertical closure error: total_positions_value_ars ({self.total_positions_value_ars}) "
-                f"!= sum of positions ({sum_mkt_ars})."
+            sum_mkt_ars = sum(
+                (p.market_value_ars for p in self.positions), Decimal("0.0000")
             )
-        if self.total_positions_value_usd != sum_mkt_usd:
-            raise ValueError(
-                f"Vertical closure error: total_positions_value_usd ({self.total_positions_value_usd}) "
-                f"!= sum of positions ({sum_mkt_usd})."
+            sum_mkt_usd = sum(
+                (p.market_value_usd for p in self.positions), Decimal("0.0000")
             )
 
-        if (
-            self.total_unrealized_pnl_ars
-            != self.total_positions_value_ars - self.total_cost_basis_ars
-        ):
-            raise ValueError(
-                "total_unrealized_pnl_ars must equal total_positions_value_ars - total_cost_basis_ars."
-            )
-        if (
-            self.total_unrealized_pnl_usd
-            != self.total_positions_value_usd - self.total_cost_basis_usd
-        ):
-            raise ValueError(
-                "total_unrealized_pnl_usd must equal total_positions_value_usd - total_cost_basis_usd."
-            )
-
-        portfolio_attr_fields = (
-            self.total_unrealized_pnl_pct_ars,
-            self.total_unrealized_pnl_pct_usd,
-            self.total_fx_return_component,
-            self.total_interaction_return_component,
-        )
-        attr_none_count = sum(1 for item in portfolio_attr_fields if item is None)
-        if attr_none_count not in (0, 4):
-            raise ValueError(
-                "Portfolio percentage attribution fields (total_unrealized_pnl_pct_ars, "
-                "total_unrealized_pnl_pct_usd, total_fx_return_component, "
-                "total_interaction_return_component) must either be all None or all finite Decimal values."
-            )
-        if attr_none_count == 0:
-            assert self.total_unrealized_pnl_pct_ars is not None
-            assert self.total_unrealized_pnl_pct_usd is not None
-            assert self.total_fx_return_component is not None
-            assert self.total_interaction_return_component is not None
-            total_decomposed_sum = (
-                self.total_unrealized_pnl_pct_usd
-                + self.total_fx_return_component
-                + self.total_interaction_return_component
-            )
-            if total_decomposed_sum != self.total_unrealized_pnl_pct_ars:
+            if self.total_cost_basis_ars != sum_cost_ars:
                 raise ValueError(
-                    "Portfolio Karnosky-Singer additive closure violated: "
-                    f"total_unrealized_pnl_pct_usd ({self.total_unrealized_pnl_pct_usd}) + "
-                    f"total_fx_return_component ({self.total_fx_return_component}) + "
-                    f"total_interaction_return_component ({self.total_interaction_return_component}) "
-                    f"= {total_decomposed_sum} != total_unrealized_pnl_pct_ars ({self.total_unrealized_pnl_pct_ars})."
+                    f"Vertical closure error: total_cost_basis_ars ({self.total_cost_basis_ars}) "
+                    f"!= sum of positions ({sum_cost_ars})."
+                )
+            if self.total_cost_basis_usd != sum_cost_usd:
+                raise ValueError(
+                    f"Vertical closure error: total_cost_basis_usd ({self.total_cost_basis_usd}) "
+                    f"!= sum of positions ({sum_cost_usd})."
+                )
+            if self.total_positions_value_ars != sum_mkt_ars:
+                raise ValueError(
+                    f"Vertical closure error: total_positions_value_ars ({self.total_positions_value_ars}) "
+                    f"!= sum of positions ({sum_mkt_ars})."
+                )
+            if self.total_positions_value_usd != sum_mkt_usd:
+                raise ValueError(
+                    f"Vertical closure error: total_positions_value_usd ({self.total_positions_value_usd}) "
+                    f"!= sum of positions ({sum_mkt_usd})."
                 )
 
-        if self.positions:
-            sum_w_pos = sum(
-                (p.weight_in_positions for p in self.positions), Decimal("0.0000")
-            )
-            if sum_w_pos != Decimal("1.0000"):
+            if (
+                self.total_unrealized_pnl_ars
+                != self.total_positions_value_ars - self.total_cost_basis_ars
+            ):
                 raise ValueError(
-                    f"Positions weight sum must equal 1.0000 (got {sum_w_pos})."
+                    "total_unrealized_pnl_ars must equal total_positions_value_ars - total_cost_basis_ars."
                 )
-            sum_w_nw = sum(
-                (p.weight_in_net_worth for p in self.positions), Decimal("0.0000")
-            )
-            if sum_w_nw > Decimal("1.0000"):
+            if (
+                self.total_unrealized_pnl_usd
+                != self.total_positions_value_usd - self.total_cost_basis_usd
+            ):
                 raise ValueError(
-                    f"Net worth weight sum cannot exceed 1.0000 (got {sum_w_nw})."
+                    "total_unrealized_pnl_usd must equal total_positions_value_usd - total_cost_basis_usd."
                 )
+
+            expected_nw_ars = _quantize(
+                self.total_positions_value_ars
+                + self.cash_balance_ars
+                + (self.cash_balance_usd * self.fx_rate_ars_per_usd)
+            )
+            if abs(self.total_net_worth_ars - expected_nw_ars) > Decimal("0.0100"):
+                raise ValueError(
+                    f"Vertical closure error: total_net_worth_ars ({self.total_net_worth_ars}) "
+                    f"does not match positions + cash ({expected_nw_ars})."
+                )
+            expected_nw_usd = _quantize(
+                self.total_positions_value_usd
+                + self.cash_balance_usd
+                + (self.cash_balance_ars / self.fx_rate_ars_per_usd)
+            )
+            if abs(self.total_net_worth_usd - expected_nw_usd) > Decimal("0.0100"):
+                raise ValueError(
+                    f"Vertical closure error: total_net_worth_usd ({self.total_net_worth_usd}) "
+                    f"does not match positions + cash ({expected_nw_usd})."
+                )
+
+            portfolio_attr_fields = (
+                self.total_unrealized_pnl_pct_ars,
+                self.total_unrealized_pnl_pct_usd,
+                self.total_fx_return_component,
+                self.total_interaction_return_component,
+            )
+            attr_none_count = sum(1 for item in portfolio_attr_fields if item is None)
+            if attr_none_count not in (0, 4):
+                raise ValueError(
+                    "Portfolio percentage attribution fields (total_unrealized_pnl_pct_ars, "
+                    "total_unrealized_pnl_pct_usd, total_fx_return_component, "
+                    "total_interaction_return_component) must either be all None or all finite Decimal values."
+                )
+            if attr_none_count == 0:
+                assert self.total_unrealized_pnl_pct_ars is not None
+                assert self.total_unrealized_pnl_pct_usd is not None
+                assert self.total_fx_return_component is not None
+                assert self.total_interaction_return_component is not None
+                total_decomposed_sum = (
+                    self.total_unrealized_pnl_pct_usd
+                    + self.total_fx_return_component
+                    + self.total_interaction_return_component
+                )
+                if total_decomposed_sum != self.total_unrealized_pnl_pct_ars:
+                    raise ValueError(
+                        "Portfolio Karnosky-Singer additive closure violated: "
+                        f"total_unrealized_pnl_pct_usd ({self.total_unrealized_pnl_pct_usd}) + "
+                        f"total_fx_return_component ({self.total_fx_return_component}) + "
+                        f"total_interaction_return_component ({self.total_interaction_return_component}) "
+                        f"= {total_decomposed_sum} != total_unrealized_pnl_pct_ars ({self.total_unrealized_pnl_pct_ars})."
+                    )
+
+            if self.positions:
+                sum_w_pos = sum(
+                    (p.weight_in_positions for p in self.positions), Decimal("0.0000")
+                )
+                if sum_w_pos != Decimal("1.0000"):
+                    raise ValueError(
+                        f"Positions weight sum must equal 1.0000 (got {sum_w_pos})."
+                    )
+                sum_w_nw = sum(
+                    (p.weight_in_net_worth for p in self.positions), Decimal("0.0000")
+                )
+                if sum_w_nw > Decimal("1.0000"):
+                    raise ValueError(
+                        f"Net worth weight sum cannot exceed 1.0000 (got {sum_w_nw})."
+                    )
 
         return self
 
@@ -507,17 +548,19 @@ class SubPeriodValuationSlice(BaseSchema):
 
     @model_validator(mode="after")
     def _enforce_capital_base(self) -> SubPeriodValuationSlice:
-        if self.cash_flow_timing == "END":
-            if self.start_value <= Decimal("0"):
-                raise ValueError(
-                    "start_value must be strictly positive when cash_flow_timing is 'END'."
-                )
-        elif self.cash_flow_timing == "START":
-            if self.start_value + self.net_cash_flow <= Decimal("0"):
-                raise ValueError(
-                    "Adjusted capital base (start_value + net_cash_flow) must be strictly "
-                    "positive when cash_flow_timing is 'START'."
-                )
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            if self.cash_flow_timing == "END":
+                if self.start_value <= Decimal("0"):
+                    raise ValueError(
+                        "start_value must be strictly positive when cash_flow_timing is 'END'."
+                    )
+            elif self.cash_flow_timing == "START":
+                if self.start_value + self.net_cash_flow <= Decimal("0"):
+                    raise ValueError(
+                        "Adjusted capital base (start_value + net_cash_flow) must be strictly "
+                        "positive when cash_flow_timing is 'START'."
+                    )
         return self
 
 
@@ -821,6 +864,10 @@ class PortfolioValuationService:
             effective_as_of, bool
         ):
             raise InvalidValuationInputError("as_of must be a valid datetime instance.")
+        try:
+            portfolio_id = _validate_optional_portfolio_id(portfolio_id)
+        except ValueError as exc:
+            raise InvalidValuationInputError(str(exc)) from exc
 
         with localcontext() as ctx:
             ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
@@ -1395,6 +1442,8 @@ class PortfolioValuationService:
                     Decimal("0.75"),
                     Decimal("1.0"),
                     u_guess,
+                    u_guess * Decimal("2"),
+                    u_guess * Decimal("10"),
                     Decimal("1.25"),
                     Decimal("1.5"),
                     Decimal("2.0"),
@@ -1402,6 +1451,8 @@ class PortfolioValuationService:
                     Decimal("10.0"),
                     Decimal("50.0"),
                     Decimal("200.0"),
+                    Decimal("1000.0"),
+                    Decimal("10000.0"),
                 }
             )
 
@@ -1416,6 +1467,26 @@ class PortfolioValuationService:
                 return _quantize(prev_u - Decimal("1"))
 
             for cand_u in grid[1:]:
+                cand_f, _ = _eval_f_and_df(cand_u)
+                if abs(cand_f) <= Decimal("1e-12"):
+                    return _quantize(cand_u - Decimal("1"))
+                if (prev_f < Decimal("0") < cand_f) or (
+                    prev_f > Decimal("0") > cand_f
+                ):
+                    bracket_low = prev_u
+                    bracket_high = cand_u
+                    f_low = prev_f
+                    f_high = cand_f
+                    break
+                prev_u = cand_u
+                prev_f = cand_f
+
+            # Dynamic upper bracket expansion up to 10^9 if hyperinflationary return exceeds initial grid
+            while (
+                bracket_low is None
+                and prev_u < Decimal("1000000000")
+            ):
+                cand_u = prev_u * Decimal("10")
                 cand_f, _ = _eval_f_and_df(cand_u)
                 if abs(cand_f) <= Decimal("1e-12"):
                     return _quantize(cand_u - Decimal("1"))

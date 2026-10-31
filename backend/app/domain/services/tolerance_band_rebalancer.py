@@ -131,7 +131,7 @@ def _coerce_finite_decimal(value: Any, field_name: str) -> Decimal:
         dec = Decimal(str(value))
     elif isinstance(value, str):
         cleaned = value.strip()
-        if not cleaned or len(cleaned) > 64:
+        if not cleaned or len(cleaned) > 32:
             raise ValueError(f"Empty or oversized numeric string for '{field_name}'.")
         try:
             dec = Decimal(cleaned)
@@ -148,14 +148,16 @@ def _coerce_finite_decimal(value: Any, field_name: str) -> Decimal:
 
 
 def _validate_clean_ticker(value: Any) -> str:
-    """Normalize and validate ticker strings, rejecting control characters and booleans."""
+    """Normalize and validate ticker strings, rejecting control/injection characters and booleans."""
     if not isinstance(value, str) or isinstance(value, bool):
         raise ValueError("ticker must be a valid string.")
-    if any(ord(ch) < 32 for ch in value):
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
         raise ValueError("Control characters are not permitted in ticker.")
     cleaned = value.strip().upper()
     if not cleaned or len(cleaned) > 20:
         raise ValueError("ticker must be between 1 and 20 characters after trimming.")
+    if not all(ch.isalnum() or ch in "._-" for ch in cleaned) or not cleaned[0].isalnum():
+        raise ValueError(f"Invalid ticker format '{cleaned}'.")
     return cleaned
 
 
@@ -1190,6 +1192,20 @@ class ToleranceBandRebalancerService:
             raise InvalidToleranceBandConfigError(
                 "as_of must be a valid datetime instance."
             )
+        if portfolio_id is not None:
+            if not isinstance(portfolio_id, str) or isinstance(portfolio_id, bool):
+                raise InvalidToleranceBandConfigError(
+                    "portfolio_id must be a valid string or None."
+                )
+            if any(ord(ch) < 32 or ord(ch) == 127 for ch in portfolio_id):
+                raise InvalidToleranceBandConfigError(
+                    "Control characters are not permitted in portfolio_id."
+                )
+            portfolio_id = portfolio_id.strip()
+            if not portfolio_id or len(portfolio_id) > 128:
+                raise InvalidToleranceBandConfigError(
+                    "portfolio_id must be between 1 and 128 characters."
+                )
 
         normalized_prices: dict[str, Any] = {}
         if market_prices is not None:
@@ -1216,7 +1232,12 @@ class ToleranceBandRebalancerService:
                     raise InvalidTargetAllocationError(
                         f"Element at index {idx} in target_specs is not an AssetTargetBandSpec instance."
                     )
-                if spec.ticker in target_map:
+                alt_spec_ticker = (
+                    spec.ticker[:-3]
+                    if spec.ticker.endswith(".BA")
+                    else f"{spec.ticker}.BA"
+                )
+                if spec.ticker in target_map or alt_spec_ticker in target_map:
                     raise InvalidTargetAllocationError(
                         f"Duplicate ticker '{spec.ticker}' in target_specs."
                     )

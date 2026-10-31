@@ -1148,4 +1148,859 @@ class TestPortfolioValuation(unittest.TestCase):
         self.assertEqual(curve.performance_ars.mwr_dietz, Decimal("0.2100"))
         self.assertEqual(curve.performance_ars.mwr_irr, Decimal("0.2100"))
 
+    def test_audit_pv_01_mtm_fx_appreciation_karnosky_singer_negative_fx_component(self) -> None:
+        """Verify MTM valuation under FX appreciation (FX_1 < FX_0) yields negative fx_return_component and exact closure."""
+        pos = PositionValuationInput(
+            ticker="GGAL",
+            quantity=Decimal("100"),
+            avg_cost_price=Decimal("1000"),
+            market_price=Decimal("1100"),
+            currency="ARS",
+            entry_fx_rate=Decimal("1000"),
+        )
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=[pos],
+            fx_rate_ars_per_usd=Decimal("800"),
+            as_of=self.as_of,
+        )
+        p = rep.positions[0]
+        self.assertLess(p.fx_return_component, Decimal("0.0000"))
+        self.assertGreater(p.unrealized_pnl_pct_usd, p.unrealized_pnl_pct_ars)
+        self.assertEqual(
+            p.unrealized_pnl_pct_usd + p.fx_return_component + p.interaction_return_component,
+            p.unrealized_pnl_pct_ars,
+        )
+
+    def test_audit_pv_02_mtm_fx_stability_zero_fx_and_interaction_components(self) -> None:
+        """Verify MTM valuation under FX stability (FX_1 == FX_0) produces zero FX and interaction components."""
+        pos = PositionValuationInput(
+            ticker="YPFD",
+            quantity=Decimal("50"),
+            avg_cost_price=Decimal("2000"),
+            market_price=Decimal("2500"),
+            currency="ARS",
+            entry_fx_rate=Decimal("1200"),
+        )
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=[pos],
+            fx_rate_ars_per_usd=Decimal("1200"),
+            as_of=self.as_of,
+        )
+        p = rep.positions[0]
+        self.assertEqual(p.fx_return_component, Decimal("0.0000"))
+        self.assertEqual(p.interaction_return_component, Decimal("0.0000"))
+        self.assertEqual(p.unrealized_pnl_pct_ars, Decimal("0.2500"))
+        self.assertEqual(p.unrealized_pnl_pct_usd, Decimal("0.2500"))
+
+    def test_audit_pv_03_mtm_severe_fx_devaluation_real_usd_loss_despite_nominal_ars_gain(self) -> None:
+        """Verify severe FX devaluation (FX_0=1000 -> FX_1=5000) reveals real USD loss despite +100% nominal ARS gain."""
+        pos = PositionValuationInput(
+            ticker="PAMP",
+            quantity=Decimal("200"),
+            avg_cost_price=Decimal("1000"),
+            market_price=Decimal("2000"),
+            currency="ARS",
+            entry_fx_rate=Decimal("1000"),
+        )
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=[pos],
+            fx_rate_ars_per_usd=Decimal("5000"),
+            as_of=self.as_of,
+        )
+        p = rep.positions[0]
+        self.assertEqual(p.unrealized_pnl_pct_ars, Decimal("1.0000"))
+        self.assertEqual(p.unrealized_pnl_pct_usd, Decimal("-0.6000"))
+        self.assertEqual(p.fx_return_component, Decimal("4.0000"))
+        self.assertEqual(p.interaction_return_component, Decimal("-2.4000"))
+        self.assertEqual(
+            p.unrealized_pnl_pct_usd + p.fx_return_component + p.interaction_return_component,
+            p.unrealized_pnl_pct_ars,
+        )
+
+    def test_audit_pv_04_usd_native_asset_under_ars_devaluation_karnosky_singer_identity(self) -> None:
+        """Verify USD-native asset attribution under ARS devaluation preserves exact Karnosky-Singer closure."""
+        pos = PositionValuationInput(
+            ticker="AAPL",
+            quantity=Decimal("10"),
+            avg_cost_price=Decimal("200"),
+            market_price=Decimal("220"),
+            currency="USD",
+            entry_fx_rate=Decimal("1000"),
+        )
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=[pos],
+            fx_rate_ars_per_usd=Decimal("1500"),
+            as_of=self.as_of,
+        )
+        p = rep.positions[0]
+        self.assertEqual(p.unrealized_pnl_pct_usd, Decimal("0.1000"))
+        self.assertEqual(p.fx_return_component, Decimal("0.5000"))
+        self.assertEqual(p.interaction_return_component, Decimal("0.0500"))
+        self.assertEqual(p.unrealized_pnl_pct_ars, Decimal("0.6500"))
+
+    def test_audit_pv_05_largest_remainder_1_position_portfolio(self) -> None:
+        """Verify Largest Remainder Method on a 1-position portfolio with and without cash."""
+        pos = [
+            PositionValuationInput(
+                ticker="A01",
+                quantity=Decimal("10"),
+                avg_cost_price=Decimal("100"),
+                market_price=Decimal("100"),
+                currency="USD",
+            )
+        ]
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=pos, fx_rate_ars_per_usd=Decimal("1000"), as_of=self.as_of
+        )
+        self.assertEqual(rep.positions[0].weight_in_positions, Decimal("1.0000"))
+        self.assertEqual(rep.positions[0].weight_in_net_worth, Decimal("1.0000"))
+
+    def test_audit_pv_06_largest_remainder_2_positions_portfolio(self) -> None:
+        """Verify Largest Remainder Method on a 2-position portfolio."""
+        pos = [
+            PositionValuationInput(
+                ticker=f"A{i:02d}",
+                quantity=Decimal("1"),
+                avg_cost_price=Decimal("100"),
+                market_price=Decimal("100"),
+                currency="USD",
+            )
+            for i in range(2)
+        ]
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=pos, fx_rate_ars_per_usd=Decimal("1000"), as_of=self.as_of
+        )
+        self.assertEqual(sum(p.weight_in_positions for p in rep.positions), Decimal("1.0000"))
+
+    def test_audit_pv_07_largest_remainder_3_equal_positions_portfolio(self) -> None:
+        """Verify Largest Remainder Method on 3 equal positions (1/3 each -> 0.3334 + 0.3333 + 0.3333 = 1.0000)."""
+        pos = [
+            PositionValuationInput(
+                ticker=f"A{i:02d}",
+                quantity=Decimal("1"),
+                avg_cost_price=Decimal("100"),
+                market_price=Decimal("100"),
+                currency="USD",
+            )
+            for i in range(3)
+        ]
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=pos, fx_rate_ars_per_usd=Decimal("1000"), as_of=self.as_of
+        )
+        weights = [p.weight_in_positions for p in rep.positions]
+        self.assertEqual(weights, [Decimal("0.3334"), Decimal("0.3333"), Decimal("0.3333")])
+        self.assertEqual(sum(weights), Decimal("1.0000"))
+
+    def test_audit_pv_08_largest_remainder_6_equal_positions_portfolio(self) -> None:
+        """Verify Largest Remainder Method on 6 equal positions (1/6 each -> 4 * 0.1667 + 2 * 0.1666 = 1.0000)."""
+        pos = [
+            PositionValuationInput(
+                ticker=f"A{i:02d}",
+                quantity=Decimal("1"),
+                avg_cost_price=Decimal("100"),
+                market_price=Decimal("100"),
+                currency="USD",
+            )
+            for i in range(6)
+        ]
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=pos, fx_rate_ars_per_usd=Decimal("1000"), as_of=self.as_of
+        )
+        self.assertEqual(sum(p.weight_in_positions for p in rep.positions), Decimal("1.0000"))
+        self.assertEqual(sum(p.weight_in_net_worth for p in rep.positions), Decimal("1.0000"))
+
+    def test_audit_pv_09_largest_remainder_7_equal_positions_portfolio_with_cash(self) -> None:
+        """Verify Largest Remainder Method on 7 prime-count equal positions plus bimonetary cash."""
+        pos = [
+            PositionValuationInput(
+                ticker=f"A{i:02d}",
+                quantity=Decimal("1"),
+                avg_cost_price=Decimal("100"),
+                market_price=Decimal("100"),
+                currency="USD",
+            )
+            for i in range(7)
+        ]
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=pos,
+            fx_rate_ars_per_usd=Decimal("1000"),
+            cash_balance_ars=Decimal("100000"),
+            cash_balance_usd=Decimal("100"),
+            as_of=self.as_of,
+        )
+        self.assertEqual(sum(p.weight_in_positions for p in rep.positions), Decimal("1.0000"))
+        self.assertLess(
+            sum(p.weight_in_net_worth for p in rep.positions),
+            Decimal("1.0000"),
+        )
+
+    def test_audit_pv_10_largest_remainder_11_equal_positions_portfolio(self) -> None:
+        """Verify Largest Remainder Method on 11 prime-count equal positions."""
+        pos = [
+            PositionValuationInput(
+                ticker=f"A{i:02d}",
+                quantity=Decimal("1"),
+                avg_cost_price=Decimal("100"),
+                market_price=Decimal("100"),
+                currency="USD",
+            )
+            for i in range(11)
+        ]
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=pos, fx_rate_ars_per_usd=Decimal("1000"), as_of=self.as_of
+        )
+        self.assertEqual(sum(p.weight_in_positions for p in rep.positions), Decimal("1.0000"))
+
+    def test_audit_pv_11_largest_remainder_13_equal_positions_portfolio(self) -> None:
+        """Verify Largest Remainder Method on 13 prime-count equal positions."""
+        pos = [
+            PositionValuationInput(
+                ticker=f"A{i:02d}",
+                quantity=Decimal("1"),
+                avg_cost_price=Decimal("100"),
+                market_price=Decimal("100"),
+                currency="USD",
+            )
+            for i in range(13)
+        ]
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=pos, fx_rate_ars_per_usd=Decimal("1000"), as_of=self.as_of
+        )
+        self.assertEqual(sum(p.weight_in_positions for p in rep.positions), Decimal("1.0000"))
+
+    def test_audit_pv_12_largest_remainder_17_equal_positions_portfolio_with_cash(self) -> None:
+        """Verify Largest Remainder Method on 17 prime-count equal positions with cash."""
+        pos = [
+            PositionValuationInput(
+                ticker=f"A{i:02d}",
+                quantity=Decimal("1"),
+                avg_cost_price=Decimal("100"),
+                market_price=Decimal("100"),
+                currency="USD",
+            )
+            for i in range(17)
+        ]
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=pos,
+            fx_rate_ars_per_usd=Decimal("1000"),
+            cash_balance_usd=Decimal("300"),
+            as_of=self.as_of,
+        )
+        self.assertEqual(sum(p.weight_in_positions for p in rep.positions), Decimal("1.0000"))
+        self.assertLess(
+            sum(p.weight_in_net_worth for p in rep.positions),
+            Decimal("1.0000"),
+        )
+
+    def test_audit_pv_13_multi_lot_consolidation_3_lots_same_currency_different_entry_fx(self) -> None:
+        """Verify multi-lot consolidation across 3 lots of the same ticker with distinct entry FX rates."""
+        lots = [
+            PositionValuationInput(
+                ticker="GGAL",
+                quantity=Decimal("10"),
+                avg_cost_price=Decimal("1000"),
+                market_price=Decimal("1500"),
+                currency="ARS",
+                entry_fx_rate=Decimal("800"),
+            ),
+            PositionValuationInput(
+                ticker=" ggal ",
+                quantity=Decimal("20"),
+                avg_cost_price=Decimal("1200"),
+                market_price=Decimal("1500"),
+                currency="ARS",
+                entry_fx_rate=Decimal("1000"),
+            ),
+            PositionValuationInput(
+                ticker="ggal",
+                quantity=Decimal("10"),
+                avg_cost_price=Decimal("1400"),
+                market_price=Decimal("1500"),
+                currency="ARS",
+                entry_fx_rate=Decimal("1200"),
+            ),
+        ]
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=lots, fx_rate_ars_per_usd=Decimal("1500"), as_of=self.as_of
+        )
+        self.assertEqual(len(rep.positions), 1)
+        p = rep.positions[0]
+        self.assertEqual(p.quantity, Decimal("40.0000"))
+        self.assertEqual(p.cost_basis_ars, Decimal("48000.0000"))
+        self.assertEqual(p.market_value_ars, Decimal("60000.0000"))
+
+    def test_audit_pv_14_multi_lot_consolidation_5_lots_mixed_ars_and_usd_entries(self) -> None:
+        """Verify multi-lot consolidation across 5 lots with mixed ARS and USD denominations."""
+        lots = [
+            PositionValuationInput(
+                ticker="AL30",
+                quantity=Decimal("100"),
+                avg_cost_price=Decimal("500"),
+                market_price=Decimal("700"),
+                currency="ARS",
+                entry_fx_rate=Decimal("1000"),
+            ),
+            PositionValuationInput(
+                ticker="AL30",
+                quantity=Decimal("100"),
+                avg_cost_price=Decimal("0.55"),
+                market_price=Decimal("0.70"),
+                currency="USD",
+                entry_fx_rate=Decimal("1000"),
+            ),
+            PositionValuationInput(
+                ticker="AL30",
+                quantity=Decimal("100"),
+                avg_cost_price=Decimal("600"),
+                market_price=Decimal("700"),
+                currency="ARS",
+                entry_fx_rate=Decimal("1000"),
+            ),
+            PositionValuationInput(
+                ticker="AL30",
+                quantity=Decimal("100"),
+                avg_cost_price=Decimal("0.65"),
+                market_price=Decimal("0.70"),
+                currency="USD",
+                entry_fx_rate=Decimal("1000"),
+            ),
+            PositionValuationInput(
+                ticker="AL30",
+                quantity=Decimal("100"),
+                avg_cost_price=Decimal("700"),
+                market_price=Decimal("700"),
+                currency="ARS",
+                entry_fx_rate=Decimal("1000"),
+            ),
+        ]
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=lots, fx_rate_ars_per_usd=Decimal("1000"), as_of=self.as_of
+        )
+        self.assertEqual(len(rep.positions), 1)
+        self.assertEqual(rep.positions[0].quantity, Decimal("500.0000"))
+        self.assertEqual(rep.positions[0].market_value_usd, Decimal("350.0000"))
+
+    def test_audit_pv_15_multi_lot_consolidation_10_lots_stress(self) -> None:
+        """Verify multi-lot consolidation across 10 sequential lots of the same asset."""
+        lots = [
+            PositionValuationInput(
+                ticker="SPY",
+                quantity=Decimal("5"),
+                avg_cost_price=Decimal(str(400 + i * 10)),
+                market_price=Decimal("500"),
+                currency="USD",
+                entry_fx_rate=Decimal(str(900 + i * 20)),
+            )
+            for i in range(10)
+        ]
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=lots, fx_rate_ars_per_usd=Decimal("1200"), as_of=self.as_of
+        )
+        self.assertEqual(len(rep.positions), 1)
+        self.assertEqual(rep.positions[0].quantity, Decimal("50.0000"))
+        self.assertEqual(rep.positions[0].market_value_usd, Decimal("25000.0000"))
+
+    def test_audit_pv_16_value_holdings_from_quotes_cleaned_holding_records_and_ba_suffixes(self) -> None:
+        """Verify value_holdings_from_quotes resolves .BA suffixes in both holdings and market_quotes."""
+        holdings = [
+            CleanedHoldingRecord(
+                row_number=1,
+                ticker="GGAL.BA",
+                quantity=Decimal("50"),
+                avg_price=Decimal("3000"),
+                currency="ARS",
+            ),
+            CleanedHoldingRecord(
+                row_number=2,
+                ticker="BMA",
+                quantity=Decimal("25"),
+                avg_price=Decimal("4000"),
+                currency="ARS",
+            ),
+        ]
+        quotes = {"GGAL": Decimal("3600"), "BMA.BA": Decimal("4800")}
+        rep = self.service.value_holdings_from_quotes(
+            holdings=holdings,
+            market_quotes=quotes,
+            fx_rate_ars_per_usd=Decimal("1000"),
+            as_of=self.as_of,
+        )
+        self.assertEqual(len(rep.positions), 2)
+        self.assertEqual(rep.total_positions_value_ars, Decimal("300000.0000"))
+
+    def test_audit_pv_17_value_holdings_from_quotes_missing_quote_raises_error(self) -> None:
+        """Verify value_holdings_from_quotes raises MissingMarketPriceError when a quote is absent."""
+        holdings = [
+            CleanedHoldingRecord(
+                row_number=1,
+                ticker="CEPU",
+                quantity=Decimal("10"),
+                avg_price=Decimal("1000"),
+                currency="ARS",
+            )
+        ]
+        with self.assertRaises(MissingMarketPriceError):
+            self.service.value_holdings_from_quotes(
+                holdings=holdings,
+                market_quotes={"GGAL": Decimal("1000")},
+                fx_rate_ars_per_usd=Decimal("1000"),
+                as_of=self.as_of,
+            )
+
+    def test_audit_pv_18_value_holdings_from_quotes_non_positive_quote_raises_error(self) -> None:
+        """Verify value_holdings_from_quotes rejects zero or negative quotes with MissingMarketPriceError."""
+        holdings = [
+            CleanedHoldingRecord(
+                row_number=1,
+                ticker="CEPU",
+                quantity=Decimal("10"),
+                avg_price=Decimal("1000"),
+                currency="ARS",
+            )
+        ]
+        with self.assertRaises(MissingMarketPriceError):
+            self.service.value_holdings_from_quotes(
+                holdings=holdings,
+                market_quotes={"CEPU": Decimal("0")},
+                fx_rate_ars_per_usd=Decimal("1000"),
+                as_of=self.as_of,
+            )
+
+    def test_audit_pv_19_twr_1_subperiod_end_and_start_timing(self) -> None:
+        """Verify calculate_twr for a single sub-period under both END and START cash flow timing."""
+        s_end = SubPeriodValuationSlice(
+            start_value=Decimal("1000"),
+            end_value=Decimal("1300"),
+            net_cash_flow=Decimal("200"),
+            cash_flow_timing="END",
+        )
+        self.assertEqual(self.service.calculate_twr([s_end]), Decimal("0.1000"))
+
+        s_start = SubPeriodValuationSlice(
+            start_value=Decimal("1000"),
+            end_value=Decimal("1320"),
+            net_cash_flow=Decimal("200"),
+            cash_flow_timing="START",
+        )
+        self.assertEqual(self.service.calculate_twr([s_start]), Decimal("0.1000"))
+
+    def test_audit_pv_20_twr_4_quarterly_subperiods_geometric_chain(self) -> None:
+        """Verify calculate_twr geometric chaining across 4 quarterly sub-periods."""
+        slices = [
+            SubPeriodValuationSlice(start_value=Decimal("1000"), end_value=Decimal("1100")),
+            SubPeriodValuationSlice(start_value=Decimal("1100"), end_value=Decimal("1210")),
+            SubPeriodValuationSlice(start_value=Decimal("1210"), end_value=Decimal("1089")),
+            SubPeriodValuationSlice(start_value=Decimal("1089"), end_value=Decimal("1306.80")),
+        ]
+        # 1.10 * 1.10 * 0.90 * 1.20 - 1 = 1.3068 - 1 = 0.3068
+        self.assertEqual(self.service.calculate_twr(slices), Decimal("0.3068"))
+
+    def test_audit_pv_21_twr_12_monthly_subperiods_geometric_chain(self) -> None:
+        """Verify calculate_twr across 12 monthly sub-periods with +1% monthly return."""
+        slices: list[SubPeriodValuationSlice] = []
+        val = Decimal("10000")
+        for _ in range(12):
+            nxt = val * Decimal("1.01")
+            slices.append(SubPeriodValuationSlice(start_value=val, end_value=nxt))
+            val = nxt
+        # 1.01^12 - 1 = 0.126825... -> 0.1268
+        self.assertEqual(self.service.calculate_twr(slices), Decimal("0.1268"))
+
+    def test_audit_pv_22_twr_52_weekly_subperiods_geometric_chain(self) -> None:
+        """Verify calculate_twr across 52 weekly sub-periods with alternating +2% and -1% returns."""
+        slices: list[SubPeriodValuationSlice] = []
+        val = Decimal("10000")
+        for i in range(52):
+            mult = Decimal("1.02") if i % 2 == 0 else Decimal("0.99")
+            nxt = val * mult
+            slices.append(SubPeriodValuationSlice(start_value=val, end_value=nxt))
+            val = nxt
+        twr = self.service.calculate_twr(slices)
+        expected = ((Decimal("1.02") * Decimal("0.99")) ** 26 - Decimal("1")).quantize(
+            Decimal("0.0001")
+        )
+        self.assertEqual(twr, expected)
+
+    def test_audit_pv_23_twr_full_end_of_period_withdrawal_returns_zero_gain(self) -> None:
+        """Verify full end-of-period withdrawal leaving end_value == 0 and net_cash_flow == -start_value returns 0.0000."""
+        s = SubPeriodValuationSlice(
+            start_value=Decimal("5000"),
+            end_value=Decimal("0"),
+            net_cash_flow=Decimal("-5000"),
+            cash_flow_timing="END",
+        )
+        self.assertEqual(self.service.calculate_twr([s]), Decimal("0.0000"))
+
+    def test_audit_pv_24_twr_zero_opening_balance_with_start_deposit(self) -> None:
+        """Verify $0 opening balance with START-timed deposit computes exact return on the deposit."""
+        s = SubPeriodValuationSlice(
+            start_value=Decimal("0"),
+            end_value=Decimal("2300"),
+            net_cash_flow=Decimal("2000"),
+            cash_flow_timing="START",
+        )
+        self.assertEqual(self.service.calculate_twr([s]), Decimal("0.1500"))
+
+    def test_audit_pv_25_twr_market_loss_50_pct(self) -> None:
+        """Verify calculate_twr under a 50% market loss."""
+        s = SubPeriodValuationSlice(start_value=Decimal("1000"), end_value=Decimal("500"))
+        self.assertEqual(self.service.calculate_twr([s]), Decimal("-0.5000"))
+
+    def test_audit_pv_26_twr_market_loss_99_99_pct(self) -> None:
+        """Verify calculate_twr under a 99.99% near-wipeout market loss."""
+        s = SubPeriodValuationSlice(start_value=Decimal("10000"), end_value=Decimal("1"))
+        self.assertEqual(self.service.calculate_twr([s]), Decimal("-0.9999"))
+
+    def test_audit_pv_27_twr_market_loss_100_pct_total_wipeout(self) -> None:
+        """Verify calculate_twr under a 100% total market loss (end_value=0, net_cash_flow=0)."""
+        s = SubPeriodValuationSlice(start_value=Decimal("10000"), end_value=Decimal("0"))
+        self.assertEqual(self.service.calculate_twr([s]), Decimal("-1.0000"))
+
+    def test_audit_pv_28_mwr_dietz_and_irr_flow_at_day_zero(self) -> None:
+        """Verify Modified Dietz and IRR agree exactly when a cash flow occurs at day_offset == 0 (w_j = 1.0)."""
+        cfs = [DatedCashFlowEvent(day_offset=0, amount=Decimal("1000"))]
+        dietz = self.service.calculate_mwr_modified_dietz(
+            start_value=Decimal("1000"),
+            end_value=Decimal("2400"),
+            total_days=100,
+            cash_flows=cfs,
+        )
+        irr = self.service.calculate_mwr_irr(
+            start_value=Decimal("1000"),
+            end_value=Decimal("2400"),
+            total_days=100,
+            cash_flows=cfs,
+        )
+        self.assertEqual(dietz, Decimal("0.2000"))
+        self.assertEqual(irr, Decimal("0.2000"))
+
+    def test_audit_pv_29_mwr_dietz_and_irr_flow_at_day_total_days(self) -> None:
+        """Verify Modified Dietz and IRR agree exactly when a cash flow occurs at day_offset == total_days (w_j = 0.0)."""
+        cfs = [DatedCashFlowEvent(day_offset=100, amount=Decimal("500"))]
+        dietz = self.service.calculate_mwr_modified_dietz(
+            start_value=Decimal("1000"),
+            end_value=Decimal("1800"),
+            total_days=100,
+            cash_flows=cfs,
+        )
+        irr = self.service.calculate_mwr_irr(
+            start_value=Decimal("1000"),
+            end_value=Decimal("1800"),
+            total_days=100,
+            cash_flows=cfs,
+        )
+        self.assertEqual(dietz, Decimal("0.3000"))
+        self.assertEqual(irr, Decimal("0.3000"))
+
+    def test_audit_pv_30_mwr_multiple_same_day_opposing_flows_canceling_to_zero(self) -> None:
+        """Verify multiple opposing cash flows on the same day (+1000 and -1000) cancel cleanly."""
+        cfs = [
+            DatedCashFlowEvent(day_offset=40, amount=Decimal("1000")),
+            DatedCashFlowEvent(day_offset=40, amount=Decimal("-1000")),
+        ]
+        dietz = self.service.calculate_mwr_modified_dietz(
+            start_value=Decimal("2000"),
+            end_value=Decimal("2500"),
+            total_days=100,
+            cash_flows=cfs,
+        )
+        irr = self.service.calculate_mwr_irr(
+            start_value=Decimal("2000"),
+            end_value=Decimal("2500"),
+            total_days=100,
+            cash_flows=cfs,
+        )
+        self.assertEqual(dietz, Decimal("0.2500"))
+        self.assertEqual(irr, Decimal("0.2500"))
+
+    def test_audit_pv_31_mwr_irr_hyperinflationary_return_over_500_pct(self) -> None:
+        """Verify calculate_mwr_irr converges accurately for hyperinflationary returns > +500%."""
+        cfs = [DatedCashFlowEvent(day_offset=50, amount=Decimal("1000"))]
+        irr = self.service.calculate_mwr_irr(
+            start_value=Decimal("1000"),
+            end_value=Decimal("9000"),
+            total_days=100,
+            cash_flows=cfs,
+        )
+        self.assertGreater(irr, Decimal("5.0000"))
+        u = Decimal("1") + irr
+        npv = Decimal("1000") * u + Decimal("1000") * (Decimal("0.5") * u.ln()).exp() - Decimal("9000")
+        self.assertLess(abs(npv), Decimal("1.0"))
+
+    def test_audit_pv_32_mwr_irr_extreme_hyperinflationary_return_over_1500_pct(self) -> None:
+        """Verify calculate_mwr_irr dynamic upper bracket expansion for extreme returns > +1500%."""
+        cfs = [DatedCashFlowEvent(day_offset=50, amount=Decimal("500"))]
+        irr = self.service.calculate_mwr_irr(
+            start_value=Decimal("1000"),
+            end_value=Decimal("22000"),
+            total_days=100,
+            cash_flows=cfs,
+        )
+        self.assertGreater(irr, Decimal("15.0000"))
+        u = Decimal("1") + irr
+        npv = Decimal("1000") * u + Decimal("500") * (Decimal("0.5") * u.ln()).exp() - Decimal("22000")
+        self.assertLess(abs(npv), Decimal("2.0"))
+
+    def test_audit_pv_33_mwr_irr_extreme_15000_pct_with_late_outflow(self) -> None:
+        """Verify calculate_mwr_irr converges when true root exceeds 100x via dynamic bracket expansion."""
+        cfs = [DatedCashFlowEvent(day_offset=90, amount=Decimal("-500"))]
+        irr = self.service.calculate_mwr_irr(
+            start_value=Decimal("100"),
+            end_value=Decimal("18000"),
+            total_days=100,
+            cash_flows=cfs,
+        )
+        self.assertGreater(irr, Decimal("150.0000"))
+
+    def test_audit_pv_34_mwr_irr_total_loss_end_value_zero_with_mid_period_inflow(self) -> None:
+        """Verify calculate_mwr_irr returns -1.0000 when end_value == 0 with non-negative inflows."""
+        cfs = [DatedCashFlowEvent(day_offset=30, amount=Decimal("500"))]
+        irr = self.service.calculate_mwr_irr(
+            start_value=Decimal("1000"),
+            end_value=Decimal("0"),
+            total_days=60,
+            cash_flows=cfs,
+        )
+        self.assertEqual(irr, Decimal("-1.0000"))
+
+    def test_audit_pv_35_mwr_irr_full_mid_period_redemption_with_gain(self) -> None:
+        """Verify calculate_mwr_irr solves exact return when investor redeems 100% mid-period at a profit."""
+        # Start 1000, at day 50/100 withdraws -1200, end_value = 0 -> +20% in half a period -> (1.2)^2 - 1 = 0.4400
+        cfs = [DatedCashFlowEvent(day_offset=50, amount=Decimal("-1200"))]
+        irr = self.service.calculate_mwr_irr(
+            start_value=Decimal("1000"),
+            end_value=Decimal("0"),
+            total_days=100,
+            cash_flows=cfs,
+        )
+        self.assertEqual(irr, Decimal("0.4400"))
+
+    def test_audit_pv_36_annualization_short_period_30_days(self) -> None:
+        """Verify compound annualization over a 30-day period in evaluate_performance_metrics."""
+        slices = [SubPeriodValuationSlice(start_value=Decimal("1000"), end_value=Decimal("1020"))]
+        perf = self.service.evaluate_performance_metrics(
+            slices=slices,
+            start_value=Decimal("1000"),
+            end_value=Decimal("1020"),
+            total_days=30,
+        )
+        self.assertEqual(perf.twr, Decimal("0.0200"))
+        self.assertGreater(perf.annualized_twr, Decimal("0.2600"))
+
+    def test_audit_pv_37_annualization_multi_year_730_days(self) -> None:
+        """Verify compound annualization over a 730-day (2-year) period."""
+        slices = [SubPeriodValuationSlice(start_value=Decimal("1000"), end_value=Decimal("1440"))]
+        perf = self.service.evaluate_performance_metrics(
+            slices=slices,
+            start_value=Decimal("1000"),
+            end_value=Decimal("1440"),
+            total_days=730,
+        )
+        self.assertEqual(perf.twr, Decimal("0.4400"))
+        self.assertEqual(perf.annualized_twr, Decimal("0.2000"))
+
+    def test_audit_pv_38_annualization_total_wipeout_returns_minus_100_pct(self) -> None:
+        """Verify compound annualization of -1.0000 (-100%) returns -1.0000 without domain error."""
+        slices = [SubPeriodValuationSlice(start_value=Decimal("1000"), end_value=Decimal("0"))]
+        perf = self.service.evaluate_performance_metrics(
+            slices=slices,
+            start_value=Decimal("1000"),
+            end_value=Decimal("0"),
+            total_days=180,
+        )
+        self.assertEqual(perf.twr, Decimal("-1.0000"))
+        self.assertEqual(perf.annualized_twr, Decimal("-1.0000"))
+
+    def test_audit_pv_39_valuation_curve_sub_day_intraday_snapshots_minimum_1_day_floor(self) -> None:
+        """Verify evaluate_valuation_curve handles intraday snapshots (< 24h apart) using total_days >= 1 floor."""
+        t0 = datetime(2026, 5, 1, 10, 0, tzinfo=timezone.utc)
+        t1 = datetime(2026, 5, 1, 16, 0, tzinfo=timezone.utc)
+        snaps = [
+            HistoricalValuationSnapshot(
+                as_of=t0, net_worth_ars=Decimal("100000"), fx_rate_ars_per_usd=Decimal("1000")
+            ),
+            HistoricalValuationSnapshot(
+                as_of=t1, net_worth_ars=Decimal("101000"), fx_rate_ars_per_usd=Decimal("1000")
+            ),
+        ]
+        curve = self.service.evaluate_valuation_curve(snaps)
+        self.assertEqual(curve.total_days, 1)
+        self.assertEqual(curve.performance_ars.twr, Decimal("0.0100"))
+
+    def test_audit_pv_40_valuation_curve_out_of_order_snapshots_sorted_chronologically(self) -> None:
+        """Verify evaluate_valuation_curve sorts out-of-order snapshots chronologically before evaluation."""
+        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        t1 = datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+        snaps = [
+            HistoricalValuationSnapshot(
+                as_of=t2, net_worth_ars=Decimal("121000"), fx_rate_ars_per_usd=Decimal("1000")
+            ),
+            HistoricalValuationSnapshot(
+                as_of=t0, net_worth_ars=Decimal("100000"), fx_rate_ars_per_usd=Decimal("1000")
+            ),
+            HistoricalValuationSnapshot(
+                as_of=t1, net_worth_ars=Decimal("110000"), fx_rate_ars_per_usd=Decimal("1000")
+            ),
+        ]
+        curve = self.service.evaluate_valuation_curve(snaps)
+        self.assertEqual([p.as_of for p in curve.points], [t0, t1, t2])
+        self.assertEqual(curve.performance_ars.twr, Decimal("0.2100"))
+
+    def test_audit_pv_41_valuation_curve_dual_currency_drawdown_divergence(self) -> None:
+        """Verify valuation curve captures zero ARS drawdown alongside deep USD drawdown during devaluation."""
+        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        t1 = datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc)
+        snaps = [
+            HistoricalValuationSnapshot(
+                as_of=t0, net_worth_ars=Decimal("1000000"), fx_rate_ars_per_usd=Decimal("1000")
+            ),
+            HistoricalValuationSnapshot(
+                as_of=t1, net_worth_ars=Decimal("1200000"), fx_rate_ars_per_usd=Decimal("2000")
+            ),
+        ]
+        curve = self.service.evaluate_valuation_curve(snaps)
+        self.assertEqual(curve.max_drawdown_ars, Decimal("0.0000"))
+        self.assertEqual(curve.max_drawdown_usd, Decimal("-0.4000"))
+
+    def test_audit_pv_42_cash_only_portfolio_positive_ars_and_usd_cash_weights(self) -> None:
+        """Verify cash-only portfolio sets total_positions_value_usd == 0.0000 and positions == []."""
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=[],
+            fx_rate_ars_per_usd=Decimal("1000"),
+            cash_balance_ars=Decimal("500000"),
+            cash_balance_usd=Decimal("500"),
+            as_of=self.as_of,
+        )
+        self.assertEqual(rep.positions, [])
+        self.assertEqual(rep.total_net_worth_usd, Decimal("1000.0000"))
+        self.assertEqual(rep.total_positions_value_usd, Decimal("0.0000"))
+        self.assertIsNone(rep.total_unrealized_pnl_pct_ars)
+
+    def test_audit_pv_43_empty_portfolio_zero_cash_weights_are_zero(self) -> None:
+        """Verify completely empty portfolio (no positions, zero cash) produces 0.0000 net worth without division by zero."""
+        rep = self.service.value_portfolio_mark_to_market(
+            positions=[],
+            fx_rate_ars_per_usd=Decimal("1000"),
+            cash_balance_ars=Decimal("0"),
+            cash_balance_usd=Decimal("0"),
+            as_of=self.as_of,
+        )
+        self.assertEqual(rep.total_net_worth_ars, Decimal("0.0000"))
+        self.assertEqual(rep.total_net_worth_usd, Decimal("0.0000"))
+
+    def test_audit_pv_44_zero_quantity_position_filtered_out_cleanly(self) -> None:
+        """Verify PositionValuationInput rejects quantity == 0 with ValidationError."""
+        with self.assertRaises(ValidationError):
+            PositionValuationInput(
+                ticker="GGAL",
+                quantity=Decimal("0"),
+                avg_cost_price=Decimal("1000"),
+                market_price=Decimal("1200"),
+                currency="ARS",
+            )
+
+    def test_audit_pv_45_invalid_fx_rate_zero_or_negative_raises_error(self) -> None:
+        """Verify value_portfolio_mark_to_market rejects zero or negative fx_rate_ars_per_usd."""
+        with self.assertRaises(InvalidFXRateError):
+            self.service.value_portfolio_mark_to_market(
+                positions=[], fx_rate_ars_per_usd=Decimal("0"), as_of=self.as_of
+            )
+        with self.assertRaises(InvalidFXRateError):
+            self.service.value_portfolio_mark_to_market(
+                positions=[], fx_rate_ars_per_usd=Decimal("-1000"), as_of=self.as_of
+            )
+
+    def test_audit_pv_46_negative_cash_balance_rejected(self) -> None:
+        """Verify value_portfolio_mark_to_market rejects negative cash balances."""
+        with self.assertRaises(InvalidValuationInputError):
+            self.service.value_portfolio_mark_to_market(
+                positions=[],
+                fx_rate_ars_per_usd=Decimal("1000"),
+                cash_balance_ars=Decimal("-1"),
+                as_of=self.as_of,
+            )
+
+    def test_audit_pv_47_boolean_numeric_inputs_rejected_across_valuation_dtos(self) -> None:
+        """Verify boolean values masquerading as numbers are rejected in PositionValuationInput and service methods."""
+        with self.assertRaises(ValidationError):
+            PositionValuationInput(
+                ticker="GGAL",
+                quantity=True,  # type: ignore[arg-type]
+                avg_cost_price=Decimal("100"),
+                market_price=Decimal("100"),
+                currency="ARS",
+            )
+        with self.assertRaises(InvalidFXRateError):
+            self.service.value_portfolio_mark_to_market(
+                positions=[],
+                fx_rate_ars_per_usd=True,  # type: ignore[arg-type]
+                as_of=self.as_of,
+            )
+
+    def test_audit_pv_48_exponent_bomb_strings_rejected(self) -> None:
+        """Verify exponent bomb strings (> 32 chars) are rejected with InvalidValuationInputError."""
+        with self.assertRaises((InvalidValuationInputError, ValidationError)):
+            PositionValuationInput(
+                ticker="GGAL",
+                quantity="1" + "0" * 40,  # type: ignore[arg-type]
+                avg_cost_price=Decimal("100"),
+                market_price=Decimal("100"),
+                currency="ARS",
+            )
+
+    def test_audit_pv_49_control_chars_in_portfolio_id_rejected(self) -> None:
+        """Verify control characters in portfolio_id are rejected across MTM and curve methods."""
+        with self.assertRaises(InvalidValuationInputError):
+            self.service.value_portfolio_mark_to_market(
+                positions=[],
+                fx_rate_ars_per_usd=Decimal("1000"),
+                portfolio_id="bad\x00id",
+                as_of=self.as_of,
+            )
+
+    def test_audit_pv_50_valued_position_breakdown_model_validator_rejects_tampered_quadrature(self) -> None:
+        """Verify ValuedPositionBreakdown model validator rejects tampered horizontal accounting or Karnosky-Singer sum."""
+        with self.assertRaises(ValidationError):
+            ValuedPositionBreakdown(
+                ticker="GGAL",
+                native_currency="ARS",
+                quantity=Decimal("10"),
+                avg_cost_price_native=Decimal("100"),
+                market_price_native=Decimal("120"),
+                cost_basis_ars=Decimal("1000"),
+                market_value_ars=Decimal("1200"),
+                unrealized_pnl_ars=Decimal("999"),  # Tampered! Should be 200
+                unrealized_pnl_pct_ars=Decimal("0.2000"),
+                cost_basis_usd=Decimal("1.0000"),
+                market_value_usd=Decimal("1.2000"),
+                unrealized_pnl_usd=Decimal("0.2000"),
+                unrealized_pnl_pct_usd=Decimal("0.2000"),
+                fx_return_component=Decimal("0.0000"),
+                interaction_return_component=Decimal("0.0000"),
+                weight_in_positions=Decimal("1.0000"),
+                weight_in_net_worth=Decimal("1.0000"),
+            )
+
+    def test_audit_pv_51_cash_flow_day_offset_exceeding_total_days_rejected(self) -> None:
+        """Verify DatedCashFlowEvent with day_offset > total_days raises InvalidCashFlowPeriodError."""
+        cfs = [DatedCashFlowEvent(day_offset=101, amount=Decimal("100"))]
+        with self.assertRaises(InvalidCashFlowPeriodError):
+            self.service.calculate_mwr_modified_dietz(
+                start_value=Decimal("1000"),
+                end_value=Decimal("1200"),
+                total_days=100,
+                cash_flows=cfs,
+            )
+
+    def test_audit_pv_52_subperiod_slice_non_positive_effective_capital_base_rejected(self) -> None:
+        """Verify SubPeriodValuationSlice rejects START withdrawal that exhausts or exceeds start_value."""
+        with self.assertRaises(ValidationError):
+            SubPeriodValuationSlice(
+                start_value=Decimal("1000"),
+                end_value=Decimal("500"),
+                net_cash_flow=Decimal("-1000"),
+                cash_flow_timing="START",
+            )
+
 

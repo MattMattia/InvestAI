@@ -4,8 +4,8 @@
 > **Progreso Consolidado:** 24 de 26 Módulos Completados (92.3%) — Capítulos 1 a 7 completados al 100%  
 > **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5, 6 y 7 (100% completados)  
 > **Capítulos Pendientes / En Progreso:** Capítulos 8 y 9  
-> **Calidad y Suite de Pruebas:** **414 tests pasando al 100% en verde (336 unitarios + 78 de integración)**  
-> **Última Actualización:** 2026-10-26
+> **Calidad y Suite de Pruebas:** **621 tests pasando al 100% en verde (543 unitarios + 78 de integración)**  
+> **Última Actualización:** 2026-10-31
 
 ---
 
@@ -25,7 +25,7 @@
 | **Capítulo 4** | Conectividad Externa, Ingesta en Vivo y Datos de Mercado | 4 / 4 | 14 / 14 | **COMPLETADO** | 205 tests (+46) |
 | **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 293 tests (+88) |
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 3 / 3 | 9 / 9 | **COMPLETADO** | 359 tests (+66) |
-| **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 3 / 3 | 9 / 9 | **COMPLETADO** | 414 tests (+55) |
+| **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 3 / 3 | 9 / 9 | **COMPLETADO** | 621 tests (+262) |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
 | **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 
@@ -153,15 +153,16 @@
 - [x] **Módulo 7.1: Indicadores Técnicos y Generador de Señales Cuantitativas**
   - [x] Fase 1: Biblioteca de Indicadores Numéricos Vectorizados (`backend/app/domain/services/technical_indicators.py`, `backend/tests/unit/test_technical_indicators.py` — SMA, EMA, RSI Wilder, Bollinger, ATR y `TechnicalIndicatorsSnapshot` con 6 pruebas unitarias)
   - [x] Fase 2: Motor de Generación de Señales de Negociación (`backend/app/domain/services/signal_generator.py`, `backend/tests/unit/test_technical_indicators.py` — reglas deterministas EMA/SMA/RSI/Bollinger, dimensionamiento ATR y `OrderFSMIntent` con 5 pruebas unitarias nuevas; 11 total en el módulo)
-  - [x] Fase 3: Pruebas Unitarias de Precisión Numérica contra Benchmarks (`backend/tests/unit/test_technical_indicators.py`, `backend/app/domain/services/__init__.py` — endurecimiento de precisión intermedia `localcontext(prec=50)`, re-exportación limpia y 6 pruebas analíticas de benchmark y estrés; 17 pruebas totales cerrando el Módulo 7.1 al 100%)
+  - [x] Fase 3: Pruebas Unitarias de Precisión Numérica contra Benchmarks (`backend/tests/unit/test_technical_indicators.py`, `backend/app/domain/services/__init__.py` — endurecimiento de precisión intermedia `localcontext(prec=50)`, re-exportación limpia y 65 pruebas unitarias totales en el módulo tras expansión de auditoría)
 - [x] **Módulo 7.2: Valuación Patrimonial Dinámica y PnL Multimoneda (TWR / MWR)**
   - [x] Fase 1: Motor de Valuación Mark-to-Market Bimoneda (`backend/app/domain/services/portfolio_valuation_service.py`, `backend/tests/unit/test_portfolio_valuation.py` — valuación bimoneda ARS/USD, descomposición multiplicativa Karnosky-Singer, Largest Remainder weights, TWR GIPS, Modified Dietz e IRR exacto con 7 pruebas unitarias)
   - [x] Fase 2: Métricas de Rendimiento Ponderado, Curva de Valuación Histórica y Drawdown Bimonetario (`backend/app/domain/services/portfolio_valuation_service.py`, `backend/tests/unit/test_portfolio_valuation.py` — descomposición Karnosky-Singer a nivel cartera, aperturas en `$0` con timing `START`, `HistoricalValuationSnapshot`, `ValuationCurvePoint`, `PortfolioValuationCurveReport`, High-Water Mark / Drawdown bimonetario e integración `value_holdings_from_quotes` con 6 pruebas unitarias nuevas; 13 total en el módulo)
-  - [x] Fase 3: Pruebas Unitarias y de Integración con Saltos Cambiarios (`backend/tests/unit/test_portfolio_valuation.py`, `backend/app/domain/services/portfolio_valuation_service.py` — endurecimiento de casos de borde de rondas 1 a 5 y 6 pruebas analíticas de certificación GIPS, shock hiperinflacionario 300%, solver IRR no lineal con Dietz < -1.0, curva diaria de 365 días y frontera $10^{12}$; 19 pruebas totales cerrando el Módulo 7.2 al 100%)
+  - [x] Fase 3: Pruebas Unitarias y de Integración con Saltos Cambiarios (`backend/tests/unit/test_portfolio_valuation.py`, `backend/app/domain/services/portfolio_valuation_service.py` — endurecimiento de casos de borde de rondas 1 a 5, certificación GIPS, shock hiperinflacionario 300%, solver IRR no lineal con Dietz < -1.0, curva diaria de 365 días, frontera $10^{12}$ y 71 pruebas unitarias totales en el módulo tras expansión de auditoría)
 - [x] **Módulo 7.3: Rebalanceo por Bandas de Tolerancia Dinámicas (Tolerance-Band Rebalance)**
   - [x] Fase 1: Algoritmo de Bandas de Tolerancia Dinámicas (`backend/app/domain/services/tolerance_band_rebalancer.py`, `backend/tests/unit/test_tolerance_band_rebalancer.py` — bandas absolutas, relativas y escaladas por volatilidad dinámica, modos `FULL_TO_TARGET` y `TO_BAND_BOUNDARY`, cascada autofinanciada `SELL`-before-`BUY` con comisiones y buffer de liquidez, integración con `PortfolioMarkToMarketReport` y `OrderFSMIntent`, y 7 pruebas unitarias)
   - [x] Fase 2: Calibración Dinámica vía ATR, Proyección Post-Trade con Estimación de PnL Realizado, Despliegue de Exceso de Liquidez y Lote de Ejecución Idempotente hacia la FSM (`backend/app/domain/services/tolerance_band_rebalancer.py`, `backend/tests/unit/test_tolerance_band_rebalancer.py` — `calibrate_specs_from_indicators`, `deploy_excess_cash_when_inside_bands`, `estimated_realized_pnl`, `RebalanceFSMOrderTicket`, `RebalanceFSMExecutionBatch`, `build_fsm_execution_batch` y 6 pruebas unitarias nuevas; 13 total en el módulo)
-  - [x] Fase 3: Selección Fiscal de Lotes (`FIFO`/`LIFO`/`HIFO`), Endurecimiento de las 10 Rondas de Auditoría y Suite Exhaustiva de Certificación Cuantitativa E2E (`backend/app/domain/services/tolerance_band_rebalancer.py`, `backend/app/domain/services/__init__.py`, `backend/tests/unit/test_tolerance_band_rebalancer.py` — `TaxLotSelectionPolicy`, Largest Remainder exacto en `post_trade_weight`, redistribución asimétrica en `TO_BAND_BOUNDARY`, conversión bimonetaria unitaria, preservación de `avg_cost_price=None` y 6 pruebas unitarias nuevas; 19 pruebas totales cerrando el Módulo 7.3 y el Capítulo 7 al 100%)
+  - [x] Fase 3: Selección Fiscal de Lotes (`FIFO`/`LIFO`/`HIFO`), Endurecimiento de las 10 Rondas de Auditoría y Suite Exhaustiva de Certificación Cuantitativa E2E (`backend/app/domain/services/tolerance_band_rebalancer.py`, `backend/app/domain/services/__init__.py`, `backend/tests/unit/test_tolerance_band_rebalancer.py` — `TaxLotSelectionPolicy`, Largest Remainder exacto en `post_trade_weight`, redistribución asimétrica en `TO_BAND_BOUNDARY`, conversión bimonetaria unitaria, preservación de `avg_cost_price=None` y 71 pruebas unitarias totales en el módulo tras expansión de auditoría)
+  - [x] Auditoría Forense de 6 Rondas, Hardening Defensivo, Verificación de Servidor Uvicorn en Vivo y Expansión Exacta de Pruebas del Capítulo 7 (`backend/tests/unit/test_chapter7_adversarial_audit.py` con 55 pruebas adversariales E2E + expansión de `test_technical_indicators.py` a 65, `test_portfolio_valuation.py` a 71 y `test_tolerance_band_rebalancer.py` a 71 — **621 tests totales en verde: 543 unitarios + 78 de integración**)
 
 ---
 
@@ -198,8 +199,8 @@
 ## Siguiente Paso Inmediato
 
 > **Foco Actual:** **CAPÍTULO 8 — Módulo 8.1 (Fase 1): Inicialización y Parametrización Asíncrona de Alembic (`alembic.ini`, `backend/migrations/env.py`)**  
-> **Prioridad:** Alta (Inicio del Capítulo 8 tras el cierre al 100% del Capítulo 7 con 414 tests en verde)  
-> **Objetivo:** Configurar el entorno de migraciones relacionales estructuradas con Alembic sobre SQLAlchemy 2.0 Async, vinculando `Base.metadata` con soporte multi-dialecto (PostgreSQL / SQLite asíncrono) y garantizando cero regresiones sobre los 414 tests existentes.
+> **Prioridad:** Alta (Inicio del Capítulo 8 tras el cierre al 100% y la Auditoría Forense de 6 Rondas del Capítulo 7 con 621 tests en verde)  
+> **Objetivo:** Configurar el entorno de migraciones relacionales estructuradas con Alembic sobre SQLAlchemy 2.0 Async, vinculando `Base.metadata` con soporte multi-dialecto (PostgreSQL / SQLite asíncrono) y garantizando cero regresiones sobre los 621 tests existentes.
 
 ### Hoja de Ruta Inmediata para el Capítulo 8:
 1. **Módulo 8.1 (Fase 1)**: Inicialización y parametrización asíncrona de Alembic (`alembic.ini`, `backend/migrations/env.py`).

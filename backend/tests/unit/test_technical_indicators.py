@@ -1129,5 +1129,716 @@ class TestTechnicalIndicators(unittest.TestCase):
             SignalGeneratorService,
         )
 
+    # =========================================================================
+    # 6-Round Forensic Audit Expansion: 48 Additional Unit Tests (01..48)
+    # =========================================================================
+
+    def test_audit_ti_01_sma_period_1_identity_over_prices_and_bars(self) -> None:
+        """Verify SMA(1) returns the exact 4-decimal quantized input sequence for scalars and bars."""
+        prices = [Decimal("10.12345"), Decimal("20.55555"), Decimal("30.00004")]
+        sma_1 = self.service.calculate_sma(prices, period=1)
+        self.assertEqual(
+            sma_1,
+            [Decimal("10.1235"), Decimal("20.5556"), Decimal("30.0000")],
+        )
+        bars = [_make_bar(i, p, p + Decimal("1"), p - Decimal("1"), p) for i, p in enumerate(prices)]
+        self.assertEqual(self.service.calculate_sma(bars, period=1), sma_1)
+
+    def test_audit_ti_02_sma_period_2_pairwise_averages(self) -> None:
+        """Verify SMA(2) computes exact pairwise arithmetic means across consecutive prices."""
+        prices = [Decimal("10"), Decimal("13"), Decimal("19"), Decimal("20")]
+        self.assertEqual(
+            self.service.calculate_sma(prices, period=2),
+            [Decimal("11.5000"), Decimal("16.0000"), Decimal("19.5000")],
+        )
+
+    def test_audit_ti_03_sma_period_14_and_50_exact_window_lengths(self) -> None:
+        """Verify SMA(14) and SMA(50) output lengths N - period + 1 and exact arithmetic averages."""
+        prices_60 = [Decimal(100 + i) for i in range(60)]
+        sma_14 = self.service.calculate_sma(prices_60, period=14)
+        sma_50 = self.service.calculate_sma(prices_60, period=50)
+        self.assertEqual(len(sma_14), 47)
+        self.assertEqual(len(sma_50), 11)
+        # First 14-window: average of 100..113 = 106.5000
+        self.assertEqual(sma_14[0], Decimal("106.5000"))
+        # First 50-window: average of 100..149 = 124.5000
+        self.assertEqual(sma_50[0], Decimal("124.5000"))
+
+    def test_audit_ti_04_sma_period_200_institutional_long_window(self) -> None:
+        """Verify institutional 200-period SMA over a 210-bar series."""
+        prices_210 = [Decimal(500 + 2 * i) for i in range(210)]
+        sma_200 = self.service.calculate_sma(prices_210, period=200)
+        self.assertEqual(len(sma_200), 11)
+        # Average of 500 + 2*0 .. 500 + 2*199 is 500 + 199 = 699.0000
+        self.assertEqual(sma_200[0], Decimal("699.0000"))
+        self.assertEqual(sma_200[-1], Decimal("719.0000"))
+
+    def test_audit_ti_05_sma_monotonic_decreasing_series(self) -> None:
+        """Verify SMA(4) strictly decreases when input prices are strictly decreasing."""
+        prices = [Decimal("100"), Decimal("90"), Decimal("80"), Decimal("70"), Decimal("60"), Decimal("50")]
+        sma_4 = self.service.calculate_sma(prices, period=4)
+        self.assertEqual(
+            sma_4,
+            [Decimal("85.0000"), Decimal("75.0000"), Decimal("65.0000")],
+        )
+
+    def test_audit_ti_06_sma_unit_impulse_response_and_decay(self) -> None:
+        """Verify SMA(4) response to a single impulse spike returns to baseline after 4 steps."""
+        prices = [
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("140"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+        ]
+        sma_4 = self.service.calculate_sma(prices, period=4)
+        self.assertEqual(
+            sma_4,
+            [
+                Decimal("110.0000"),
+                Decimal("110.0000"),
+                Decimal("110.0000"),
+                Decimal("110.0000"),
+                Decimal("100.0000"),
+            ],
+        )
+
+    def test_audit_ti_07_sma_step_function_transition(self) -> None:
+        """Verify SMA(4) transitions linearly across a permanent step jump from 100 to 200."""
+        prices = [
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("200"),
+            Decimal("200"),
+            Decimal("200"),
+            Decimal("200"),
+        ]
+        self.assertEqual(
+            self.service.calculate_sma(prices, period=4),
+            [
+                Decimal("100.0000"),
+                Decimal("125.0000"),
+                Decimal("150.0000"),
+                Decimal("175.0000"),
+                Decimal("200.0000"),
+            ],
+        )
+
+    def test_audit_ti_08_sma_subpip_0_0001_and_billion_10_pow_9_prices(self) -> None:
+        """Verify SMA precision at microscopic (0.0001) and institutional (10^9) price scales."""
+        micro = [Decimal("0.0001"), Decimal("0.0002"), Decimal("0.0003")]
+        self.assertEqual(self.service.calculate_sma(micro, period=3), [Decimal("0.0002")])
+        macro = [Decimal("1000000000.0001"), Decimal("1000000000.0002"), Decimal("1000000000.0003")]
+        self.assertEqual(
+            self.service.calculate_sma(macro, period=3),
+            [Decimal("1000000000.0002")],
+        )
+
+    def test_audit_ti_09_ema_period_1_tracks_exact_close_series(self) -> None:
+        """Verify EMA(1) has smoothing multiplier alpha = 2/(1+1) = 1.0 and equals the input series."""
+        prices = [Decimal("50.1234"), Decimal("55.6789"), Decimal("48.0001")]
+        self.assertEqual(self.service.calculate_ema(prices, period=1), prices)
+
+    def test_audit_ti_10_ema_period_2_alpha_two_thirds_recurrence(self) -> None:
+        """Verify EMA(2) applies exact alpha = 2/3 recurrence from SMA(2) seed."""
+        # P = [10, 16, 22, 28]
+        # Seed EMA_0 = (10 + 16)/2 = 13.0000
+        # EMA_1 = (2/3)*22 + (1/3)*13 = 57/3 = 19.0000
+        # EMA_2 = (2/3)*28 + (1/3)*19 = 75/3 = 25.0000
+        prices = [Decimal("10"), Decimal("16"), Decimal("22"), Decimal("28")]
+        self.assertEqual(
+            self.service.calculate_ema(prices, period=2),
+            [Decimal("13.0000"), Decimal("19.0000"), Decimal("25.0000")],
+        )
+
+    def test_audit_ti_11_ema_period_14_and_50_smoothing_convergence(self) -> None:
+        """Verify EMA(14) responds faster than EMA(50) to an upward price trend."""
+        prices = [Decimal("100")] * 50 + [Decimal("150")] * 10
+        ema_14 = self.service.calculate_ema(prices, period=14)
+        ema_50 = self.service.calculate_ema(prices, period=50)
+        self.assertGreater(ema_14[-1], ema_50[-1])
+        self.assertGreater(ema_50[-1], Decimal("100.0000"))
+
+    def test_audit_ti_12_ema_period_200_long_memory_stability(self) -> None:
+        """Verify EMA(200) over a constant 250-bar series preserves exact 0.0000 drift."""
+        prices = [Decimal("325.7500")] * 250
+        ema_200 = self.service.calculate_ema(prices, period=200)
+        self.assertEqual(len(ema_200), 51)
+        self.assertTrue(all(v == Decimal("325.7500") for v in ema_200))
+
+    def test_audit_ti_13_ema_unit_impulse_geometric_decay(self) -> None:
+        """Verify EMA(3) (alpha = 0.5) halves its impulse excess at every subsequent bar."""
+        # Seed [100, 100, 100] -> 100.0000
+        # t=3: P=164 -> EMA = 0.5*164 + 0.5*100 = 132.0000 (+32)
+        # t=4: P=100 -> EMA = 116.0000 (+16)
+        # t=5: P=100 -> EMA = 108.0000 (+8)
+        # t=6: P=100 -> EMA = 104.0000 (+4)
+        prices = [
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("164"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+        ]
+        self.assertEqual(
+            self.service.calculate_ema(prices, period=3),
+            [
+                Decimal("100.0000"),
+                Decimal("132.0000"),
+                Decimal("116.0000"),
+                Decimal("108.0000"),
+                Decimal("104.0000"),
+            ],
+        )
+
+    def test_audit_ti_14_ema_step_function_asymptotic_approach(self) -> None:
+        """Verify EMA(3) (alpha = 0.5) closes 50% of the remaining gap to a new step level each bar."""
+        prices = [
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("200"),
+            Decimal("200"),
+            Decimal("200"),
+            Decimal("200"),
+        ]
+        self.assertEqual(
+            self.service.calculate_ema(prices, period=3),
+            [
+                Decimal("100.0000"),
+                Decimal("150.0000"),
+                Decimal("175.0000"),
+                Decimal("187.5000"),
+                Decimal("193.7500"),
+            ],
+        )
+
+    def test_audit_ti_15_rsi_pure_gains_returns_100_0000(self) -> None:
+        """Verify Wilder RSI returns 100.0000 when all price changes are strictly positive."""
+        prices = [Decimal(100 + i * 2) for i in range(20)]
+        rsi = self.service.calculate_wilder_rsi(prices, period=14)
+        self.assertEqual(len(rsi), 6)
+        self.assertTrue(all(val == Decimal("100.0000") for val in rsi))
+
+    def test_audit_ti_16_rsi_pure_losses_returns_0_0000(self) -> None:
+        """Verify Wilder RSI returns 0.0000 when all price changes are strictly negative."""
+        prices = [Decimal(200 - i * 2) for i in range(20)]
+        rsi = self.service.calculate_wilder_rsi(prices, period=14)
+        self.assertEqual(len(rsi), 6)
+        self.assertTrue(all(val == Decimal("0.0000") for val in rsi))
+
+    def test_audit_ti_17_rsi_constant_flat_prices_returns_50_0000(self) -> None:
+        """Verify Wilder RSI returns neutral 50.0000 when avg_gain == 0 and avg_loss == 0."""
+        prices = [Decimal("123.4500")] * 20
+        rsi = self.service.calculate_wilder_rsi(prices, period=14)
+        self.assertEqual(rsi, [Decimal("50.0000")] * 6)
+
+    def test_audit_ti_18_rsi_symmetric_alternating_gains_and_losses_seed_50(self) -> None:
+        """Verify Wilder RSI(4) seed is 50.0000 when 2 gains of +5 and 2 losses of -5 balance."""
+        prices = [Decimal("100"), Decimal("105"), Decimal("100"), Decimal("105"), Decimal("100")]
+        rsi_4 = self.service.calculate_wilder_rsi(prices, period=4)
+        self.assertEqual(rsi_4, [Decimal("50.0000")])
+
+    def test_audit_ti_19_rsi_period_2_ultra_fast_connors_rsi(self) -> None:
+        """Verify Wilder RSI(2) over a 5-price swing sequence."""
+        # Changes: +4, +2, -3, +3
+        # Seed (first 2 changes: +4, +2): avg_gain=3, avg_loss=0 -> RSI_0 = 100.0000
+        # Next (-3): avg_gain=(3*1+0)/2=1.5, avg_loss=(0*1+3)/2=1.5 -> RS=1 -> RSI_1 = 50.0000
+        # Next (+3): avg_gain=(1.5*1+3)/2=2.25, avg_loss=(1.5*1+0)/2=0.75 -> RS=3 -> RSI_2 = 75.0000
+        prices = [Decimal("100"), Decimal("104"), Decimal("106"), Decimal("103"), Decimal("106")]
+        self.assertEqual(
+            self.service.calculate_wilder_rsi(prices, period=2),
+            [Decimal("100.0000"), Decimal("50.0000"), Decimal("75.0000")],
+        )
+
+    def test_audit_ti_20_rsi_period_7_and_21_custom_windows(self) -> None:
+        """Verify Wilder RSI supports custom window lengths period=7 and period=21."""
+        prices = [Decimal(100 + (i % 5) * 2 + i) for i in range(30)]
+        rsi_7 = self.service.calculate_wilder_rsi(prices, period=7)
+        rsi_21 = self.service.calculate_wilder_rsi(prices, period=21)
+        self.assertEqual(len(rsi_7), 23)
+        self.assertEqual(len(rsi_21), 9)
+        self.assertTrue(all(Decimal("0") <= v <= Decimal("100") for v in rsi_7))
+        self.assertTrue(all(Decimal("0") <= v <= Decimal("100") for v in rsi_21))
+
+    def test_audit_ti_21_rsi_recovery_from_pure_loss_zero_seed(self) -> None:
+        """Verify Wilder RSI(4) transitions smoothly above 0.0000 when a gain follows 4 straight losses."""
+        # Changes: -4, -4, -4, -4 (seed avg_gain=0, avg_loss=4 -> RSI=0.0000), then +4
+        # At t=5: avg_gain = (0*3 + 4)/4 = 1.0, avg_loss = (4*3 + 0)/4 = 3.0 -> RS = 1/3 -> RSI = 25.0000
+        prices = [
+            Decimal("100"),
+            Decimal("96"),
+            Decimal("92"),
+            Decimal("88"),
+            Decimal("84"),
+            Decimal("88"),
+        ]
+        self.assertEqual(
+            self.service.calculate_wilder_rsi(prices, period=4),
+            [Decimal("0.0000"), Decimal("25.0000")],
+        )
+
+    def test_audit_ti_22_rsi_pullback_from_pure_gain_100_seed(self) -> None:
+        """Verify Wilder RSI(4) transitions smoothly below 100.0000 when a loss follows 4 straight gains."""
+        # Changes: +4, +4, +4, +4 (seed avg_gain=4, avg_loss=0 -> RSI=100.0000), then -4
+        # At t=5: avg_gain = (4*3 + 0)/4 = 3.0, avg_loss = (0*3 + 4)/4 = 1.0 -> RS = 3 -> RSI = 75.0000
+        prices = [
+            Decimal("100"),
+            Decimal("104"),
+            Decimal("108"),
+            Decimal("112"),
+            Decimal("116"),
+            Decimal("112"),
+        ]
+        self.assertEqual(
+            self.service.calculate_wilder_rsi(prices, period=4),
+            [Decimal("100.0000"), Decimal("75.0000")],
+        )
+
+    def test_audit_ti_23_bollinger_multiplier_1_0_and_1_5_scaling(self) -> None:
+        """Verify Bollinger Bands width scales linearly with num_std_dev = 1.0 vs 1.5."""
+        # Window [90, 100, 100, 110]: mean = 100, variance (ddof=0) = 200/4 = 50 -> std = sqrt(50)
+        # Better: [94, 100, 100, 106]? No, [90, 90, 110, 110]: mean=100, var=100, std=10.0000!
+        prices = [Decimal("90"), Decimal("90"), Decimal("110"), Decimal("110")]
+        bb_1 = self.service.calculate_bollinger_bands(
+            prices, period=4, num_std_dev=Decimal("1.0"), ddof=0
+        )[0]
+        bb_15 = self.service.calculate_bollinger_bands(
+            prices, period=4, num_std_dev=Decimal("1.5"), ddof=0
+        )[0]
+        self.assertEqual(bb_1.upper_band, Decimal("110.0000"))
+        self.assertEqual(bb_1.lower_band, Decimal("90.0000"))
+        self.assertEqual(bb_1.bandwidth, Decimal("0.2000"))
+        self.assertEqual(bb_15.upper_band, Decimal("115.0000"))
+        self.assertEqual(bb_15.lower_band, Decimal("85.0000"))
+        self.assertEqual(bb_15.bandwidth, Decimal("0.3000"))
+
+    def test_audit_ti_24_bollinger_multiplier_2_5_and_3_0_wide_corridors(self) -> None:
+        """Verify Bollinger Bands at 2.5 and 3.0 standard deviations on exact std=10 window."""
+        prices = [Decimal("90"), Decimal("90"), Decimal("110"), Decimal("110")]
+        bb_25 = self.service.calculate_bollinger_bands(
+            prices, period=4, num_std_dev=Decimal("2.5"), ddof=0
+        )[0]
+        bb_30 = self.service.calculate_bollinger_bands(
+            prices, period=4, num_std_dev=Decimal("3.0"), ddof=0
+        )[0]
+        self.assertEqual(bb_25.upper_band, Decimal("125.0000"))
+        self.assertEqual(bb_25.lower_band, Decimal("75.0000"))
+        self.assertEqual(bb_25.bandwidth, Decimal("0.5000"))
+        self.assertEqual(bb_30.upper_band, Decimal("130.0000"))
+        self.assertEqual(bb_30.lower_band, Decimal("70.0000"))
+        self.assertEqual(bb_30.bandwidth, Decimal("0.6000"))
+
+    def test_audit_ti_25_bollinger_percent_b_above_one_on_upper_breakout(self) -> None:
+        """Verify %B > 1.0000 when the latest close exceeds the upper Bollinger band."""
+        prices = [Decimal("100"), Decimal("100"), Decimal("100"), Decimal("140")]
+        # mean = 110, deviations = [-10, -10, -10, +30], var (ddof=0) = 1200/4 = 300, std = 17.3205
+        # With k = 1.0, upper = 127.3205 < close (140) -> %B > 1.0000
+        bb = self.service.calculate_bollinger_bands(
+            prices, period=4, num_std_dev=Decimal("1.0"), ddof=0
+        )[0]
+        self.assertGreater(bb.percent_b, Decimal("1.0000"))
+
+    def test_audit_ti_26_bollinger_percent_b_negative_on_lower_breakdown(self) -> None:
+        """Verify %B < 0.0000 when the latest close drops below the lower Bollinger band."""
+        prices = [Decimal("100"), Decimal("100"), Decimal("100"), Decimal("60")]
+        bb = self.service.calculate_bollinger_bands(
+            prices, period=4, num_std_dev=Decimal("1.0"), ddof=0
+        )[0]
+        self.assertLess(bb.percent_b, Decimal("0.0000"))
+
+    def test_audit_ti_27_bollinger_percent_b_exact_half_at_middle_band(self) -> None:
+        """Verify %B == 0.5000 when the latest close equals the window SMA (middle band)."""
+        prices = [Decimal("90"), Decimal("110"), Decimal("100")]
+        bb = self.service.calculate_bollinger_bands(
+            prices, period=3, num_std_dev=Decimal("2.0"), ddof=0
+        )[0]
+        self.assertEqual(bb.middle_band, Decimal("100.0000"))
+        self.assertEqual(bb.percent_b, Decimal("0.5000"))
+
+    def test_audit_ti_28_bollinger_zero_variance_flat_series_collapse(self) -> None:
+        """Verify zero-variance flat series collapses upper == middle == lower with bandwidth=0 and %B=0.5."""
+        prices = [Decimal("250.0000")] * 10
+        bb_list = self.service.calculate_bollinger_bands(prices, period=5)
+        self.assertEqual(len(bb_list), 6)
+        for pt in bb_list:
+            self.assertEqual(pt.upper_band, Decimal("250.0000"))
+            self.assertEqual(pt.middle_band, Decimal("250.0000"))
+            self.assertEqual(pt.lower_band, Decimal("250.0000"))
+            self.assertEqual(pt.bandwidth, Decimal("0.0000"))
+            self.assertEqual(pt.percent_b, Decimal("0.5000"))
+
+    def test_audit_ti_29_bollinger_period_1_ddof_0_zero_width_corridor(self) -> None:
+        """Verify Bollinger Bands with period=1 and ddof=0 yields zero variance and %B=0.5000."""
+        bars = [_make_bar(0, "100", "105", "95", "102")]
+        bb = self.service.calculate_bollinger_bands(bars, period=1, ddof=0)[0]
+        self.assertEqual(bb.middle_band, Decimal("102.0000"))
+        self.assertEqual(bb.bandwidth, Decimal("0.0000"))
+        self.assertEqual(bb.percent_b, Decimal("0.5000"))
+        self.assertEqual(bb.timestamp, bars[0].timestamp)
+
+    def test_audit_ti_30_atr_branch_1_intraday_high_minus_low_dominance(self) -> None:
+        """Verify True Range selects H_t - L_t when previous close sits inside [L_t, H_t]."""
+        bars = [
+            _make_bar(0, "100", "110", "90", "100"),  # TR = 20
+            _make_bar(1, "100", "115", "85", "100"),  # prev_C=100 inside [85, 115] -> TR = 30
+        ]
+        self.assertEqual(
+            self.service.calculate_atr(bars, period=2),
+            [Decimal("25.0000")],
+        )
+
+    def test_audit_ti_31_atr_branch_2_overnight_gap_up_dominance(self) -> None:
+        """Verify True Range selects |H_t - C_{t-1}| on an overnight gap-up bar."""
+        bars = [
+            _make_bar(0, "100", "105", "95", "100"),  # TR_0 = 10
+            _make_bar(1, "125", "130", "124", "128"),  # H-L=6, |130-100|=30 -> TR_1 = 30
+        ]
+        self.assertEqual(
+            self.service.calculate_atr(bars, period=2),
+            [Decimal("20.0000")],
+        )
+
+    def test_audit_ti_32_atr_branch_3_overnight_gap_down_dominance(self) -> None:
+        """Verify True Range selects |L_t - C_{t-1}| on an overnight gap-down bar."""
+        bars = [
+            _make_bar(0, "100", "105", "95", "100"),  # TR_0 = 10
+            _make_bar(1, "75", "78", "70", "72"),  # H-L=8, |70-100|=30 -> TR_1 = 30
+        ]
+        self.assertEqual(
+            self.service.calculate_atr(bars, period=2),
+            [Decimal("20.0000")],
+        )
+
+    def test_audit_ti_33_atr_flat_doji_bars_returns_0_0000(self) -> None:
+        """Verify Wilder ATR returns 0.0000 across completely flat doji bars (O=H=L=C)."""
+        bars = [_make_bar(i, "100", "100", "100", "100") for i in range(16)]
+        atr = self.service.calculate_atr(bars, period=14)
+        self.assertEqual(atr, [Decimal("0.0000"), Decimal("0.0000"), Decimal("0.0000")])
+
+    def test_audit_ti_34_atr_custom_periods_1_5_and_20(self) -> None:
+        """Verify Wilder ATR supports period=1 (raw True Range), period=5, and period=20."""
+        bars = [_make_bar(i, "100", "106", "96", "101") for i in range(22)]
+        atr_1 = self.service.calculate_atr(bars, period=1)
+        atr_5 = self.service.calculate_atr(bars, period=5)
+        atr_20 = self.service.calculate_atr(bars, period=20)
+        self.assertEqual(len(atr_1), 22)
+        self.assertEqual(len(atr_5), 18)
+        self.assertEqual(len(atr_20), 3)
+        self.assertTrue(all(v == Decimal("10.0000") for v in atr_1))
+        self.assertTrue(all(v == Decimal("10.0000") for v in atr_5))
+        self.assertTrue(all(v == Decimal("10.0000") for v in atr_20))
+
+    def test_audit_ti_35_compute_snapshot_single_bar_minimal_state(self) -> None:
+        """Verify compute_snapshot on a 1-bar series sets close and leaves all windowed fields None."""
+        bars = [_make_bar(0, "100", "105", "95", "102.5000")]
+        snap = self.service.compute_snapshot(bars, ticker="GGAL")
+        self.assertEqual(snap.ticker, "GGAL")
+        self.assertEqual(snap.close, Decimal("102.5000"))
+        self.assertIsNone(snap.previous_close)
+        self.assertIsNone(snap.ema_12)
+        self.assertIsNone(snap.rsi_14)
+        self.assertIsNone(snap.atr_14)
+        self.assertIsNone(snap.bollinger_20_2)
+
+    def test_audit_ti_36_compute_snapshot_exact_12_and_26_bar_boundaries(self) -> None:
+        """Verify compute_snapshot at N=12 (ema_12 populated, prev_ema_12 None) and N=26 (ema_26 populated, prev_ema_26 None)."""
+        bars_26 = [_make_bar(i, "100", str(135 + i), "95", str(100 + i)) for i in range(26)]
+        snap_12 = self.service.compute_snapshot(bars_26[:12], ticker="YPFD")
+        self.assertIsNotNone(snap_12.ema_12)
+        self.assertIsNone(snap_12.prev_ema_12)
+        self.assertIsNone(snap_12.atr_14)
+
+        snap_26 = self.service.compute_snapshot(bars_26, ticker="YPFD")
+        self.assertIsNotNone(snap_26.ema_26)
+        self.assertIsNone(snap_26.prev_ema_26)
+        self.assertIsNotNone(snap_26.bollinger_20_2)
+        self.assertIsNotNone(snap_26.prev_bollinger_20_2)
+
+    def test_audit_ti_37_signal_ema_crossover_isolated_bullish_and_bearish_cross(self) -> None:
+        """Verify isolated EMA_CROSSOVER rule emits +1.0000 on fresh bullish cross and -1.0000 on fresh bearish cross."""
+        gen = SignalGeneratorService()
+        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc)
+        bull_snap = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of,
+            close=Decimal("100"),
+            ema_12=Decimal("102"),
+            prev_ema_12=Decimal("99"),
+            ema_26=Decimal("100"),
+            prev_ema_26=Decimal("100"),
+        )
+        bull_rep = gen.evaluate_from_snapshot(bull_snap)
+        self.assertEqual(len(bull_rep.components), 1)
+        self.assertEqual(bull_rep.composite_score, Decimal("1.0000"))
+        self.assertEqual(bull_rep.action, SignalAction.BUY)
+
+        bear_snap = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of,
+            close=Decimal("100"),
+            ema_12=Decimal("98"),
+            prev_ema_12=Decimal("101"),
+            ema_26=Decimal("100"),
+            prev_ema_26=Decimal("100"),
+        )
+        bear_rep = gen.evaluate_from_snapshot(bear_snap)
+        self.assertEqual(bear_rep.composite_score, Decimal("-1.0000"))
+        self.assertEqual(bear_rep.action, SignalAction.SELL)
+
+    def test_audit_ti_38_signal_ema_crossover_equal_emas_emits_hold(self) -> None:
+        """Verify EMA_CROSSOVER emits HOLD (score=0.0000) when EMA(12) == EMA(26)."""
+        gen = SignalGeneratorService()
+        snap = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc),
+            close=Decimal("100"),
+            ema_12=Decimal("100"),
+            ema_26=Decimal("100"),
+        )
+        rep = gen.evaluate_from_snapshot(snap)
+        self.assertEqual(rep.action, SignalAction.HOLD)
+        self.assertEqual(rep.components[0].score, Decimal("0.0000"))
+
+    def test_audit_ti_39_signal_sma_trend_price_vs_sma20_only_fallback(self) -> None:
+        """Verify SMA_TREND falls back to close vs SMA(20) (score = ±0.3500) when SMA(50) is None."""
+        gen = SignalGeneratorService()
+        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc)
+        up_snap = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of,
+            close=Decimal("105"),
+            sma_20=Decimal("100"),
+        )
+        up_rep = gen.evaluate_from_snapshot(up_snap)
+        self.assertEqual(up_rep.components[0].score, Decimal("0.3500"))
+        self.assertEqual(up_rep.action, SignalAction.BUY)
+
+        down_snap = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of,
+            close=Decimal("95"),
+            sma_20=Decimal("100"),
+        )
+        down_rep = gen.evaluate_from_snapshot(down_snap)
+        self.assertEqual(down_rep.components[0].score, Decimal("-0.3500"))
+        self.assertEqual(down_rep.action, SignalAction.SELL)
+
+    def test_audit_ti_40_signal_sma_trend_divergent_price_below_sma20_above_sma50(self) -> None:
+        """Verify SMA_TREND emits HOLD (0.0000) when SMA(20) > SMA(50) but close < SMA(20) without a fresh cross."""
+        gen = SignalGeneratorService()
+        snap = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc),
+            close=Decimal("101"),
+            sma_20=Decimal("105"),
+            prev_sma_20=Decimal("104"),
+            sma_50=Decimal("100"),
+            prev_sma_50=Decimal("99"),
+        )
+        rep = gen.evaluate_from_snapshot(snap)
+        self.assertEqual(rep.components[0].action, SignalAction.HOLD)
+        self.assertEqual(rep.components[0].score, Decimal("0.0000"))
+
+    def test_audit_ti_41_signal_rsi_regime_exact_boundary_equality_30_and_70(self) -> None:
+        """Verify RSI_REGIME triggers BUY at exact rsi_14 == 30.0000 and SELL at exact rsi_14 == 70.0000."""
+        gen = SignalGeneratorService()
+        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc)
+        rep_30 = gen.evaluate_from_snapshot(
+            TechnicalIndicatorsSnapshot(
+                ticker="GGAL", as_of=as_of, close=Decimal("100"), rsi_14=Decimal("30.0000")
+            )
+        )
+        self.assertEqual(rep_30.action, SignalAction.BUY)
+        self.assertEqual(rep_30.composite_score, Decimal("1.0000"))
+
+        rep_70 = gen.evaluate_from_snapshot(
+            TechnicalIndicatorsSnapshot(
+                ticker="GGAL", as_of=as_of, close=Decimal("100"), rsi_14=Decimal("70.0000")
+            )
+        )
+        self.assertEqual(rep_70.action, SignalAction.SELL)
+        self.assertEqual(rep_70.composite_score, Decimal("-1.0000"))
+
+    def test_audit_ti_42_signal_bollinger_bearish_volatility_breakdown_with_expansion(self) -> None:
+        """Verify VOLATILITY_BOLLINGER emits SELL (-0.8500) on bearish volatility breakdown (%B < 0 and expanding bandwidth)."""
+        gen = SignalGeneratorService()
+        snap = TechnicalIndicatorsSnapshot(
+            ticker="YPFD",
+            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc),
+            close=Decimal("88.0000"),
+            ema_12=Decimal("92.0000"),
+            ema_26=Decimal("96.0000"),
+            bollinger_20_2=BollingerBandsPoint(
+                upper_band=Decimal("110.0000"),
+                middle_band=Decimal("100.0000"),
+                lower_band=Decimal("90.0000"),
+                bandwidth=Decimal("0.2500"),
+                percent_b=Decimal("-0.1000"),
+            ),
+            prev_bollinger_20_2=BollingerBandsPoint(
+                upper_band=Decimal("108.0000"),
+                middle_band=Decimal("100.0000"),
+                lower_band=Decimal("92.0000"),
+                bandwidth=Decimal("0.1600"),
+                percent_b=Decimal("0.1500"),
+            ),
+        )
+        rep = gen.evaluate_from_snapshot(snap)
+        bb_comp = next(c for c in rep.components if c.rule == SignalRuleType.VOLATILITY_BOLLINGER)
+        self.assertEqual(bb_comp.action, SignalAction.SELL)
+        self.assertEqual(bb_comp.score, Decimal("-0.8500"))
+        self.assertIn("breakdown", bb_comp.rationale.lower())
+
+    def test_audit_ti_43_signal_bollinger_breakout_without_ema_uses_close_vs_middle(self) -> None:
+        """Verify Bollinger breakout uses close > middle_band when EMA(12)/EMA(26) are not yet available."""
+        gen = SignalGeneratorService()
+        snap = TechnicalIndicatorsSnapshot(
+            ticker="PAMP",
+            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc),
+            close=Decimal("112.0000"),
+            bollinger_20_2=BollingerBandsPoint(
+                upper_band=Decimal("110.0000"),
+                middle_band=Decimal("100.0000"),
+                lower_band=Decimal("90.0000"),
+                bandwidth=Decimal("0.2500"),
+                percent_b=Decimal("1.1000"),
+            ),
+            prev_bollinger_20_2=BollingerBandsPoint(
+                upper_band=Decimal("108.0000"),
+                middle_band=Decimal("100.0000"),
+                lower_band=Decimal("92.0000"),
+                bandwidth=Decimal("0.1600"),
+                percent_b=Decimal("0.8500"),
+            ),
+        )
+        rep = gen.evaluate_from_snapshot(snap)
+        self.assertEqual(rep.components[0].action, SignalAction.BUY)
+        self.assertEqual(rep.components[0].score, Decimal("0.8500"))
+
+    def test_audit_ti_44_signal_weight_renormalization_with_subset_of_rules(self) -> None:
+        """Verify composite_score renormalizes active rule weights when only RSI (0.25) and Bollinger (0.20) are present."""
+        gen = SignalGeneratorService()
+        # RSI = BUY (+1.0000, weight 0.25), Bollinger = SELL (-0.8500, weight 0.20)
+        # Weighted score = (1.0 * 0.25 - 0.85 * 0.20) / (0.25 + 0.20) = 0.08 / 0.45 = 0.1778
+        snap = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc),
+            close=Decimal("100.0000"),
+            rsi_14=Decimal("25.0000"),
+            bollinger_20_2=BollingerBandsPoint(
+                upper_band=Decimal("110.0000"),
+                middle_band=Decimal("100.0000"),
+                lower_band=Decimal("90.0000"),
+                bandwidth=Decimal("0.2000"),
+                percent_b=Decimal("0.9800"),
+            ),
+        )
+        rep = gen.evaluate_from_snapshot(snap)
+        self.assertEqual(rep.composite_score, Decimal("0.1778"))
+        self.assertEqual(rep.action, SignalAction.HOLD)
+
+    def test_audit_ti_45_signal_exact_min_conviction_threshold_boundary_buy_sell_hold(self) -> None:
+        """Verify composite_score == min_conviction_threshold triggers BUY/SELL while 0.0001 below triggers HOLD."""
+        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc)
+        # EMA continuation score is +0.4000
+        snap_40 = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of,
+            close=Decimal("105"),
+            ema_12=Decimal("102"),
+            prev_ema_12=Decimal("101"),
+            ema_26=Decimal("100"),
+            prev_ema_26=Decimal("100"),
+        )
+        gen_exact = SignalGeneratorService(
+            config=SignalGeneratorConfig(min_conviction_threshold=Decimal("0.4000"))
+        )
+        self.assertEqual(gen_exact.evaluate_from_snapshot(snap_40).action, SignalAction.BUY)
+
+        gen_higher = SignalGeneratorService(
+            config=SignalGeneratorConfig(min_conviction_threshold=Decimal("0.4001"))
+        )
+        self.assertEqual(gen_higher.evaluate_from_snapshot(snap_40).action, SignalAction.HOLD)
+
+    def test_audit_ti_46_signal_flat_doji_atr_zero_uses_one_percent_fallback_brackets(self) -> None:
+        """Verify Audit Round 1 fix: when atr_14 == Decimal('0.0000'), fallback 1% of close produces valid brackets."""
+        gen = SignalGeneratorService()
+        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc)
+        buy_snap = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of,
+            close=Decimal("100.0000"),
+            rsi_14=Decimal("20.0000"),
+            atr_14=Decimal("0.0000"),
+        )
+        buy_rep = gen.evaluate_from_snapshot(buy_snap)
+        self.assertEqual(buy_rep.action, SignalAction.BUY)
+        # 1% of 100 = 1.0000 -> SL = 100 - 2*1 = 98.0000, TP = 100 + 3*1 = 103.0000
+        self.assertEqual(buy_rep.stop_loss_price, Decimal("98.0000"))
+        self.assertEqual(buy_rep.take_profit_price, Decimal("103.0000"))
+
+        sell_snap = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=as_of,
+            close=Decimal("100.0000"),
+            rsi_14=Decimal("80.0000"),
+            atr_14=Decimal("0.0000"),
+        )
+        sell_rep = gen.evaluate_from_snapshot(sell_snap)
+        self.assertEqual(sell_rep.action, SignalAction.SELL)
+        self.assertEqual(sell_rep.stop_loss_price, Decimal("102.0000"))
+        self.assertEqual(sell_rep.take_profit_price, Decimal("97.0000"))
+
+    def test_audit_ti_47_signal_atr_none_emits_intent_with_none_brackets(self) -> None:
+        """Verify that when atr_14 is None, BUY/SELL signals emit OrderFSMIntent with None stop-loss and take-profit."""
+        gen = SignalGeneratorService()
+        snap = TechnicalIndicatorsSnapshot(
+            ticker="GGAL",
+            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc),
+            close=Decimal("100.0000"),
+            rsi_14=Decimal("20.0000"),
+            atr_14=None,
+        )
+        rep = gen.evaluate_from_snapshot(snap)
+        self.assertEqual(rep.action, SignalAction.BUY)
+        self.assertIsNone(rep.stop_loss_price)
+        self.assertIsNone(rep.take_profit_price)
+        assert rep.order_intent is not None
+        self.assertIsNone(rep.order_intent.suggested_stop_loss)
+        self.assertIsNone(rep.order_intent.suggested_take_profit)
+
+    def test_audit_ti_48_order_fsm_intent_to_order_payload_types_and_guards(self) -> None:
+        """Verify OrderFSMIntent.to_order_payload accepts int/float/Decimal and rejects sub-pip or control-char portfolio_id."""
+        intent = OrderFSMIntent(
+            ticker="GGAL",
+            side="BUY",
+            reference_price=Decimal("100.0000"),
+            signal_conviction=Decimal("0.8000"),
+        )
+        p_int = intent.to_order_payload(25)
+        self.assertEqual(p_int["quantity"], Decimal("25.0000"))
+        self.assertNotIn("portfolio_id", p_int)
+
+        p_float = intent.to_order_payload(12.5, portfolio_id=" pf-01 ")
+        self.assertEqual(p_float["quantity"], Decimal("12.5000"))
+        self.assertEqual(p_float["portfolio_id"], "pf-01")
+
+        for bad_qty in (Decimal("0.00001"), float("nan"), float("inf"), "10"):
+            with self.assertRaises(InvalidSignalParametersError):
+                intent.to_order_payload(bad_qty)  # type: ignore[arg-type]
+
+        for bad_pid in ("   ", "pf\x00bad", 123):
+            with self.assertRaises(InvalidSignalParametersError):
+                intent.to_order_payload(Decimal("10"), portfolio_id=bad_pid)  # type: ignore[arg-type]
+
+
 
 

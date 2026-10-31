@@ -73,11 +73,13 @@ def _validate_clean_ticker_field(v: Any) -> str:
     """Validate and normalize a required ticker string on DTO contracts."""
     if not isinstance(v, str) or isinstance(v, bool):
         raise ValueError("ticker must be a string")
-    if any(ord(ch) < 32 for ch in v):
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in v):
         raise ValueError("Control characters are not permitted in ticker")
     cleaned = v.strip().upper()
-    if not cleaned:
-        raise ValueError("ticker cannot be empty or whitespace")
+    if not cleaned or len(cleaned) > 20:
+        raise ValueError("ticker must be between 1 and 20 characters")
+    if not all(ch.isalnum() or ch in "._-" for ch in cleaned) or not cleaned[0].isalnum():
+        raise ValueError(f"Invalid ticker format '{cleaned}'")
     return cleaned
 
 
@@ -128,16 +130,18 @@ class SignalGeneratorConfig(BaseSchema):
 
     @model_validator(mode="after")
     def _enforce_threshold_ordering(self) -> SignalGeneratorConfig:
-        if self.rsi_oversold >= self.rsi_overbought:
-            raise ValueError(
-                f"rsi_oversold ({self.rsi_oversold}) must be strictly less than "
-                f"rsi_overbought ({self.rsi_overbought})."
-            )
-        if self.bollinger_lower_percent_b >= self.bollinger_upper_percent_b:
-            raise ValueError(
-                f"bollinger_lower_percent_b ({self.bollinger_lower_percent_b}) must be "
-                f"strictly less than bollinger_upper_percent_b ({self.bollinger_upper_percent_b})."
-            )
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            if self.rsi_oversold >= self.rsi_overbought:
+                raise ValueError(
+                    f"rsi_oversold ({self.rsi_oversold}) must be strictly less than "
+                    f"rsi_overbought ({self.rsi_overbought})."
+                )
+            if self.bollinger_lower_percent_b >= self.bollinger_upper_percent_b:
+                raise ValueError(
+                    f"bollinger_lower_percent_b ({self.bollinger_lower_percent_b}) must be "
+                    f"strictly less than bollinger_upper_percent_b ({self.bollinger_upper_percent_b})."
+                )
         return self
 
 
@@ -159,18 +163,20 @@ class SignalComponentEvaluation(BaseSchema):
 
     @model_validator(mode="after")
     def _enforce_action_score_coherence(self) -> SignalComponentEvaluation:
-        if self.action == SignalAction.BUY and self.score <= Decimal("0"):
-            raise ValueError(
-                f"BUY component requires score > 0 (got {self.score})."
-            )
-        if self.action == SignalAction.SELL and self.score >= Decimal("0"):
-            raise ValueError(
-                f"SELL component requires score < 0 (got {self.score})."
-            )
-        if self.action == SignalAction.HOLD and self.score != Decimal("0"):
-            raise ValueError(
-                f"HOLD component requires score == 0 (got {self.score})."
-            )
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            if self.action == SignalAction.BUY and self.score <= Decimal("0"):
+                raise ValueError(
+                    f"BUY component requires score > 0 (got {self.score})."
+                )
+            if self.action == SignalAction.SELL and self.score >= Decimal("0"):
+                raise ValueError(
+                    f"SELL component requires score < 0 (got {self.score})."
+                )
+            if self.action == SignalAction.HOLD and self.score != Decimal("0"):
+                raise ValueError(
+                    f"HOLD component requires score == 0 (got {self.score})."
+                )
         return self
 
 
@@ -208,45 +214,47 @@ class OrderFSMIntent(BaseSchema):
 
     @model_validator(mode="after")
     def _enforce_fsm_and_bracket_invariants(self) -> OrderFSMIntent:
-        if self.target_status != "PENDING":
-            raise ValueError(
-                f"OrderFSMIntent target_status must be 'PENDING' (got '{self.target_status}')."
-            )
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            if self.target_status != "PENDING":
+                raise ValueError(
+                    f"OrderFSMIntent target_status must be 'PENDING' (got '{self.target_status}')."
+                )
 
-        if self.side == "BUY":
-            if (
-                self.suggested_stop_loss is not None
-                and self.suggested_stop_loss >= self.reference_price
-            ):
-                raise ValueError(
-                    f"BUY stop-loss ({self.suggested_stop_loss}) must be strictly "
-                    f"below reference_price ({self.reference_price})."
-                )
-            if (
-                self.suggested_take_profit is not None
-                and self.suggested_take_profit <= self.reference_price
-            ):
-                raise ValueError(
-                    f"BUY take-profit ({self.suggested_take_profit}) must be strictly "
-                    f"above reference_price ({self.reference_price})."
-                )
-        elif self.side == "SELL":
-            if (
-                self.suggested_stop_loss is not None
-                and self.suggested_stop_loss <= self.reference_price
-            ):
-                raise ValueError(
-                    f"SELL stop-loss ({self.suggested_stop_loss}) must be strictly "
-                    f"above reference_price ({self.reference_price})."
-                )
-            if (
-                self.suggested_take_profit is not None
-                and self.suggested_take_profit >= self.reference_price
-            ):
-                raise ValueError(
-                    f"SELL take-profit ({self.suggested_take_profit}) must be strictly "
-                    f"below reference_price ({self.reference_price})."
-                )
+            if self.side == "BUY":
+                if (
+                    self.suggested_stop_loss is not None
+                    and self.suggested_stop_loss >= self.reference_price
+                ):
+                    raise ValueError(
+                        f"BUY stop-loss ({self.suggested_stop_loss}) must be strictly "
+                        f"below reference_price ({self.reference_price})."
+                    )
+                if (
+                    self.suggested_take_profit is not None
+                    and self.suggested_take_profit <= self.reference_price
+                ):
+                    raise ValueError(
+                        f"BUY take-profit ({self.suggested_take_profit}) must be strictly "
+                        f"above reference_price ({self.reference_price})."
+                    )
+            elif self.side == "SELL":
+                if (
+                    self.suggested_stop_loss is not None
+                    and self.suggested_stop_loss <= self.reference_price
+                ):
+                    raise ValueError(
+                        f"SELL stop-loss ({self.suggested_stop_loss}) must be strictly "
+                        f"above reference_price ({self.reference_price})."
+                    )
+                if (
+                    self.suggested_take_profit is not None
+                    and self.suggested_take_profit >= self.reference_price
+                ):
+                    raise ValueError(
+                        f"SELL take-profit ({self.suggested_take_profit}) must be strictly "
+                        f"below reference_price ({self.reference_price})."
+                    )
 
         return self
 
@@ -355,69 +363,71 @@ class TradingSignalReport(BaseSchema):
 
     @model_validator(mode="after")
     def _enforce_report_invariants(self) -> TradingSignalReport:
-        expected_conviction = abs(self.composite_score)
-        if self.conviction != expected_conviction:
-            raise ValueError(
-                f"conviction ({self.conviction}) must equal abs(composite_score) "
-                f"({expected_conviction})."
-            )
-        if self.reference_price != self.indicators.close:
-            raise ValueError(
-                f"reference_price ({self.reference_price}) must equal "
-                f"indicators.close ({self.indicators.close})."
-            )
-        if self.as_of != self.indicators.as_of:
-            raise ValueError(
-                "TradingSignalReport.as_of must match indicators.as_of."
-            )
-
-        if self.action == SignalAction.HOLD:
-            if (
-                self.order_intent is not None
-                or self.stop_loss_price is not None
-                or self.take_profit_price is not None
-            ):
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            expected_conviction = abs(self.composite_score)
+            if self.conviction != expected_conviction:
                 raise ValueError(
-                    "HOLD signal must not carry order_intent, stop_loss_price, or take_profit_price."
+                    f"conviction ({self.conviction}) must equal abs(composite_score) "
+                    f"({expected_conviction})."
                 )
-        elif self.action == SignalAction.BUY:
-            if self.composite_score <= Decimal("0"):
+            if self.reference_price != self.indicators.close:
                 raise ValueError(
-                    f"BUY signal requires composite_score > 0 (got {self.composite_score})."
+                    f"reference_price ({self.reference_price}) must equal "
+                    f"indicators.close ({self.indicators.close})."
                 )
-            if self.order_intent is None or self.order_intent.side != "BUY":
+            if self.as_of != self.indicators.as_of:
                 raise ValueError(
-                    "BUY signal requires an OrderFSMIntent with side='BUY'."
-                )
-        elif self.action == SignalAction.SELL:
-            if self.composite_score >= Decimal("0"):
-                raise ValueError(
-                    f"SELL signal requires composite_score < 0 (got {self.composite_score})."
-                )
-            if self.order_intent is None or self.order_intent.side != "SELL":
-                raise ValueError(
-                    "SELL signal requires an OrderFSMIntent with side='SELL'."
+                    "TradingSignalReport.as_of must match indicators.as_of."
                 )
 
-        if self.order_intent is not None:
-            if self.order_intent.ticker != self.ticker:
-                raise ValueError("order_intent.ticker must match report ticker.")
-            if self.order_intent.reference_price != self.reference_price:
-                raise ValueError(
-                    "order_intent.reference_price must match report reference_price."
-                )
-            if self.order_intent.suggested_stop_loss != self.stop_loss_price:
-                raise ValueError(
-                    "order_intent.suggested_stop_loss must match report stop_loss_price."
-                )
-            if self.order_intent.suggested_take_profit != self.take_profit_price:
-                raise ValueError(
-                    "order_intent.suggested_take_profit must match report take_profit_price."
-                )
-            if self.order_intent.signal_conviction != self.conviction:
-                raise ValueError(
-                    "order_intent.signal_conviction must match report conviction."
-                )
+            if self.action == SignalAction.HOLD:
+                if (
+                    self.order_intent is not None
+                    or self.stop_loss_price is not None
+                    or self.take_profit_price is not None
+                ):
+                    raise ValueError(
+                        "HOLD signal must not carry order_intent, stop_loss_price, or take_profit_price."
+                    )
+            elif self.action == SignalAction.BUY:
+                if self.composite_score <= Decimal("0"):
+                    raise ValueError(
+                        f"BUY signal requires composite_score > 0 (got {self.composite_score})."
+                    )
+                if self.order_intent is None or self.order_intent.side != "BUY":
+                    raise ValueError(
+                        "BUY signal requires an OrderFSMIntent with side='BUY'."
+                    )
+            elif self.action == SignalAction.SELL:
+                if self.composite_score >= Decimal("0"):
+                    raise ValueError(
+                        f"SELL signal requires composite_score < 0 (got {self.composite_score})."
+                    )
+                if self.order_intent is None or self.order_intent.side != "SELL":
+                    raise ValueError(
+                        "SELL signal requires an OrderFSMIntent with side='SELL'."
+                    )
+
+            if self.order_intent is not None:
+                if self.order_intent.ticker != self.ticker:
+                    raise ValueError("order_intent.ticker must match report ticker.")
+                if self.order_intent.reference_price != self.reference_price:
+                    raise ValueError(
+                        "order_intent.reference_price must match report reference_price."
+                    )
+                if self.order_intent.suggested_stop_loss != self.stop_loss_price:
+                    raise ValueError(
+                        "order_intent.suggested_stop_loss must match report stop_loss_price."
+                    )
+                if self.order_intent.suggested_take_profit != self.take_profit_price:
+                    raise ValueError(
+                        "order_intent.suggested_take_profit must match report take_profit_price."
+                    )
+                if self.order_intent.signal_conviction != self.conviction:
+                    raise ValueError(
+                        "order_intent.signal_conviction must match report conviction."
+                    )
 
         return self
 
@@ -885,19 +895,29 @@ class SignalGeneratorService:
         close: Decimal,
         atr_14: Decimal | None,
     ) -> tuple[Decimal | None, Decimal | None]:
-        """Compute volatility-adjusted stop-loss and take-profit levels via ATR(14)."""
-        if atr_14 is None or atr_14 <= Decimal("0"):
+        """
+        Compute volatility-adjusted stop-loss and take-profit levels via ATR(14).
+        When `atr_14` is `0.0000` (e.g., flat doji price series), falls back to
+        1% of `close` (`max(0.0001, close * 0.0100)`) so directional risk brackets
+        remain strictly valid.
+        """
+        if atr_14 is None:
             return None, None
 
         with localcontext() as ctx:
             ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            effective_atr = (
+                atr_14
+                if atr_14 > Decimal("0")
+                else max(INDICATOR_QUANTIZE, close * Decimal("0.0100"))
+            )
             sl_dist = max(
                 INDICATOR_QUANTIZE,
-                _quantize(atr_14 * self._config.atr_stop_loss_multiplier),
+                _quantize(effective_atr * self._config.atr_stop_loss_multiplier),
             )
             tp_dist = max(
                 INDICATOR_QUANTIZE,
-                _quantize(atr_14 * self._config.atr_take_profit_multiplier),
+                _quantize(effective_atr * self._config.atr_take_profit_multiplier),
             )
 
             if action == SignalAction.BUY:

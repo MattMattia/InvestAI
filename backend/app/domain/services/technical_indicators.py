@@ -131,23 +131,25 @@ class BollingerBandsPoint(BaseSchema):
 
     @model_validator(mode="after")
     def _enforce_band_ordering(self) -> BollingerBandsPoint:
-        for name in (
-            "upper_band",
-            "middle_band",
-            "lower_band",
-            "bandwidth",
-            "percent_b",
-        ):
-            val = getattr(self, name)
-            if not isinstance(val, Decimal) or not val.is_finite():
-                raise ValueError(f"Field '{name}' must be a finite Decimal")
+        with localcontext() as ctx:
+            ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
+            for name in (
+                "upper_band",
+                "middle_band",
+                "lower_band",
+                "bandwidth",
+                "percent_b",
+            ):
+                val = getattr(self, name)
+                if not isinstance(val, Decimal) or not val.is_finite():
+                    raise ValueError(f"Field '{name}' must be a finite Decimal")
 
-        if self.upper_band < self.middle_band or self.middle_band < self.lower_band:
-            raise ValueError(
-                f"Bollinger Bands ordering invariant violated: "
-                f"upper_band ({self.upper_band}) >= middle_band ({self.middle_band}) "
-                f">= lower_band ({self.lower_band}) must hold."
-            )
+            if self.upper_band < self.middle_band or self.middle_band < self.lower_band:
+                raise ValueError(
+                    f"Bollinger Bands ordering invariant violated: "
+                    f"upper_band ({self.upper_band}) >= middle_band ({self.middle_band}) "
+                    f">= lower_band ({self.lower_band}) must hold."
+                )
         return self
 
 
@@ -184,13 +186,15 @@ class TechnicalIndicatorsSnapshot(BaseSchema):
     def _validate_and_normalize_ticker(cls, v: Any) -> str | None:
         if v is None:
             return None
-        if not isinstance(v, str):
+        if not isinstance(v, str) or isinstance(v, bool):
             raise ValueError("ticker must be a string or None")
-        if any(ord(ch) < 32 for ch in v):
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in v):
             raise ValueError("Control characters are not permitted in ticker")
         cleaned = v.strip().upper()
-        if not cleaned:
-            raise ValueError("ticker cannot be empty or whitespace")
+        if not cleaned or len(cleaned) > 20:
+            raise ValueError("ticker must be between 1 and 20 characters")
+        if not all(ch.isalnum() or ch in "._-" for ch in cleaned) or not cleaned[0].isalnum():
+            raise ValueError(f"Invalid ticker format '{cleaned}'")
         return cleaned
 
     @field_validator("close", mode="before")
