@@ -14,6 +14,7 @@ interface QuotesTableProps {
   quotes: MarketQuote[];
   selectedTicker: string;
   onSelectTicker: (ticker: string) => void;
+  onTradeTicker?: (quote: MarketQuote) => void;
   isLoading?: boolean;
 }
 
@@ -21,6 +22,7 @@ export const QuotesTable: React.FC<QuotesTableProps> = ({
   quotes,
   selectedTicker,
   onSelectTicker,
+  onTradeTicker,
   isLoading = false,
 }) => {
   return (
@@ -37,13 +39,14 @@ export const QuotesTable: React.FC<QuotesTableProps> = ({
               <th className="py-3 px-4 text-right">Var. Diaria</th>
               <th className="py-3 px-4 text-right">Máx / Mín Día</th>
               <th className="py-3 px-4 text-right">Volumen</th>
+              <th className="py-3 px-4 text-center">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 font-mono">
             {isLoading && quotes.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="py-12 text-center text-slate-400 font-sans"
                 >
                   <div className="flex items-center justify-center gap-2">
@@ -55,7 +58,7 @@ export const QuotesTable: React.FC<QuotesTableProps> = ({
             ) : quotes.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="py-12 text-center text-slate-400 font-sans"
                 >
                   No se encontraron especies coincidentes con el criterio de búsqueda.
@@ -157,6 +160,20 @@ export const QuotesTable: React.FC<QuotesTableProps> = ({
                             : `$ ${q.volume_amount.toLocaleString()}`}
                         </div>
                       )}
+                    </td>
+
+                    {/* Action: Operar */}
+                    <td className="py-3 px-4 text-center">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onTradeTicker) onTradeTicker(q);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white border border-sky-500/30 text-[11px] font-medium transition-all shadow-sm active:scale-95"
+                      >
+                        Operar
+                      </button>
                     </td>
                   </tr>
                 );

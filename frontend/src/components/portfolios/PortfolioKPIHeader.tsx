@@ -13,6 +13,7 @@ import {
   Coins,
   DollarSign,
   Minus,
+  Plus,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -26,10 +27,12 @@ import { InvestorProfile, Portfolio } from "@/types/api";
 
 interface PortfolioKPIHeaderProps {
   portfolio: Portfolio;
+  onNewOrder?: () => void;
 }
 
 export const PortfolioKPIHeader: React.FC<PortfolioKPIHeaderProps> = ({
   portfolio,
+  onNewOrder,
 }) => {
   const profile = (
     portfolio.investor_profile || "MODERATE"
@@ -107,6 +110,17 @@ export const PortfolioKPIHeader: React.FC<PortfolioKPIHeaderProps> = ({
             </div>
           </div>
         </div>
+
+        {onNewOrder && (
+          <button
+            type="button"
+            onClick={onNewOrder}
+            className="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs shadow-lg shadow-sky-600/20 transition-all flex items-center gap-1.5 self-start sm:self-auto active:scale-95"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Nueva Orden</span>
+          </button>
+        )}
       </div>
 
       {/* KPI Cards Grid */}

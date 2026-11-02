@@ -10,6 +10,8 @@ import { Search, X } from "lucide-react";
 import { useHashRoute } from "@/lib/navigation";
 import { marketKeys } from "@/lib/queryKeys";
 import { marketService } from "@/services/marketService";
+import { MarketQuote } from "@/types/api";
+import { OrderExecutionModal } from "@/components/orders/OrderExecutionModal";
 import { ChartTimeframe, FinancialTimeSeriesChart } from "./FinancialTimeSeriesChart";
 import { MarketStatusBar } from "./MarketStatusBar";
 import { QuotesTable } from "./QuotesTable";
@@ -34,6 +36,7 @@ export const MarketDataView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [timeframe, setTimeframe] = useState<ChartTimeframe>("1M");
   const [isRefreshingManual, setIsRefreshingManual] = useState<boolean>(false);
+  const [tradeModalQuote, setTradeModalQuote] = useState<MarketQuote | null>(null);
 
   // 1. Query official market session status
   const statusQuery = useQuery({
@@ -154,8 +157,20 @@ export const MarketDataView: React.FC = () => {
         quotes={filteredQuotes}
         selectedTicker={activeTicker}
         onSelectTicker={handleSelectTicker}
+        onTradeTicker={(q) => setTradeModalQuote(q)}
         isLoading={quotesQuery.isLoading}
       />
+
+      {/* 5. Assisted Order Execution Modal */}
+      {tradeModalQuote && (
+        <OrderExecutionModal
+          isOpen={Boolean(tradeModalQuote)}
+          onClose={() => setTradeModalQuote(null)}
+          initialTicker={tradeModalQuote.ticker}
+          initialPrice={tradeModalQuote.last_price}
+          initialCurrency={tradeModalQuote.currency}
+        />
+      )}
     </div>
   );
 };

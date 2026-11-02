@@ -38,3 +38,12 @@ export const marketKeys = {
   history: (ticker: string, timeframe?: string) =>
     [...marketKeys.all, "history", ticker, timeframe || "1D"] as const,
 };
+
+export const orderKeys = {
+  all: ["orders"] as const,
+  lists: () => [...orderKeys.all, "list"] as const,
+  list: (portfolioId?: string) =>
+    [...orderKeys.lists(), portfolioId || "all"] as const,
+  details: () => [...orderKeys.all, "detail"] as const,
+  detail: (id: string) => [...orderKeys.details(), id] as const,
+};

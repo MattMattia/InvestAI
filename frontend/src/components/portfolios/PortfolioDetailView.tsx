@@ -4,7 +4,8 @@
  * AssetAllocationDonut, HoldingsTable, and RebalancePanel with URL-synchronized state.
  */
 
-import React from "react";
+import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowLeft,
@@ -15,6 +16,11 @@ import {
 } from "lucide-react";
 import { usePortfolio } from "@/hooks/usePortfolios";
 import { navigateToPortfoliosList, useHashRoute } from "@/lib/navigation";
+import { parseDecimalSafe } from "@/lib/formatters";
+import { orderKeys } from "@/lib/queryKeys";
+import { orderService } from "@/services/orderService";
+import { OrderExecutionModal } from "@/components/orders/OrderExecutionModal";
+import { RecentOrdersTable } from "@/components/orders/RecentOrdersTable";
 import { AssetAllocationDonut } from "./AssetAllocationDonut";
 import { AuditCompliancePanel } from "./AuditCompliancePanel";
 import { HoldingsTable } from "./HoldingsTable";
@@ -29,6 +35,7 @@ export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
   portfolioId,
 }) => {
   const { tab, navigateToPortfolioTab } = useHashRoute();
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState<boolean>(false);
   const {
     data: portfolio,
     isLoading,
@@ -37,6 +44,13 @@ export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
     refetch,
     isFetching,
   } = usePortfolio(portfolioId);
+
+  const { data: recentOrders = [], isLoading: isLoadingOrders } = useQuery({
+    queryKey: orderKeys.list(portfolioId),
+    queryFn: () => orderService.getRecentOrders(portfolioId),
+    enabled: Boolean(portfolioId),
+    staleTime: 15_000,
+  });
 
   if (isLoading) {
     return (
@@ -102,7 +116,10 @@ export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Analytic KPI Header */}
-      <PortfolioKPIHeader portfolio={portfolio} />
+      <PortfolioKPIHeader
+        portfolio={portfolio}
+        onNewOrder={() => setIsOrderModalOpen(true)}
+      />
 
       {/* Detail Navigation Tabs */}
       <div className="flex border-b border-slate-800 gap-2">
@@ -152,10 +169,27 @@ export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
       )}
 
       {/* Tab 2: Tolerance Bands & FSM Orders */}
-      {tab === "rebalance" && <RebalancePanel portfolio={portfolio} />}
+      {tab === "rebalance" && (
+        <div className="space-y-6">
+          <RebalancePanel portfolio={portfolio} />
+          <RecentOrdersTable orders={recentOrders} isLoading={isLoadingOrders} />
+        </div>
+      )}
 
       {/* Tab 3: Risk Audit Compliance & Snapshots */}
       {tab === "audit" && <AuditCompliancePanel portfolio={portfolio} />}
+
+      {/* Manual Assisted Order Execution Modal */}
+      {isOrderModalOpen && (
+        <OrderExecutionModal
+          isOpen={isOrderModalOpen}
+          onClose={() => setIsOrderModalOpen(false)}
+          initialPortfolioId={portfolio.id}
+          initialCurrency={
+            parseDecimalSafe(portfolio.cash_balance_usd) > 0 ? "USD" : "ARS"
+          }
+        />
+      )}
     </div>
   );
 };

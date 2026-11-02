@@ -288,3 +288,32 @@ export interface HistoricalBar {
   volume: number;
 }
 
+// Order Execution Contracts
+export interface CreateOrderPayload {
+  portfolio_id: string;
+  ticker: string;
+  side: "BUY" | "SELL";
+  order_type: "MARKET" | "LIMIT";
+  quantity: number;
+  price?: number;
+  currency?: "ARS" | "USD";
+  justification?: string;
+  idempotency_key?: string;
+}
+
+export interface OrderRecord {
+  id: string;
+  portfolio_id: string;
+  ticker: string;
+  side: "BUY" | "SELL";
+  order_type: "MARKET" | "LIMIT";
+  quantity: number;
+  price: number;
+  gross_amount: number;
+  total_fees: number;
+  net_amount: number;
+  status: OrderStatus;
+  justification?: string;
+  created_at: string;
+}
+

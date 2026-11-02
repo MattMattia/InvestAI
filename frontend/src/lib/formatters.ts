@@ -179,3 +179,51 @@ export function normalizeSnapshotPayload(
   }
   return {};
 }
+
+/**
+ * Computes institutional pre-trade cost breakdown for BYMA/CNV operations:
+ * - Gross amount = round(quantity * price, 2)
+ * - Broker fee = round(grossAmount * (brokerFeePct ?? 0.005), 2) (0.50% arancel estándar)
+ * - Broker fee VAT = round(brokerFee * 0.21, 2) (21% IVA sobre arancel de intermediación)
+ * - Market fee = round(grossAmount * (marketFeePct ?? 0.001), 2) (0.10% derechos de mercado BYMA / CNV)
+ * - Total fees = brokerFee + brokerFeeVat + marketFee
+ * - Net total = side === 'BUY' ? grossAmount + totalFees : grossAmount - totalFees
+ */
+export function calculateOrderCostBreakdown(params: {
+  quantity: number;
+  price: number;
+  side: "BUY" | "SELL";
+  brokerFeePct?: number;
+  marketFeePct?: number;
+}): {
+  grossAmount: number;
+  brokerFee: number;
+  brokerFeeVat: number;
+  marketFee: number;
+  totalFees: number;
+  netTotal: number;
+} {
+  const { quantity, price, side, brokerFeePct = 0.005, marketFeePct = 0.001 } = params;
+  const q = Math.max(0, quantity);
+  const p = Math.max(0, price);
+
+  const grossAmount = Number((q * p).toFixed(2));
+  const brokerFee = Number((grossAmount * brokerFeePct).toFixed(2));
+  const brokerFeeVat = Number((brokerFee * 0.21).toFixed(2));
+  const marketFee = Number((grossAmount * marketFeePct).toFixed(2));
+  const totalFees = Number((brokerFee + brokerFeeVat + marketFee).toFixed(2));
+
+  const netTotal =
+    side === "BUY"
+      ? Number((grossAmount + totalFees).toFixed(2))
+      : Number(Math.max(0, grossAmount - totalFees).toFixed(2));
+
+  return {
+    grossAmount,
+    brokerFee,
+    brokerFeeVat,
+    marketFee,
+    totalFees,
+    netTotal,
+  };
+}
