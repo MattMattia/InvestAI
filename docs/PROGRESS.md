@@ -3,7 +3,7 @@
 > **Estado Global del Proyecto:**  
 > **Progreso Consolidado:** 26 de 26 Módulos del Backend Completados (100.0%) — Capítulos 1 al 8 completados en su totalidad  
 > **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5, 6, 7 y 8 (100% completados)  
-> **Capítulos Pendientes / Siguientes:** Capítulo 9 (Frontend Dashboard Reactivo)  
+> **Capítulos Pendientes / En Progreso:** Capítulo 9 (Frontend Dashboard Reactivo) — Módulo 9.1 en progreso  
 > **Calidad y Suite de Pruebas:** **666 tests pasando al 100% en verde (582 unitarios + 84 de integración)**  
 > **Última Actualización:** 2026-11-02
 
@@ -27,7 +27,7 @@
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 3 / 3 | 9 / 9 | **COMPLETADO** | 359 tests (+66) |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 3 / 3 | 9 / 9 | **COMPLETADO** | 621 tests (+262) |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos y Automatización en Background | 3 / 3 | 7 / 7 | **COMPLETADO** | 666 tests (+45) |
-| **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
+| **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 2 / 9 | **EN PROGRESO** | Build Frontend Verificado |
 
 ---
 
@@ -182,9 +182,9 @@
 
 ### CAPÍTULO 9: Frontend Dashboard Reactivo (React + Vite + TypeScript)
 - [ ] **Módulo 9.1: Arquitectura Base, Design System y Contratos DTO Tipados**
-  - [ ] Fase 1: Inicialización del Proyecto (`frontend/`, React 18+, Vite, TypeScript estricto, Tailwind CSS)
-  - [ ] Fase 2: Sincronización y Espejado de Contratos DTO Tipados
-  - [ ] Fase 3: Shell de la Aplicación, Layout Institucional y Gestión de Sesión
+  - [x] Fase 1: Inicialización del Proyecto (`frontend/`, React 18+, Vite, TypeScript estricto, Tailwind CSS) (`frontend/package.json`, `frontend/tsconfig.json`, `frontend/vite.config.ts`, `frontend/tailwind.config.js`, `frontend/src/index.css`, `frontend/index.html`, `frontend/src/lib/authStorage.ts`, `frontend/src/lib/apiClient.ts`, `frontend/src/types/api.ts`, `frontend/src/App.tsx`, `frontend/src/main.tsx` — Scaffolding React 18/Vite con TypeScript estricto y Tailwind CSS institucional financiero, cliente Axios tipado con propagación de `X-Request-ID` UUIDv4, mutex asíncrono anti-estampida para renovación automática de tokens JWT ante 401, abstracción tipada `ApiError` para errores 422 de Pydantic, contratos DTO 1:1 espejo con FastAPI, shell de verificación contra `/health` y `/metrics`, y build certificado con 0 errores de compilación; **666 tests de backend intactos**)
+  - [x] Fase 2: Gestión de Sesión Reactiva, Proveedor de Autenticación (`AuthContext` / `useAuth`), Servicios de API y Sincronización Multi-Pestaña (`frontend/src/types/api.ts`, `frontend/src/services/authService.ts`, `frontend/src/context/AuthContext.tsx`, `frontend/src/hooks/useAuth.ts`, `frontend/src/components/auth/AuthModal.tsx`, `frontend/src/main.tsx`, `frontend/src/App.tsx` — Tipado desacoplado de credenciales y registros, servicio `authService` integrado con `/api/v1/auth/login`, `/register`, `/me` y `/refresh`, contexto `AuthContext` con sincronización multi-pestaña `window.storage`, invalidación y cancelación inmediata de queries con TanStack `QueryClient`, hook `useAuth()` con validación de scope, modal accesible `AuthModal` con Escape/backdrop, mapeo granular de errores 422 de Pydantic y conmutación reactiva de usuario y rol `ADMIN`/`TRADER`/`VIEWER` en header; build verificado con 0 errores de compilación y **666 tests de backend intactos**)
+  - [ ] Fase 3: Shell de la Aplicación, Layout Institucional y Dashboard de Portafolios
 - [ ] **Módulo 9.2: Visualización Financiera Avanzada (TradingView Lightweight Charts)**
   - [ ] Fase 1: Componente Reutilizable de Velas Japonesas y Líneas (`CandleChart`)
   - [ ] Fase 2: Visualizador en Tiempo Real de Arbitraje Cambiario (MEP / CCL)
@@ -198,19 +198,16 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 9 — Módulo 9.1 (Fase 1): Inicialización del Proyecto Frontend (`frontend/`, React 18+, Vite, TypeScript estricto, Tailwind CSS)**  
-> **Prioridad:** Alta (Inicio del Capítulo 9 tras culminar el 100% del Backend y los Capítulos 1 al 8 con 666 tests en verde)  
-> **Objetivo:** Inicializar el entorno frontend con arquitectura limpia, contratos DTO tipados sincronizados con FastAPI y diseño institucional profesional.
+> **Foco Actual:** **CAPÍTULO 9 — Módulo 9.1 (Fase 3): Shell de la Aplicación, Layout Institucional y Dashboard de Portafolios**  
+> **Prioridad:** Alta (Continuación del Capítulo 9 tras certificar la arquitectura base, cliente HTTP con mutex, contratos DTO, y autenticación reactiva con sincronización multi-pestaña en Fases 1 y 2)  
+> **Objetivo:** Implementar el shell institucional con rutas protegidas, barra lateral de navegación modular, dashboard de estado patrimonial y conexión reactiva con endpoints de portafolios y órdenes.
 
-### Resumen de Cumplimiento del Backend (Capítulos 1 al 8 — 100.0% Completado):
-1. **Capítulo 1**: Fundaciones Cuantitativas y Arquitectura Base — COMPLETADO [x] (137 tests).
-2. **Capítulo 2**: Auditoría Integral y Diagnóstico Técnico — COMPLETADO [x] (Informe Formal).
-3. **Capítulo 3**: Remediación Técnica y Hardening Post-Auditoría — COMPLETADO [x] (159 tests).
-4. **Capítulo 4**: Conectividad Externa y Market Data en Vivo — COMPLETADO [x] (205 tests).
-5. **Capítulo 5**: Seguridad Criptográfica, Autenticación y RBAC — COMPLETADO [x] (293 tests).
-6. **Capítulo 6**: Ingesta de Reportes Locales y Calidad de Datos — COMPLETADO [x] (359 tests).
-7. **Capítulo 7**: Motores Cuantitativos Avanzados, Señales y Valuación MTM — COMPLETADO [x] (621 tests).
-8. **Capítulo 8**: Ciclo de Vida de Base de Datos, Schedulers y Observabilidad — COMPLETADO [x] (666 tests).
+### Hoja de Ruta Inmediata para el Capítulo 9:
+1. **Módulo 9.1 (Fase 1)**: Inicialización del Proyecto, Cliente HTTP y Contratos DTO — COMPLETADO [x].
+2. **Módulo 9.1 (Fase 2)**: Gestión de Sesión Reactiva, AuthContext, Servicios y Sincronización Multi-Pestaña — COMPLETADO [x].
+3. **Módulo 9.1 (Fase 3)**: Shell de la Aplicación, Layout Institucional y Dashboard de Portafolios.
+4. **Módulo 9.2**: Visualización Financiera Avanzada (TradingView Lightweight Charts).
+5. **Módulo 9.3**: Centro de Carga de Extractos, Monitoreo de Riesgo y Gestión de Carteras.
 
 
 
