@@ -133,6 +133,9 @@ from app.domain.services.tolerance_band_rebalancer import (
 )
 from app.domain.services.market_scheduler import (
     BYMACalendarService,
+    DistributedLockProtocol,
+    InMemoryLockManager,
+    LockAcquireResult,
     MarketCloseJobConfig,
     MarketCloseJobReport,
     MarketCloseJobStatus,
@@ -140,6 +143,8 @@ from app.domain.services.market_scheduler import (
     MarketCloseTriggerType,
     PortfolioCloseInput,
     PortfolioCloseProcessResult,
+    RedisLockManager,
+    SnapshotPersistenceProtocol,
 )
 
 __all__ = [
@@ -261,4 +266,9 @@ __all__ = [
     "MarketCloseJobReport",
     "BYMACalendarService",
     "MarketCloseSchedulerService",
+    "DistributedLockProtocol",
+    "SnapshotPersistenceProtocol",
+    "LockAcquireResult",
+    "InMemoryLockManager",
+    "RedisLockManager",
 ]
