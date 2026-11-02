@@ -1,11 +1,11 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 24 de 26 Módulos Completados (92.3%) — Capítulos 1 a 7 completados al 100%  
-> **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5, 6 y 7 (100% completados)  
-> **Capítulos Pendientes / En Progreso:** Capítulos 8 y 9  
-> **Calidad y Suite de Pruebas:** **621 tests pasando al 100% en verde (543 unitarios + 78 de integración)**  
-> **Última Actualización:** 2026-10-31
+> **Progreso Consolidado:** 25 de 26 Módulos Completados (96.2%) — Capítulos 1 a 7 y Módulo 8.1 completados al 100%  
+> **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5, 6, 7 y Módulo 8.1 (100% completados)  
+> **Capítulos Pendientes / En Progreso:** Capítulos 8 (Módulos 8.2 y 8.3) y 9  
+> **Calidad y Suite de Pruebas:** **640 tests pasando al 100% en verde (556 unitarios + 84 de integración)**  
+> **Última Actualización:** 2026-11-02
 
 ---
 
@@ -26,7 +26,7 @@
 | **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 293 tests (+88) |
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 3 / 3 | 9 / 9 | **COMPLETADO** | 359 tests (+66) |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 3 / 3 | 9 / 9 | **COMPLETADO** | 621 tests (+262) |
-| **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 0 / 3 | 0 / 8 | **PENDIENTE** | - |
+| **Capítulo 8** | Ciclo de Vida de Base de Datos (Alembic) y Background Tasks | 1 / 3 | 3 / 8 | **EN PROGRESO** | 640 tests (+19) |
 | **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 
 ---
@@ -167,10 +167,10 @@
 ---
 
 ### CAPÍTULO 8: Ciclo de Vida de Base de Datos y Automatización en Background
-- [ ] **Módulo 8.1: Versionado y Migraciones Estructuradas con Alembic**
+- [x] **Módulo 8.1: Versionado y Migraciones Estructuradas con Alembic**
   - [x] Fase 1: Inicialización y Parametrización Asíncrona de Alembic (`alembic.ini`, `backend/alembic/env.py`, `backend/alembic/script.py.mako`, `backend/tests/unit/test_alembic_setup.py` — convención declarativa `POSTGRES_NAMING_CONVENTION` en `Base.metadata`, exportación canónica de modelos en `backend/app/models/__init__.py`, resolución segura de URLs asíncronas con escape `%%`, `render_as_batch=is_sqlite` y 7 pruebas unitarias nuevas; **628 tests totales en verde: 550 unitarios + 78 de integración**)
   - [x] Fase 2: Sincronización Exacta, Normalización Tipada Multi-Dialecto y Certificación Reversible de la Migración Base (`backend/alembic/versions/001_initial_schema.py`, `backend/tests/unit/test_alembic_migrations.py` — sincronía estructural 1:1 de las 7 tablas de `Base.metadata.tables` con ordenamiento topológico estricto en `upgrade` e inverso con `drop_index` previo en `downgrade`, portabilidad PostgreSQL/SQLite con variantes tipadas `JSONB`/`JSON` y `Numeric`, idempotencia de ciclo completo `upgrade head` -> `downgrade base` -> `upgrade head`, y 6 pruebas unitarias nuevas; **634 tests totales en verde: 556 unitarios + 78 de integración**)
-  - [ ] Fase 3: Pruebas de Migración hacia adelante (`upgrade`) y hacia atrás (`downgrade`)
+  - [x] Fase 3: Pruebas de Migración hacia adelante (`upgrade`) y hacia atrás (`downgrade`) (`backend/tests/integration/test_alembic_lifecycle.py` — verificación de ciclo de vida DDL completo, aislamiento estricto Windows file-lock safety, integridad referencial con `PRAGMA foreign_keys=ON` (`CASCADE` de usuario a portfolio/holding y `RESTRICT` de activo en uso), unicidad compuesta en `market_bars`, índices únicos en `users`, roundtrip estructurado JSON/Numeric, rollback transaccional ante fallos en vuelo y 6 pruebas de integración nuevas; **640 tests totales en verde: 556 unitarios + 84 de integración**)
 - [ ] **Módulo 8.2: Schedulers de Ingesta Bursátil Programada y Bloqueo Concurrente**
   - [ ] Fase 1: Orquestador de Tareas Programadas al Cierre de Rueda (`market_scheduler.py`)
   - [ ] Fase 2: Bloqueos Distribuidos y Concurrencia (Redis / Locks relacionales)
@@ -198,14 +198,15 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 8 — Módulo 8.1 (Fase 3): Pruebas Automatizadas de Migración hacia Adelante (`upgrade head`) y hacia Atrás (`downgrade base`) en Entornos de Integración**  
-> **Prioridad:** Alta (Cierre del Módulo 8.1 tras validar la migración base 001 y certificar Zero Schema Drift con 634 tests en verde)  
-> **Objetivo:** Implementar la suite exhaustiva de integración y verificación continua de migraciones, validando rollback resiliente, integridad referencial de constraints con datos poblados y transiciones seguras de esquema.
+> **Foco Actual:** **CAPÍTULO 8 — Módulo 8.2 (Fase 1): Orquestador de Tareas Programadas al Cierre de Rueda (`market_scheduler.py`)**  
+> **Prioridad:** Alta (Inicio del Módulo 8.2 tras el cierre al 100% del Módulo 8.1 con 640 tests en verde — 25 de 26 módulos completados — 96.2%)  
+> **Objetivo:** Implementar el scheduler de ingesta bursátil programada para cierres de mercado, coordinando la sincronización de velas históricas OHLCV y cotizaciones con tolerancia a fallos.
 
 ### Hoja de Ruta Inmediata para el Capítulo 8:
-1. **Módulo 8.1 (Fase 1)**: Inicialización y parametrización asíncrona de Alembic (`alembic.ini`, `backend/alembic/env.py`) — COMPLETADO [x].
-2. **Módulo 8.1 (Fase 2)**: Generación y certificación de la migración base (`001_initial_schema.py`, `test_alembic_migrations.py`) — COMPLETADO [x].
-3. **Módulo 8.1 (Fase 3)**: Pruebas automatizadas de migración hacia adelante (`upgrade head`) y hacia atrás (`downgrade base`).
+1. **Módulo 8.1: Versionado y Migraciones Estructuradas con Alembic** — COMPLETADO AL 100% [x] (Fases 1, 2 y 3).
+2. **Módulo 8.2 (Fase 1)**: Orquestador de tareas programadas al cierre de rueda (`market_scheduler.py`).
+3. **Módulo 8.2 (Fase 2)**: Bloqueos distribuidos y concurrencia (Redis / Locks relacionales).
+4. **Módulo 8.3**: Monitoreo Institucional y Métricas RED (Prometheus / Grafana).
 
 
 
