@@ -129,6 +129,9 @@ class Settings(BaseSettings):
     MARKET_DATA_CACHE_TTL_SECONDS: int = 60
     MARKET_DATA_BASE_URL: str = "https://api.investai.market"
 
+    # Observability & Metrics Scrape Authentication (Módulo 8.3)
+    METRICS_SCRAPE_TOKEN: Optional[str] = None
+
     @property
     def is_postgres_available(self) -> bool:
         if self.ENVIRONMENT == "production":

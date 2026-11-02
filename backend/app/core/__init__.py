@@ -1,5 +1,21 @@
 """Core Package (Configuration, Database, Security, Exceptions)"""
 
+from app.core.metrics import (
+    HTTP_DURATION_BUCKETS,
+    KNOWN_CACHE_TIERS,
+    KNOWN_FALLBACK_REASONS,
+    QUANT_SOLVER_DURATION_BUCKETS,
+    QUANT_SOLVER_ITERATION_BUCKETS,
+    SCHEDULER_DURATION_BUCKETS,
+    InvestAIMetrics,
+    MetricsMiddleware,
+    default_metrics,
+    normalize_route_path,
+    record_cache_hit,
+    record_cache_miss,
+    record_solver_fallback,
+    record_solver_run,
+)
 from app.core.rate_limit import (
     SlidingWindowRateLimiter,
     auth_rate_limiter,
@@ -18,6 +34,20 @@ from app.core.security import (
 )
 
 __all__ = [
+    "HTTP_DURATION_BUCKETS",
+    "SCHEDULER_DURATION_BUCKETS",
+    "QUANT_SOLVER_DURATION_BUCKETS",
+    "QUANT_SOLVER_ITERATION_BUCKETS",
+    "KNOWN_FALLBACK_REASONS",
+    "KNOWN_CACHE_TIERS",
+    "InvestAIMetrics",
+    "MetricsMiddleware",
+    "default_metrics",
+    "normalize_route_path",
+    "record_solver_run",
+    "record_solver_fallback",
+    "record_cache_hit",
+    "record_cache_miss",
     "SlidingWindowRateLimiter",
     "auth_rate_limiter",
     "SecurityError",

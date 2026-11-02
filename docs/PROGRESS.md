@@ -1,10 +1,10 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
 > **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 26 de 29 Módulos Principales — Capítulos 1 a 7 y Módulos 8.1 y 8.2 completados al 100%  
-> **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5, 6, 7 y Módulos 8.1 y 8.2 (100% completados)  
-> **Capítulos Pendientes / En Progreso:** Capítulos 8 (Módulo 8.3) y 9  
-> **Calidad y Suite de Pruebas:** **653 tests pasando al 100% en verde (569 unitarios + 84 de integración)**  
+> **Progreso Consolidado:** 26 de 26 Módulos del Backend Completados (100.0%) — Capítulos 1 al 8 completados en su totalidad  
+> **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5, 6, 7 y 8 (100% completados)  
+> **Capítulos Pendientes / Siguientes:** Capítulo 9 (Frontend Dashboard Reactivo)  
+> **Calidad y Suite de Pruebas:** **666 tests pasando al 100% en verde (582 unitarios + 84 de integración)**  
 > **Última Actualización:** 2026-11-02
 
 ---
@@ -26,7 +26,7 @@
 | **Capítulo 5** | Seguridad Criptográfica, Autenticación y RBAC (SEC-03) | 4 / 4 | 9 / 9 | **COMPLETADO** | 293 tests (+88) |
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 3 / 3 | 9 / 9 | **COMPLETADO** | 359 tests (+66) |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 3 / 3 | 9 / 9 | **COMPLETADO** | 621 tests (+262) |
-| **Capítulo 8** | Ciclo de Vida de Base de Datos y Automatización en Background | 2 / 3 | 5 / 8 | **EN PROGRESO** | 653 tests (+32) |
+| **Capítulo 8** | Ciclo de Vida de Base de Datos y Automatización en Background | 3 / 3 | 7 / 7 | **COMPLETADO** | 666 tests (+45) |
 | **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 0 / 9 | **PENDIENTE** | - |
 
 ---
@@ -174,9 +174,9 @@
 - [x] **Módulo 8.2: Schedulers de Ingesta Bursátil Programada y Bloqueo Concurrente**
   - [x] Fase 1: Orquestador de Tareas Programadas al Cierre de Rueda (`market_scheduler.py`, `backend/tests/unit/test_market_scheduler.py` — calendario BYMA con detección de feriados recurrentes y variables, contratos DTO inmutables `PortfolioCloseInput`, `MarketCloseJobConfig`, `PortfolioCloseProcessResult`, `MarketCloseJobReport`, agregación de órdenes FSM con `ToleranceBandRebalancerService`, aislamiento de fallas por cartera e invariantes contables con 7 pruebas unitarias nuevas; **647 tests totales en verde: 563 unitarios + 84 de integración**)
   - [x] Fase 2: Bloqueos Distribuidos y Concurrencia (Redis / Locks relacionales) (`market_scheduler.py`, `backend/app/domain/services/__init__.py`, `backend/tests/unit/test_market_scheduler_locks.py` — contratos DTO `LockAcquireResult`, protocolos abstractos `DistributedLockProtocol` y `SnapshotPersistenceProtocol`, implementaciones `InMemoryLockManager` con TTL monotónico y token safety, `RedisLockManager` con script atómico Lua para release seguro, ejecución asíncrona segura con bypass `force_rerun`, persistencia inmutable de auditoría y 6 pruebas unitarias nuevas; **653 tests totales en verde: 569 unitarios + 84 de integración**)
-- [ ] **Módulo 8.3: Monitoreo Institucional y Métricas RED (Prometheus / Grafana)**
-  - [ ] Fase 1: Instrumentación del Endpoint `/metrics` con métricas RED (Rate, Errors, Duration)
-  - [ ] Fase 2: Exportación de Métricas Cuantitativas (latencias de solvers, fallbacks, cache hits)
+- [x] **Módulo 8.3: Monitoreo Institucional y Métricas RED (Prometheus / Grafana)**
+  - [x] Fase 1: Instrumentación del Endpoint `/metrics` con métricas RED (Rate, Errors, Duration) (`backend/app/core/metrics.py`, `backend/app/main.py`, `backend/tests/unit/test_metrics_instrumentation.py` — recolector centralizado `InvestAIMetrics`, contadores RED `http_requests_total`, `http_request_duration_seconds` e `http_requests_exceptions_total`, telemetría de scheduler, defensa contra cardinalidad con `normalize_route_path`, middleware asíncrono `MetricsMiddleware`, endpoint `/metrics` con token opcional `METRICS_SCRAPE_TOKEN` y 7 pruebas unitarias nuevas; **660 tests totales en verde: 576 unitarios + 84 de integración**)
+  - [x] Fase 2: Exportación de Métricas Cuantitativas (latencias de solvers, fallbacks, cache hits) (`backend/app/core/metrics.py`, `backend/app/core/__init__.py`, `backend/tests/unit/test_quant_metrics.py` — telemetría especializada de solvers `quant_solver_duration_seconds` y `quant_solver_iterations`, contadores de fallbacks y conmutaciones algorítmicas `quant_solver_fallbacks_total` con sanitización de cardinalidad, métricas de aciertos y desaciertos de caché de cotizaciones `market_data_cache_hits_total` y `market_data_cache_misses_total`, wrappers a nivel de módulo y 6 pruebas unitarias nuevas; **666 tests totales en verde: 582 unitarios + 84 de integración**)
 
 ---
 
@@ -198,15 +198,19 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 8 — Módulo 8.3 (Fase 1): Instrumentación del Endpoint `/metrics` con métricas RED (Rate, Errors, Duration)**  
-> **Prioridad:** Alta (Continuación del Capítulo 8 tras certificar los schedulers de fin de rueda y bloqueos distribuidos en Módulo 8.2 con 653 tests en verde)  
-> **Objetivo:** Implementar la instrumentación HTTP asíncrona de Prometheus para medir métricas RED (Rate, Errors, Duration) en FastAPI y exponer el endpoint `/metrics`.
+> **Foco Actual:** **CAPÍTULO 9 — Módulo 9.1 (Fase 1): Inicialización del Proyecto Frontend (`frontend/`, React 18+, Vite, TypeScript estricto, Tailwind CSS)**  
+> **Prioridad:** Alta (Inicio del Capítulo 9 tras culminar el 100% del Backend y los Capítulos 1 al 8 con 666 tests en verde)  
+> **Objetivo:** Inicializar el entorno frontend con arquitectura limpia, contratos DTO tipados sincronizados con FastAPI y diseño institucional profesional.
 
-### Hoja de Ruta Inmediata para el Capítulo 8:
-1. **Módulo 8.1: Versionado y Migraciones Estructuradas con Alembic** — COMPLETADO AL 100% [x] (Fases 1, 2 y 3).
-2. **Módulo 8.2: Schedulers de Ingesta Bursátil Programada y Bloqueo Concurrente** — COMPLETADO AL 100% [x] (Fases 1 y 2).
-3. **Módulo 8.3 (Fase 1)**: Instrumentación del Endpoint `/metrics` con métricas RED (Rate, Errors, Duration).
-4. **Módulo 8.3 (Fase 2)**: Exportación de Métricas Cuantitativas (latencias de solvers, fallbacks, cache hits).
+### Resumen de Cumplimiento del Backend (Capítulos 1 al 8 — 100.0% Completado):
+1. **Capítulo 1**: Fundaciones Cuantitativas y Arquitectura Base — COMPLETADO [x] (137 tests).
+2. **Capítulo 2**: Auditoría Integral y Diagnóstico Técnico — COMPLETADO [x] (Informe Formal).
+3. **Capítulo 3**: Remediación Técnica y Hardening Post-Auditoría — COMPLETADO [x] (159 tests).
+4. **Capítulo 4**: Conectividad Externa y Market Data en Vivo — COMPLETADO [x] (205 tests).
+5. **Capítulo 5**: Seguridad Criptográfica, Autenticación y RBAC — COMPLETADO [x] (293 tests).
+6. **Capítulo 6**: Ingesta de Reportes Locales y Calidad de Datos — COMPLETADO [x] (359 tests).
+7. **Capítulo 7**: Motores Cuantitativos Avanzados, Señales y Valuación MTM — COMPLETADO [x] (621 tests).
+8. **Capítulo 8**: Ciclo de Vida de Base de Datos, Schedulers y Observabilidad — COMPLETADO [x] (666 tests).
 
 
 

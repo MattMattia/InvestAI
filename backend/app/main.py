@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import logging
 import time
 import uuid
-from fastapi import Depends, FastAPI, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +17,7 @@ from app.api.middleware.trace import RequestTraceMiddleware, get_current_request
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import async_engine, init_db
+from app.core.metrics import MetricsMiddleware, default_metrics
 from app.schemas.envelope import APIErrorResponse, ErrorDetail, ResponseMeta, SubErrorDetail
 
 logger = logging.getLogger("investai.api")
@@ -47,6 +48,9 @@ app = FastAPI(
 
 # Trace and latency measurement middleware (OBS-01)
 app.add_middleware(RequestTraceMiddleware)
+
+# Prometheus RED metrics middleware (Módulo 8.3)
+app.add_middleware(MetricsMiddleware)
 
 # Strict CORS configuration for authorized frontend origins (SEC-01)
 app.add_middleware(
@@ -241,6 +245,31 @@ async def health_check(
                 "environment": settings.ENVIRONMENT,
             },
         )
+
+
+@app.get("/metrics", tags=["Observability"], include_in_schema=False)
+async def prometheus_metrics(request: Request) -> Response:
+    """
+    Prometheus metrics endpoint exporting RED telemetry and scheduler counters.
+    Protected by optional bearer scrape token if configured in settings (Módulo 8.3).
+    """
+    if settings.METRICS_SCRAPE_TOKEN:
+        auth_header = request.headers.get("Authorization", "")
+        token = ""
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+        elif "X-Metrics-Token" in request.headers:
+            token = request.headers["X-Metrics-Token"].strip()
+
+        if token != settings.METRICS_SCRAPE_TOKEN:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing Prometheus scrape token.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    payload, content_type = default_metrics.generate_metrics_payload()
+    return Response(content=payload, media_type=content_type)
 
 
 # Register Version 1 Routers
