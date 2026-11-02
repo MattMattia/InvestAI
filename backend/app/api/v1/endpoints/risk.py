@@ -1,5 +1,6 @@
-from typing import Annotated
+from typing import Annotated, List
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user, get_db_session
@@ -15,6 +16,7 @@ from app.models.risk_audit import RiskAuditSnapshotModel
 from app.models.user import UserModel
 from app.schemas.risk import (
     RiskAssessmentReportResponse,
+    RiskAuditSnapshotResponse,
     RuleResultResponse,
 )
 from app.services.portfolio_service import (
@@ -119,3 +121,24 @@ async def evaluate_portfolio_risk(
         ],
         snapshot_id=snapshot.id,
     )
+
+
+@router.get("/{id}/snapshots", response_model=List[RiskAuditSnapshotResponse], status_code=status.HTTP_200_OK)
+async def list_portfolio_risk_snapshots(
+    id: str,
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> List[RiskAuditSnapshotResponse]:
+    """
+    Retrieves immutable historical risk audit snapshots for a given portfolio.
+    Enforces authentication and tenant isolation.
+    """
+    portfolio_model = await get_user_portfolio_or_404(id, current_user, db)
+    stmt = (
+        select(RiskAuditSnapshotModel)
+        .where(RiskAuditSnapshotModel.portfolio_id == portfolio_model.id)
+        .order_by(RiskAuditSnapshotModel.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    snapshots = result.scalars().all()
+    return list(snapshots)

@@ -12,6 +12,12 @@ export const portfolioKeys = {
   detail: (id: string) => [...portfolioKeys.details(), id] as const,
 };
 
+export const snapshotKeys = {
+  all: ["snapshots"] as const,
+  byPortfolio: (portfolioId: string) =>
+    [...snapshotKeys.all, "portfolio", portfolioId] as const,
+};
+
 export const systemKeys = {
   all: ["system"] as const,
   health: () => [...systemKeys.all, "health"] as const,
@@ -22,4 +28,3 @@ export const authKeys = {
   all: ["auth"] as const,
   me: () => [...authKeys.all, "me"] as const,
 };
-

@@ -155,3 +155,27 @@ export function calculateHoldingMetrics(
     asset: holding.asset,
   };
 }
+
+/**
+ * Normalizes an audit report payload into a JavaScript object.
+ * Safely parses JSON strings or returns native objects, with fallback to an empty object.
+ */
+export function normalizeSnapshotPayload(
+  payload: unknown
+): Record<string, unknown> {
+  if (!payload) return {};
+  if (typeof payload === "object" && !Array.isArray(payload)) {
+    return payload as Record<string, unknown>;
+  }
+  if (typeof payload === "string") {
+    try {
+      const parsed = JSON.parse(payload);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return { raw: payload };
+    }
+  }
+  return {};
+}

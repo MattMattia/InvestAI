@@ -118,20 +118,56 @@ export interface PortfolioCreateInput {
 }
 
 export interface RebalanceOrder {
-  id: string;
+  id?: string;
   portfolio_id: string;
   ticker: string;
-  side: OrderSide;
-  delta_amount: string;
-  status: OrderStatus;
+  side: OrderSide | string;
+  current_weight: string | number;
+  target_weight: string | number;
+  delta_weight?: string | number;
+  delta_amount: string | number;
+  estimated_shares: string | number;
+  price_used: string | number;
+  status: OrderStatus | string;
+  justification?: string;
   created_at?: string;
+}
+
+export interface ToleranceBandItem {
+  ticker: string;
+  current_weight: number;
+  target_weight: number;
+  lower_band: number;
+  upper_band: number;
+  is_breached: boolean;
+  breach_direction: "UPPER" | "LOWER" | "NONE";
+  delta_weight: number;
+}
+
+export interface RebalanceSimulationResult {
+  portfolio_id: string;
+  needs_rebalancing: boolean;
+  total_portfolio_value: number;
+  base_currency: "ARS" | "USD";
+  breached_tickers: string[];
+  orders: RebalanceOrder[];
+  generated_at: string;
+  total_buy_amount?: number;
+  total_sell_amount?: number;
+  net_cash_flow?: number;
+  available_cash?: number;
+  is_liquidity_sufficient?: boolean;
+  liquidity_warning?: string | null;
 }
 
 export interface RiskAuditSnapshot {
   id: string;
   portfolio_id: string;
-  compliance_status: string;
+  compliance_status: "COMPLIANCE_OK" | "BREACH_DETECTED" | string;
+  total_rules_evaluated?: number;
   critical_alerts_count: number;
+  notification_status?: string;
+  report_payload: Record<string, unknown> | string;
   created_at: string;
   metrics?: Record<string, unknown>;
 }

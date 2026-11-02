@@ -1,16 +1,25 @@
 /**
  * Comprehensive Portfolio Detail View Component for InvestAI Enterprise.
- * Orchestrates PortfolioKPIHeader, AssetAllocationDonut, and HoldingsTable,
- * with resilient loading skeletons and error fallbacks.
+ * Orchestrates PortfolioKPIHeader, Detail Navigation Tabs (Holdings vs Rebalance),
+ * AssetAllocationDonut, HoldingsTable, and RebalancePanel with URL-synchronized state.
  */
 
 import React from "react";
-import { AlertCircle, ArrowLeft, RefreshCw } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  PieChart,
+  RefreshCw,
+  Scale,
+  Shield,
+} from "lucide-react";
 import { usePortfolio } from "@/hooks/usePortfolios";
-import { navigateToPortfoliosList } from "@/lib/navigation";
+import { navigateToPortfoliosList, useHashRoute } from "@/lib/navigation";
 import { AssetAllocationDonut } from "./AssetAllocationDonut";
+import { AuditCompliancePanel } from "./AuditCompliancePanel";
 import { HoldingsTable } from "./HoldingsTable";
 import { PortfolioKPIHeader } from "./PortfolioKPIHeader";
+import { RebalancePanel } from "./RebalancePanel";
 
 interface PortfolioDetailViewProps {
   portfolioId: string;
@@ -19,6 +28,7 @@ interface PortfolioDetailViewProps {
 export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
   portfolioId,
 }) => {
+  const { tab, navigateToPortfolioTab } = useHashRoute();
   const {
     data: portfolio,
     isLoading,
@@ -41,20 +51,13 @@ export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
           </div>
         </div>
 
+        {/* Tab skeleton */}
+        <div className="h-10 w-64 bg-slate-800/40 rounded" />
+
         {/* Donut Skeleton */}
         <div className="h-64 rounded-xl bg-slate-900/60 border border-slate-800 p-6 flex items-center justify-center">
           <div className="h-44 w-44 rounded-full border-8 border-slate-800 flex items-center justify-center text-xs text-slate-500 font-mono">
-            Cargando asignación...
-          </div>
-        </div>
-
-        {/* Table Skeleton */}
-        <div className="h-64 rounded-xl bg-slate-900/60 border border-slate-800 p-6 space-y-4">
-          <div className="h-6 w-1/4 bg-slate-800 rounded" />
-          <div className="space-y-2">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-10 bg-slate-800/40 rounded w-full" />
-            ))}
+            Cargando portafolio...
           </div>
         </div>
       </div>
@@ -101,12 +104,58 @@ export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
       {/* Analytic KPI Header */}
       <PortfolioKPIHeader portfolio={portfolio} />
 
-      {/* Asset Allocation Donut Chart */}
-      <AssetAllocationDonut portfolio={portfolio} initialCurrency="ARS" />
+      {/* Detail Navigation Tabs */}
+      <div className="flex border-b border-slate-800 gap-2">
+        <button
+          onClick={() => navigateToPortfolioTab(portfolioId, "holdings")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-mono font-medium border-b-2 transition-colors ${
+            tab === "holdings"
+              ? "border-sky-500 text-sky-400 bg-slate-900/40"
+              : "border-transparent text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <PieChart className="h-4 w-4" />
+          <span>Tenencias y Asignación</span>
+        </button>
 
-      {/* Mark-to-Market Holdings Table */}
-      <HoldingsTable portfolio={portfolio} />
+        <button
+          onClick={() => navigateToPortfolioTab(portfolioId, "rebalance")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-mono font-medium border-b-2 transition-colors ${
+            tab === "rebalance"
+              ? "border-sky-500 text-sky-400 bg-slate-900/40"
+              : "border-transparent text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <Scale className="h-4 w-4" />
+          <span>Rebalanceo y Bandas FSM</span>
+        </button>
+
+        <button
+          onClick={() => navigateToPortfolioTab(portfolioId, "audit")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-mono font-medium border-b-2 transition-colors ${
+            tab === "audit"
+              ? "border-sky-500 text-sky-400 bg-slate-900/40"
+              : "border-transparent text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <Shield className="h-4 w-4" />
+          <span>Auditoría y Snapshots</span>
+        </button>
+      </div>
+
+      {/* Tab 1: Holdings & Donut */}
+      {tab === "holdings" && (
+        <div className="space-y-6">
+          <AssetAllocationDonut portfolio={portfolio} initialCurrency="ARS" />
+          <HoldingsTable portfolio={portfolio} />
+        </div>
+      )}
+
+      {/* Tab 2: Tolerance Bands & FSM Orders */}
+      {tab === "rebalance" && <RebalancePanel portfolio={portfolio} />}
+
+      {/* Tab 3: Risk Audit Compliance & Snapshots */}
+      {tab === "audit" && <AuditCompliancePanel portfolio={portfolio} />}
     </div>
   );
 };
-
