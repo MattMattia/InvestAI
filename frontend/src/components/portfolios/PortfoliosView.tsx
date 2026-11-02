@@ -21,6 +21,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { usePortfolios } from "@/hooks/usePortfolios";
 import { formatMoney, parseDecimalSafe } from "@/lib/formatters";
+import { navigateToPortfolioDetail } from "@/lib/navigation";
 import { Portfolio } from "@/types/api";
 import { CreatePortfolioModal } from "./CreatePortfolioModal";
 import { PortfolioCard } from "./PortfolioCard";
@@ -318,7 +319,9 @@ export const PortfoliosView: React.FC<PortfoliosViewProps> = ({
             <PortfolioCard
               key={portfolio.id}
               portfolio={portfolio}
-              onSelect={onSelectPortfolio}
+              onSelect={
+                onSelectPortfolio || ((p) => navigateToPortfolioDetail(p.id))
+              }
             />
           ))}
         </div>

@@ -12,8 +12,9 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { NavSection } from "@/lib/navigation";
 
-export type NavSection = "portfolios" | "health" | "metrics";
+export type { NavSection };
 
 interface SidebarProps {
   activeSection: NavSection;

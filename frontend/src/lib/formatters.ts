@@ -1,8 +1,10 @@
 /**
  * Financial Formatting Utilities for InvestAI Enterprise Frontend.
  * Provides defensive decimal parsing, institutional bimonetary representations,
- * and localized date-time rendering.
+ * localized date-time rendering, and portfolio holding metrics calculation.
  */
+
+import { Holding, HoldingWithMetrics } from "@/types/api";
 
 /**
  * Safely parses any numeric or decimal string representation into a finite JavaScript number.
@@ -30,8 +32,8 @@ export function parseDecimalSafe(
 
 /**
  * Formats a numeric or decimal string value as institutional currency (ARS or USD).
- * Formats with 2 decimal places and standard thousand grouping separators.
- * Example: 1250000.5 -> "USD 1,250,000.50" or "ARS 1,250,000.50"
+ * Uses institutional convention: "$ " for ARS and "US$ " for USD with standard thousand separators.
+ * Example: 1250000.5 -> "US$ 1.250.000,50" or "$ 1.250.000,50"
  */
 export function formatMoney(
   amount: string | number | null | undefined,
@@ -43,7 +45,8 @@ export function formatMoney(
     maximumFractionDigits: 2,
   });
 
-  return `${currency} ${formatter.format(num)}`;
+  const prefix = currency === "ARS" ? "$ " : "US$ ";
+  return `${prefix}${formatter.format(num)}`;
 }
 
 /**
@@ -83,6 +86,25 @@ export function formatPercent(
 }
 
 /**
+ * Formats a ratio with semantic sign and metadata flags for financial chip styling.
+ */
+export function formatSignedPercent(
+  value: string | number | null | undefined
+): { text: string; isPositive: boolean; isZero: boolean } {
+  const num = parseDecimalSafe(value);
+  const pct = num * 100;
+  const isZero = Math.abs(pct) < 0.005;
+  const isPositive = !isZero && pct > 0;
+  const sign = isPositive ? "+" : "";
+
+  return {
+    text: `${sign}${pct.toFixed(2)}%`,
+    isPositive,
+    isZero,
+  };
+}
+
+/**
  * Formats raw numeric values with thousand separators.
  */
 export function formatNumber(
@@ -96,3 +118,40 @@ export function formatNumber(
   }).format(num);
 }
 
+/**
+ * Safely calculates holding financial metrics with strict zero-division protection.
+ */
+export function calculateHoldingMetrics(
+  holding: Holding,
+  totalPortfolioValue: number
+): HoldingWithMetrics {
+  const qty = parseDecimalSafe(holding.quantity);
+  const buyPrice = parseDecimalSafe(holding.average_buy_price);
+  const curPrice = parseDecimalSafe(holding.current_price);
+
+  const marketValue = qty * curPrice;
+  const costBasis = qty * buyPrice;
+  const unrealizedPnl = marketValue - costBasis;
+  const unrealizedPnlPct = costBasis > 0 ? unrealizedPnl / costBasis : 0;
+  const weightPct =
+    totalPortfolioValue > 0 ? (marketValue / totalPortfolioValue) * 100 : 0;
+
+  const rawCurrency = holding.asset?.currency?.toUpperCase();
+  const currency: "ARS" | "USD" = rawCurrency === "USD" ? "USD" : "ARS";
+
+  return {
+    id: holding.id,
+    portfolio_id: holding.portfolio_id,
+    asset_ticker: holding.asset_ticker,
+    quantity: qty,
+    average_buy_price: buyPrice,
+    current_price: curPrice,
+    market_value: marketValue,
+    cost_basis: costBasis,
+    unrealized_pnl: unrealizedPnl,
+    unrealized_pnl_pct: unrealizedPnlPct,
+    weight_pct: weightPct,
+    currency,
+    asset: holding.asset,
+  };
+}

@@ -7,12 +7,12 @@
 import React from "react";
 import {
   Briefcase,
-  Calendar,
+  ChevronRight,
   Coins,
   DollarSign,
   Layers,
 } from "lucide-react";
-import { formatDate, formatMoney } from "@/lib/formatters";
+import { formatMoney } from "@/lib/formatters";
 import { InvestorProfile, Portfolio } from "@/types/api";
 
 interface PortfolioCardProps {
@@ -105,17 +105,24 @@ export const PortfolioCard: React.FC<PortfolioCardProps> = ({
         </div>
       </div>
 
-      {/* Footer Info: Holdings Count & Date */}
+      {/* Footer Info: Holdings Count, Date & Action Button */}
       <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
         <span className="flex items-center gap-1.5 font-mono">
           <Layers className="h-3.5 w-3.5 text-slate-400" />
           {holdingsCount} {holdingsCount === 1 ? "activo" : "activos"}
         </span>
 
-        <span className="flex items-center gap-1 font-mono text-[10px]">
-          <Calendar className="h-3 w-3 text-slate-400" />
-          {formatDate(portfolio.updated_at || portfolio.created_at)}
-        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect?.(portfolio);
+          }}
+          className="flex items-center gap-1 text-[11px] font-mono text-sky-400 hover:text-sky-300 transition-colors font-medium"
+        >
+          <span>Ver Tenencias</span>
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   );

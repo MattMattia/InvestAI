@@ -4,7 +4,7 @@
  * Portfolios Dashboard, System Health Diagnostics, and Prometheus Telemetry.
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
 import {
@@ -18,10 +18,11 @@ import {
   Zap,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { NavSection } from "@/components/layout/Sidebar";
 import { PortfoliosView } from "@/components/portfolios/PortfoliosView";
+import { PortfolioDetailView } from "@/components/portfolios/PortfolioDetailView";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { authStorage } from "@/lib/authStorage";
+import { useHashRoute } from "@/lib/navigation";
 import { systemKeys } from "@/lib/queryKeys";
 
 interface HealthResponse {
@@ -33,30 +34,15 @@ interface HealthResponse {
 }
 
 export const App: React.FC = () => {
-  const getInitialSection = (): NavSection => {
-    const hash = window.location.hash.replace("#", "").toLowerCase();
-    if (hash === "health") return "health";
-    if (hash === "metrics") return "metrics";
-    return "portfolios";
-  };
+  const {
+    section: activeSection,
+    portfolioId,
+    navigateToSection,
+    navigateToPortfolioDetail,
+  } = useHashRoute();
 
-  const [activeSection, setActiveSection] = useState<NavSection>(getInitialSection);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [metricsFilter, setMetricsFilter] = useState<string>("");
-
-  // URL-First hash synchronization
-  useEffect(() => {
-    const handleHashChange = () => {
-      setActiveSection(getInitialSection());
-    };
-    window.addEventListener("hashchange", handleHashChange);
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  }, []);
-
-  const handleNavigate = (section: NavSection) => {
-    setActiveSection(section);
-    window.location.hash = section;
-  };
 
   // Query Backend Health endpoint
   const healthQuery = useQuery({
@@ -98,13 +84,20 @@ export const App: React.FC = () => {
   return (
     <AppLayout
       activeSection={activeSection}
-      onNavigate={handleNavigate}
+      portfolioId={portfolioId}
+      onNavigate={navigateToSection}
       onOpenAuthModal={() => setIsAuthModalOpen(true)}
     >
-      {/* SECTION 1: Portfolios Dashboard */}
-      {activeSection === "portfolios" && (
-        <PortfoliosView onOpenAuthModal={() => setIsAuthModalOpen(true)} />
-      )}
+      {/* SECTION 1: Portfolios Catalog or Portfolio Detail */}
+      {activeSection === "portfolios" &&
+        (portfolioId ? (
+          <PortfolioDetailView portfolioId={portfolioId} />
+        ) : (
+          <PortfoliosView
+            onOpenAuthModal={() => setIsAuthModalOpen(true)}
+            onSelectPortfolio={(p) => navigateToPortfolioDetail(p.id)}
+          />
+        ))}
 
       {/* SECTION 2: System Health Diagnostics */}
       {activeSection === "health" && (

@@ -9,6 +9,7 @@ import { TopHeader } from "./TopHeader";
 
 interface AppLayoutProps {
   activeSection: NavSection;
+  portfolioId?: string | null;
   onNavigate: (section: NavSection) => void;
   onOpenAuthModal: () => void;
   children: React.ReactNode;
@@ -16,6 +17,7 @@ interface AppLayoutProps {
 
 export const AppLayout: React.FC<AppLayoutProps> = ({
   activeSection,
+  portfolioId,
   onNavigate,
   onOpenAuthModal,
   children,
@@ -30,6 +32,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         {/* Sticky Top Header */}
         <TopHeader
           activeSection={activeSection}
+          portfolioId={portfolioId}
           onOpenAuthModal={onOpenAuthModal}
         />
 

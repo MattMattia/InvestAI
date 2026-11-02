@@ -69,6 +69,22 @@ export interface Holding {
   asset?: Asset | null;
 }
 
+export interface HoldingWithMetrics {
+  id: number;
+  portfolio_id: string;
+  asset_ticker: string;
+  quantity: number;
+  average_buy_price: number;
+  current_price: number;
+  market_value: number;
+  cost_basis: number;
+  unrealized_pnl: number;
+  unrealized_pnl_pct: number;
+  weight_pct: number;
+  currency: "ARS" | "USD";
+  asset?: Asset | null;
+}
+
 export interface Portfolio {
   id: string;
   user_id: string;

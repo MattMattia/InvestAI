@@ -16,11 +16,13 @@ import {
   User as UserIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { navigateToPortfoliosList } from "@/lib/navigation";
 import { systemKeys } from "@/lib/queryKeys";
 import { NavSection } from "./Sidebar";
 
 interface TopHeaderProps {
   activeSection: NavSection;
+  portfolioId?: string | null;
   onOpenAuthModal: () => void;
 }
 
@@ -34,6 +36,7 @@ interface HealthResponse {
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
   activeSection,
+  portfolioId,
   onOpenAuthModal,
 }) => {
   const { user, isAuthenticated, isLoading: authLoading, logout, isAdmin, isTrader } =
@@ -72,9 +75,26 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
       <div className="flex items-center gap-2 text-xs">
         <span className="font-mono text-slate-400">InvestAI Enterprise</span>
         <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-        <span className="font-medium text-slate-100">
+        <span
+          onClick={() => {
+            if (portfolioId) navigateToPortfoliosList();
+          }}
+          className={`font-medium ${
+            portfolioId
+              ? "text-slate-400 hover:text-slate-200 cursor-pointer"
+              : "text-slate-100"
+          }`}
+        >
           {sectionTitles[activeSection].title}
         </span>
+        {portfolioId && (
+          <>
+            <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+            <span className="font-medium text-slate-100">
+              Detalle y Tenencias
+            </span>
+          </>
+        )}
       </div>
 
       {/* Right Controls: Health & Auth */}
