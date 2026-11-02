@@ -168,7 +168,7 @@
 
 ### CAPÍTULO 8: Ciclo de Vida de Base de Datos y Automatización en Background
 - [ ] **Módulo 8.1: Versionado y Migraciones Estructuradas con Alembic**
-  - [ ] Fase 1: Inicialización y Parametrización Asíncrona de Alembic (`env.py`, `alembic.ini`)
+  - [x] Fase 1: Inicialización y Parametrización Asíncrona de Alembic (`alembic.ini`, `backend/alembic/env.py`, `backend/alembic/script.py.mako`, `backend/tests/unit/test_alembic_setup.py` — convención declarativa `POSTGRES_NAMING_CONVENTION` en `Base.metadata`, exportación canónica de modelos en `backend/app/models/__init__.py`, resolución segura de URLs asíncronas con escape `%%`, `render_as_batch=is_sqlite` y 7 pruebas unitarias nuevas; **628 tests totales en verde: 550 unitarios + 78 de integración**)
   - [ ] Fase 2: Generación de Migraciones Base para todas las Entidades
   - [ ] Fase 3: Pruebas de Migración hacia adelante (`upgrade`) y hacia atrás (`downgrade`)
 - [ ] **Módulo 8.2: Schedulers de Ingesta Bursátil Programada y Bloqueo Concurrente**
@@ -198,13 +198,13 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 8 — Módulo 8.1 (Fase 1): Inicialización y Parametrización Asíncrona de Alembic (`alembic.ini`, `backend/migrations/env.py`)**  
-> **Prioridad:** Alta (Inicio del Capítulo 8 tras el cierre al 100% y la Auditoría Forense de 6 Rondas del Capítulo 7 con 621 tests en verde)  
-> **Objetivo:** Configurar el entorno de migraciones relacionales estructuradas con Alembic sobre SQLAlchemy 2.0 Async, vinculando `Base.metadata` con soporte multi-dialecto (PostgreSQL / SQLite asíncrono) y garantizando cero regresiones sobre los 621 tests existentes.
+> **Foco Actual:** **CAPÍTULO 8 — Módulo 8.1 (Fase 2): Generación de Migraciones Base para todas las Entidades Relacionales (`UserModel`, `PortfolioModel`, `AssetModel`, `HoldingModel`, `OrderModel`, `AuditLogModel`, `MarketBarModel`)**  
+> **Prioridad:** Alta (Continuación de Fase 2 de Alembic tras validar configuración e inicialización de Fase 1 con 628 tests en verde)  
+> **Objetivo:** Generar el archivo de migración inicial unificado y declarativo cubriendo todas las tablas, restricciones de clave foránea, índices compuestos y convención de nombres para PostgreSQL y SQLite.
 
 ### Hoja de Ruta Inmediata para el Capítulo 8:
-1. **Módulo 8.1 (Fase 1)**: Inicialización y parametrización asíncrona de Alembic (`alembic.ini`, `backend/migrations/env.py`).
-2. **Módulo 8.1 (Fase 2)**: Generación de migraciones base para todas las entidades relacionales (`UserModel`, `PortfolioModel`, `HoldingModel`, `OrderModel`, `MarketBarModel`).
+1. **Módulo 8.1 (Fase 1)**: Inicialización y parametrización asíncrona de Alembic (`alembic.ini`, `backend/alembic/env.py`) — COMPLETADO [x].
+2. **Módulo 8.1 (Fase 2)**: Generación de migraciones base para todas las entidades relacionales (`UserModel`, `PortfolioModel`, `AssetModel`, `HoldingModel`, `OrderModel`, `AuditLogModel`, `MarketBarModel`).
 3. **Módulo 8.1 (Fase 3)**: Pruebas automatizadas de migración hacia adelante (`upgrade head`) y hacia atrás (`downgrade base`).
 
 
