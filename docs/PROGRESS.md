@@ -27,7 +27,7 @@
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 3 / 3 | 9 / 9 | **COMPLETADO** | 359 tests (+66) |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 3 / 3 | 9 / 9 | **COMPLETADO** | 621 tests (+262) |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos y Automatización en Background | 3 / 3 | 7 / 7 | **COMPLETADO** | 666 tests (+45) |
-| **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 0 / 3 | 2 / 9 | **EN PROGRESO** | Build Frontend Verificado |
+| **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 1 / 3 | 3 / 9 | **EN PROGRESO** | Build Frontend Verificado |
 
 ---
 
@@ -181,10 +181,10 @@
 ---
 
 ### CAPÍTULO 9: Frontend Dashboard Reactivo (React + Vite + TypeScript)
-- [ ] **Módulo 9.1: Arquitectura Base, Design System y Contratos DTO Tipados**
+- [x] **Módulo 9.1: Arquitectura Base, Design System y Contratos DTO Tipados**
   - [x] Fase 1: Inicialización del Proyecto (`frontend/`, React 18+, Vite, TypeScript estricto, Tailwind CSS) (`frontend/package.json`, `frontend/tsconfig.json`, `frontend/vite.config.ts`, `frontend/tailwind.config.js`, `frontend/src/index.css`, `frontend/index.html`, `frontend/src/lib/authStorage.ts`, `frontend/src/lib/apiClient.ts`, `frontend/src/types/api.ts`, `frontend/src/App.tsx`, `frontend/src/main.tsx` — Scaffolding React 18/Vite con TypeScript estricto y Tailwind CSS institucional financiero, cliente Axios tipado con propagación de `X-Request-ID` UUIDv4, mutex asíncrono anti-estampida para renovación automática de tokens JWT ante 401, abstracción tipada `ApiError` para errores 422 de Pydantic, contratos DTO 1:1 espejo con FastAPI, shell de verificación contra `/health` y `/metrics`, y build certificado con 0 errores de compilación; **666 tests de backend intactos**)
   - [x] Fase 2: Gestión de Sesión Reactiva, Proveedor de Autenticación (`AuthContext` / `useAuth`), Servicios de API y Sincronización Multi-Pestaña (`frontend/src/types/api.ts`, `frontend/src/services/authService.ts`, `frontend/src/context/AuthContext.tsx`, `frontend/src/hooks/useAuth.ts`, `frontend/src/components/auth/AuthModal.tsx`, `frontend/src/main.tsx`, `frontend/src/App.tsx` — Tipado desacoplado de credenciales y registros, servicio `authService` integrado con `/api/v1/auth/login`, `/register`, `/me` y `/refresh`, contexto `AuthContext` con sincronización multi-pestaña `window.storage`, invalidación y cancelación inmediata de queries con TanStack `QueryClient`, hook `useAuth()` con validación de scope, modal accesible `AuthModal` con Escape/backdrop, mapeo granular de errores 422 de Pydantic y conmutación reactiva de usuario y rol `ADMIN`/`TRADER`/`VIEWER` en header; build verificado con 0 errores de compilación y **666 tests de backend intactos**)
-  - [ ] Fase 3: Shell de la Aplicación, Layout Institucional y Dashboard de Portafolios
+  - [x] Fase 3: Layout Institucional Financiero, Navegación URL-First con RBAC, Fábrica de Query Keys y Dashboard de Portafolios (`frontend/src/lib/queryKeys.ts`, `frontend/src/lib/formatters.ts`, `frontend/src/services/portfolioService.ts`, `frontend/src/hooks/usePortfolios.ts`, `frontend/src/components/layout/Sidebar.tsx`, `frontend/src/components/layout/TopHeader.tsx`, `frontend/src/components/layout/AppLayout.tsx`, `frontend/src/components/portfolios/PortfolioCard.tsx`, `frontend/src/components/portfolios/CreatePortfolioModal.tsx`, `frontend/src/components/portfolios/PortfoliosView.tsx`, `frontend/src/App.tsx` — Fábrica centralizada de claves TanStack Query v5 `portfolioKeys`/`systemKeys`, utilidades de parseo defensivo decimal `parseDecimalSafe` y formateo monetario bimoneda ARS/USD `formatMoney`, servicio `portfolioService` integrado con `/portfolios`, hooks reactivos `usePortfolios` y `useCreatePortfolio` con invalidación de caché, layout modular `AppLayout` con navegación URL-first sincronizada por hashchange, `Sidebar` institucional con telemetría de sesión, `TopHeader` con breadcrumbs y semáforo `/health`, dashboard de portafolios `PortfoliosView` con métricas agregadas de patrimonio y caja, control de acceso RBAC para creación de carteras `TRADER`/`ADMIN` y modal accesible `CreatePortfolioModal`; build verificado con 0 errores y **666 tests de backend intactos**)
 - [ ] **Módulo 9.2: Visualización Financiera Avanzada (TradingView Lightweight Charts)**
   - [ ] Fase 1: Componente Reutilizable de Velas Japonesas y Líneas (`CandleChart`)
   - [ ] Fase 2: Visualizador en Tiempo Real de Arbitraje Cambiario (MEP / CCL)
@@ -198,15 +198,15 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 9 — Módulo 9.1 (Fase 3): Shell de la Aplicación, Layout Institucional y Dashboard de Portafolios**  
-> **Prioridad:** Alta (Continuación del Capítulo 9 tras certificar la arquitectura base, cliente HTTP con mutex, contratos DTO, y autenticación reactiva con sincronización multi-pestaña en Fases 1 y 2)  
-> **Objetivo:** Implementar el shell institucional con rutas protegidas, barra lateral de navegación modular, dashboard de estado patrimonial y conexión reactiva con endpoints de portafolios y órdenes.
+> **Foco Actual:** **CAPÍTULO 9 — Módulo 9.2 (Fase 1): Componente Reutilizable de Velas Japonesas y Líneas (`CandleChart`) con TradingView Lightweight Charts**  
+> **Prioridad:** Alta (Inicio del Módulo 9.2 tras certificar de forma integral el Módulo 9.1 con scaffolding, autenticación reactiva, layout institucional y dashboard de portafolios en Fases 1, 2 y 3)  
+> **Objetivo:** Instalar e integrar `lightweight-charts`, implementando un componente gráfico reutilizable, responsivo con tema oscuro financiero, soporte para series de velas japonesas, medias móviles y volumen.
 
 ### Hoja de Ruta Inmediata para el Capítulo 9:
-1. **Módulo 9.1 (Fase 1)**: Inicialización del Proyecto, Cliente HTTP y Contratos DTO — COMPLETADO [x].
-2. **Módulo 9.1 (Fase 2)**: Gestión de Sesión Reactiva, AuthContext, Servicios y Sincronización Multi-Pestaña — COMPLETADO [x].
-3. **Módulo 9.1 (Fase 3)**: Shell de la Aplicación, Layout Institucional y Dashboard de Portafolios.
-4. **Módulo 9.2**: Visualización Financiera Avanzada (TradingView Lightweight Charts).
+1. **Módulo 9.1**: Arquitectura Base, Autenticación Reactiva y Dashboard de Portafolios — COMPLETADO [x] (3 / 3 fases).
+2. **Módulo 9.2 (Fase 1)**: Componente Reutilizable de Velas Japonesas y Líneas (`CandleChart`).
+3. **Módulo 9.2 (Fase 2)**: Visualizador en Tiempo Real de Arbitraje Cambiario (MEP / CCL).
+4. **Módulo 9.2 (Fase 3)**: Gráficos de Evolución de Patrimonio, Áreas de Drawdown y Benchmarks.
 5. **Módulo 9.3**: Centro de Carga de Extractos, Monitoreo de Riesgo y Gestión de Carteras.
 
 

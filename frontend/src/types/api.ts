@@ -58,9 +58,15 @@ export interface Holding {
   id: number;
   portfolio_id: string;
   asset_ticker: string;
-  quantity: string;
-  average_buy_price: string;
-  current_price: string;
+  quantity: number | string;
+  average_buy_price: number | string;
+  current_price: number | string;
+  total_cost?: number | string;
+  market_value?: number | string;
+  unrealized_pnl?: number | string;
+  unrealized_pnl_pct?: number | string;
+  weight_pct?: number | string | null;
+  asset?: Asset | null;
 }
 
 export interface Portfolio {
@@ -68,11 +74,31 @@ export interface Portfolio {
   user_id: string;
   name: string;
   investor_profile: InvestorProfile | string;
-  cash_balance_ars: string;
-  cash_balance_usd: string;
+  cash_balance_ars: number | string;
+  cash_balance_usd: number | string;
+  total_market_value_ars?: number | string;
+  total_market_value_usd?: number | string;
+  holdings_count?: number;
   holdings?: Holding[];
   created_at?: string;
   updated_at?: string;
+}
+
+export interface PortfolioCreateInput {
+  name: string;
+  investor_profile?: InvestorProfile | string;
+  cash_balance_ars?: number | string;
+  cash_balance_usd?: number | string;
+  holdings?: Array<{
+    ticker: string;
+    quantity: number;
+    average_buy_price?: number;
+    current_price?: number;
+    currency?: string;
+    market?: string;
+    asset_type?: string;
+    sector?: string;
+  }>;
 }
 
 export interface RebalanceOrder {
