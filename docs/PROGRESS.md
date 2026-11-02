@@ -169,7 +169,7 @@
 ### CAPÍTULO 8: Ciclo de Vida de Base de Datos y Automatización en Background
 - [ ] **Módulo 8.1: Versionado y Migraciones Estructuradas con Alembic**
   - [x] Fase 1: Inicialización y Parametrización Asíncrona de Alembic (`alembic.ini`, `backend/alembic/env.py`, `backend/alembic/script.py.mako`, `backend/tests/unit/test_alembic_setup.py` — convención declarativa `POSTGRES_NAMING_CONVENTION` en `Base.metadata`, exportación canónica de modelos en `backend/app/models/__init__.py`, resolución segura de URLs asíncronas con escape `%%`, `render_as_batch=is_sqlite` y 7 pruebas unitarias nuevas; **628 tests totales en verde: 550 unitarios + 78 de integración**)
-  - [ ] Fase 2: Generación de Migraciones Base para todas las Entidades
+  - [x] Fase 2: Sincronización Exacta, Normalización Tipada Multi-Dialecto y Certificación Reversible de la Migración Base (`backend/alembic/versions/001_initial_schema.py`, `backend/tests/unit/test_alembic_migrations.py` — sincronía estructural 1:1 de las 7 tablas de `Base.metadata.tables` con ordenamiento topológico estricto en `upgrade` e inverso con `drop_index` previo en `downgrade`, portabilidad PostgreSQL/SQLite con variantes tipadas `JSONB`/`JSON` y `Numeric`, idempotencia de ciclo completo `upgrade head` -> `downgrade base` -> `upgrade head`, y 6 pruebas unitarias nuevas; **634 tests totales en verde: 556 unitarios + 78 de integración**)
   - [ ] Fase 3: Pruebas de Migración hacia adelante (`upgrade`) y hacia atrás (`downgrade`)
 - [ ] **Módulo 8.2: Schedulers de Ingesta Bursátil Programada y Bloqueo Concurrente**
   - [ ] Fase 1: Orquestador de Tareas Programadas al Cierre de Rueda (`market_scheduler.py`)
@@ -198,13 +198,13 @@
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 8 — Módulo 8.1 (Fase 2): Generación de Migraciones Base para todas las Entidades Relacionales (`UserModel`, `PortfolioModel`, `AssetModel`, `HoldingModel`, `OrderModel`, `AuditLogModel`, `MarketBarModel`)**  
-> **Prioridad:** Alta (Continuación de Fase 2 de Alembic tras validar configuración e inicialización de Fase 1 con 628 tests en verde)  
-> **Objetivo:** Generar el archivo de migración inicial unificado y declarativo cubriendo todas las tablas, restricciones de clave foránea, índices compuestos y convención de nombres para PostgreSQL y SQLite.
+> **Foco Actual:** **CAPÍTULO 8 — Módulo 8.1 (Fase 3): Pruebas Automatizadas de Migración hacia Adelante (`upgrade head`) y hacia Atrás (`downgrade base`) en Entornos de Integración**  
+> **Prioridad:** Alta (Cierre del Módulo 8.1 tras validar la migración base 001 y certificar Zero Schema Drift con 634 tests en verde)  
+> **Objetivo:** Implementar la suite exhaustiva de integración y verificación continua de migraciones, validando rollback resiliente, integridad referencial de constraints con datos poblados y transiciones seguras de esquema.
 
 ### Hoja de Ruta Inmediata para el Capítulo 8:
 1. **Módulo 8.1 (Fase 1)**: Inicialización y parametrización asíncrona de Alembic (`alembic.ini`, `backend/alembic/env.py`) — COMPLETADO [x].
-2. **Módulo 8.1 (Fase 2)**: Generación de migraciones base para todas las entidades relacionales (`UserModel`, `PortfolioModel`, `AssetModel`, `HoldingModel`, `OrderModel`, `AuditLogModel`, `MarketBarModel`).
+2. **Módulo 8.1 (Fase 2)**: Generación y certificación de la migración base (`001_initial_schema.py`, `test_alembic_migrations.py`) — COMPLETADO [x].
 3. **Módulo 8.1 (Fase 3)**: Pruebas automatizadas de migración hacia adelante (`upgrade head`) y hacia atrás (`downgrade base`).
 
 
