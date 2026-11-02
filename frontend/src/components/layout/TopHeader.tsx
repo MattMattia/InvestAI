@@ -67,6 +67,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
       title: "Telemetría Prometheus RED",
       subtitle: "Scraping y monitoreo de peticiones, errores y latencia",
     },
+    ingestion: {
+      title: "Ingesta de Extractos Bursátiles",
+      subtitle: "Carga de extractos CSV/Excel de brokers locales y conciliación transaccional",
+    },
   };
 
   return (

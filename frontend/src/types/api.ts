@@ -231,3 +231,24 @@ export interface RegisterData {
   investor_profile?: InvestorProfile;
 }
 
+// Broker Statement Ingestion Contracts
+export interface BrokerReportUploadResponse {
+  job_id?: string;
+  filename: string;
+  detected_broker?: string;
+  total_rows_parsed: number;
+  valid_records_count: number;
+  rejected_records_count: number;
+  message: string;
+  portfolio_id?: string;
+  created_at?: string;
+  reconciliation?: {
+    mode?: string;
+    holdings_added?: number;
+    holdings_updated?: number;
+    holdings_removed?: number;
+    warnings?: string[];
+  };
+  warnings?: string[];
+}
+

@@ -27,7 +27,7 @@
 | **Capítulo 6** | Ingesta de Reportes Locales y Pipeline de Calidad de Datos | 3 / 3 | 9 / 9 | **COMPLETADO** | 359 tests (+66) |
 | **Capítulo 7** | Motores Cuantitativos Avanzados, Señales y Valuación MTM | 3 / 3 | 9 / 9 | **COMPLETADO** | 621 tests (+262) |
 | **Capítulo 8** | Ciclo de Vida de Base de Datos y Automatización en Background | 3 / 3 | 7 / 7 | **COMPLETADO** | 666 tests (+45) |
-| **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 2 / 3 | 6 / 9 | **EN PROGRESO** | Build Frontend Verificado |
+| **Capítulo 9** | Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) | 2 / 3 | 7 / 9 | **EN PROGRESO** | Build Frontend Verificado |
 
 ---
 
@@ -190,23 +190,23 @@
   - [x] Fase 2: Panel de Rebalanceo Dinámico, Detección de Brechas de Bandas y Simulación de Órdenes FSM (`frontend/src/lib/navigation.ts`, `frontend/src/types/api.ts`, `frontend/src/services/portfolioService.ts`, `frontend/src/components/portfolios/ToleranceBandVisualizer.tsx`, `frontend/src/components/portfolios/FSMOrdersPreviewTable.tsx`, `frontend/src/components/portfolios/RebalancePanel.tsx`, `frontend/src/components/portfolios/PortfolioDetailView.tsx` — Enrutamiento hash extendido con pestañas `#portfolios?id=<uuid>&tab=<tab>`, contratos DTO enriquecidos `RebalanceOrder`, `ToleranceBandItem` y `RebalanceSimulationResult`, método `simulateRebalance` conectado al motor Tolerance-Band de FastAPI `/portfolios/{id}/rebalance`, visualizador de bandas horizontales con detección semafórica de excesos y déficits, tabla institucional de órdenes FSM con justificaciones cuantitativas y mensajes de equilibrio, panel de control de rebalanceo con selectores de divisa y $\tau$ (2%, 5%, 10%), buffer de liquidez, guardianes de posiciones y control de acceso RBAC; build verificado con 0 errores y **666 tests de backend intactos**)
   - [x] Fase 3: Auditoría de Cumplimiento, Historial de Snapshots, Inspección Forense de Riesgo y Cierre del Módulo 9.2 (`backend/app/api/v1/endpoints/risk.py`, `frontend/src/lib/navigation.ts`, `frontend/src/lib/queryKeys.ts`, `frontend/src/lib/formatters.ts`, `frontend/src/types/api.ts`, `frontend/src/services/portfolioService.ts`, `frontend/src/components/portfolios/SnapshotDetailModal.tsx`, `frontend/src/components/portfolios/SnapshotHistoryTable.tsx`, `frontend/src/components/portfolios/AuditCompliancePanel.tsx`, `frontend/src/components/portfolios/PortfolioDetailView.tsx` — Endpoint GET `/api/v1/portfolios/{id}/snapshots` con aislamiento multitenant, extensión de contratos DTO `RiskAuditSnapshot`, normalización defensiva de payload JSON `normalizeSnapshotPayload`, claves de consulta reactivas `snapshotKeys`, panel de cumplimiento normativo `AuditCompliancePanel` con resumen ejecutivo, disparador interactivo de snapshots con RBAC `TRADER`/`ADMIN`, tabla cronológica de auditoría `SnapshotHistoryTable` con badges semafóricos de estado (`COMPLIANCE_OK` / `BREACH_DETECTED`) y conteo de alertas críticas, modal accesible `SnapshotDetailModal` con visor JSON inspeccionable y botón de copiado con confirmación visual, y pestaña dedicada en `PortfolioDetailView` sincronizada vía hash `#portfolios?id=<uuid>&tab=audit`; build verificado con 0 errores y **666 tests de backend intactos**)
 - [ ] **Módulo 9.3: Centro de Carga de Extractos, Monitoreo de Riesgo y Gestión de Carteras**
-  - [ ] Fase 1: Dropzone Interactivo de Carga de Extractos (CSV/Excel)
-  - [ ] Fase 2: Matriz Semafórica de Cumplimiento de Reglas de Riesgo
+  - [x] Fase 1: Dropzone Interactivo de Carga de Extractos (CSV/Excel), Ingesta Multipart y Previsualización de Datos Normalizados (`frontend/src/lib/navigation.ts`, `frontend/src/types/api.ts`, `frontend/src/services/ingestionService.ts`, `frontend/src/components/ingestion/ExtractDropzone.tsx`, `frontend/src/components/ingestion/UploadProgressBar.tsx`, `frontend/src/components/ingestion/IngestionSummaryCard.tsx`, `frontend/src/components/ingestion/IngestionView.tsx`, `frontend/src/components/layout/Sidebar.tsx`, `frontend/src/components/layout/TopHeader.tsx`, `frontend/src/App.tsx` — Enrutamiento `#ingestion`, contratos `BrokerReportUploadResponse`, servicio multipart con streaming de progreso `uploadBrokerReport` hacia `/api/v1/ingestion/upload-report`, dropzone interactivo con validación dual (.csv, .xlsx, .xls y 15 MB) y blindaje anti-parpadeo, barra fluida con cancelación por `AbortController`, tarjeta de reporte con badge de broker (Balanz, IOL, PPI, etc.) y desglose de conciliación, selector de cartera con `usePortfolios`, guardia de seguridad RBAC para `TRADER`/`ADMIN` con candado en `VIEWER`, e invalidación paralela de cachés en TanStack Query v5; build verificado con 0 errores y **666 tests de backend intactos**)
+  - [ ] Fase 2: Monitor de Cotizaciones BYMA en Tiempo Real y Gráficos Financieros
   - [ ] Fase 3: Panel de Órdenes y Rebalanceo Asistido con Cómputo Previo de Comisiones
 
 ---
 
 ## Siguiente Paso Inmediato
 
-> **Foco Actual:** **CAPÍTULO 9 — Módulo 9.3 (Fase 1): Dropzone Interactivo de Carga de Extractos (CSV/Excel) e Ingesta de Reportes**  
-> **Prioridad:** Alta (Inicio del Módulo 9.3 tras certificar el cierre integral del Módulo 9.2 con 3 / 3 fases completadas)  
-> **Objetivo:** Implementar el componente de carga de extractos de brokers locales (Balanz, IOL, PPI, Bull Market, Caja de Valores), dropzone accesible con drag-and-drop, validación de formatos multipart, progreso de carga e integración con `/api/v1/ingestion/upload-report`.
+> **Foco Actual:** **CAPÍTULO 9 — Módulo 9.3 (Fase 2): Monitor de Cotizaciones BYMA en Tiempo Real y Gráficos Financieros**  
+> **Prioridad:** Alta (Continuación del Módulo 9.3 tras certificar la ingesta de extractos de brokers locales en Fase 1)  
+> **Objetivo:** Implementar la visualización de cotizaciones de mercado en tiempo real, streaming o polling de precios BYMA, variaciones diarias, selector de especies y gráficos financieros interactivos (velas OHLCV / líneas de tendencia).
 
 ### Hoja de Ruta Inmediata para el Capítulo 9:
 1. **Módulo 9.1**: Arquitectura Base, Autenticación Reactiva y Dashboard de Portafolios — COMPLETADO [x] (3 / 3 fases).
 2. **Módulo 9.2**: Visualización Financiera Avanzada y Detalle de Activos — COMPLETADO [x] (3 / 3 fases).
-3. **Módulo 9.3 (Fase 1)**: Dropzone Interactivo de Carga de Extractos (CSV/Excel) e Ingesta de Reportes.
-4. **Módulo 9.3 (Fase 2)**: Matriz Semafórica de Cumplimiento de Reglas de Riesgo.
+3. **Módulo 9.3 (Fase 1)**: Dropzone Interactivo de Carga de Extractos (CSV/Excel) e Ingesta de Reportes — COMPLETADO [x].
+4. **Módulo 9.3 (Fase 2)**: Monitor de Cotizaciones BYMA en Tiempo Real y Gráficos Financieros.
 5. **Módulo 9.3 (Fase 3)**: Panel de Órdenes y Rebalanceo Asistido con Cómputo Previo de Comisiones.
 
 

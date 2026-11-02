@@ -20,6 +20,7 @@ import {
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PortfoliosView } from "@/components/portfolios/PortfoliosView";
 import { PortfolioDetailView } from "@/components/portfolios/PortfolioDetailView";
+import { IngestionView } from "@/components/ingestion/IngestionView";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { authStorage } from "@/lib/authStorage";
 import { useHashRoute } from "@/lib/navigation";
@@ -378,6 +379,9 @@ export const App: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* SECTION 4: Broker Statement Ingestion */}
+      {activeSection === "ingestion" && <IngestionView />}
 
       {/* Global Auth Modal for Session Initiation / Registration */}
       <AuthModal

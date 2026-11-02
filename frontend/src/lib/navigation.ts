@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 
-export type NavSection = "portfolios" | "health" | "metrics";
+export type NavSection = "portfolios" | "health" | "metrics" | "ingestion";
 export type DetailTab = "holdings" | "rebalance" | "audit";
 
 export interface HashRoute {
@@ -35,6 +35,8 @@ export function parseHashRoute(): HashRoute {
     section = "health";
   } else if (sectionLower === "metrics") {
     section = "metrics";
+  } else if (sectionLower === "ingestion") {
+    section = "ingestion";
   }
 
   let portfolioId: string | null = null;
@@ -99,6 +101,15 @@ export function navigateToSection(section: NavSection): void {
 }
 
 /**
+ * Navigates directly to the broker report ingestion section.
+ */
+export function navigateToIngestion(): void {
+  if (typeof window !== "undefined") {
+    window.location.hash = "#ingestion";
+  }
+}
+
+/**
  * React hook to observe and navigate URL-first hash routes with strict lifecycle cleanup.
  */
 export function useHashRoute(): HashRoute & {
@@ -106,6 +117,7 @@ export function useHashRoute(): HashRoute & {
   navigateToPortfolioTab: (id: string, tab: DetailTab) => void;
   navigateToPortfoliosList: () => void;
   navigateToSection: (section: NavSection) => void;
+  navigateToIngestion: () => void;
 } {
   const [route, setRoute] = useState<HashRoute>(parseHashRoute);
 
@@ -124,5 +136,6 @@ export function useHashRoute(): HashRoute & {
     navigateToPortfolioTab,
     navigateToPortfoliosList,
     navigateToSection,
+    navigateToIngestion,
   };
 }

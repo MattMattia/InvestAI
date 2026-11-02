@@ -10,6 +10,7 @@ import {
   Briefcase,
   ShieldCheck,
   TrendingUp,
+  UploadCloud,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { NavSection } from "@/lib/navigation";
@@ -35,6 +36,13 @@ const NAV_ITEMS: NavItem[] = [
     label: "Portafolios",
     icon: Briefcase,
     description: "Gestión de carteras y activos",
+  },
+  {
+    id: "ingestion",
+    label: "Ingesta de Extractos",
+    icon: UploadCloud,
+    badge: "CSV / Excel",
+    description: "Carga y conciliación de ALyCs",
   },
   {
     id: "health",
