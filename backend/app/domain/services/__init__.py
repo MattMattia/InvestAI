@@ -131,6 +131,16 @@ from app.domain.services.tolerance_band_rebalancer import (
     ToleranceBandRebalancerConfig,
     ToleranceBandRebalancerService,
 )
+from app.domain.services.market_scheduler import (
+    BYMACalendarService,
+    MarketCloseJobConfig,
+    MarketCloseJobReport,
+    MarketCloseJobStatus,
+    MarketCloseSchedulerService,
+    MarketCloseTriggerType,
+    PortfolioCloseInput,
+    PortfolioCloseProcessResult,
+)
 
 __all__ = [
     "BacktestEngine",
@@ -243,4 +253,12 @@ __all__ = [
     "RebalanceFSMOrderTicket",
     "RebalanceFSMExecutionBatch",
     "ToleranceBandRebalancerService",
+    "MarketCloseJobStatus",
+    "MarketCloseTriggerType",
+    "PortfolioCloseInput",
+    "MarketCloseJobConfig",
+    "PortfolioCloseProcessResult",
+    "MarketCloseJobReport",
+    "BYMACalendarService",
+    "MarketCloseSchedulerService",
 ]
