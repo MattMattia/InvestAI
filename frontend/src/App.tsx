@@ -21,6 +21,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { PortfoliosView } from "@/components/portfolios/PortfoliosView";
 import { PortfolioDetailView } from "@/components/portfolios/PortfolioDetailView";
 import { IngestionView } from "@/components/ingestion/IngestionView";
+import { MarketDataView } from "@/components/market/MarketDataView";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { authStorage } from "@/lib/authStorage";
 import { useHashRoute } from "@/lib/navigation";
@@ -382,6 +383,9 @@ export const App: React.FC = () => {
 
       {/* SECTION 4: Broker Statement Ingestion */}
       {activeSection === "ingestion" && <IngestionView />}
+
+      {/* SECTION 5: Real-Time Market Monitor */}
+      {activeSection === "market" && <MarketDataView />}
 
       {/* Global Auth Modal for Session Initiation / Registration */}
       <AuthModal

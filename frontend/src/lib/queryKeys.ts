@@ -28,3 +28,13 @@ export const authKeys = {
   all: ["auth"] as const,
   me: () => [...authKeys.all, "me"] as const,
 };
+
+export const marketKeys = {
+  all: ["market"] as const,
+  quotes: (category?: string) =>
+    [...marketKeys.all, "quotes", category || "ALL"] as const,
+  quote: (ticker: string) => [...marketKeys.all, "quote", ticker] as const,
+  status: () => [...marketKeys.all, "status"] as const,
+  history: (ticker: string, timeframe?: string) =>
+    [...marketKeys.all, "history", ticker, timeframe || "1D"] as const,
+};

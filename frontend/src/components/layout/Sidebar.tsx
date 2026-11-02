@@ -8,6 +8,7 @@ import {
   Activity,
   BarChart3,
   Briefcase,
+  LineChart,
   ShieldCheck,
   TrendingUp,
   UploadCloud,
@@ -36,6 +37,13 @@ const NAV_ITEMS: NavItem[] = [
     label: "Portafolios",
     icon: Briefcase,
     description: "Gestión de carteras y activos",
+  },
+  {
+    id: "market",
+    label: "Mercado en Vivo",
+    icon: LineChart,
+    badge: "BYMA",
+    description: "Cotizaciones en tiempo real",
   },
   {
     id: "ingestion",

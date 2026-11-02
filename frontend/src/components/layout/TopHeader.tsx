@@ -71,6 +71,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
       title: "Ingesta de Extractos Bursátiles",
       subtitle: "Carga de extractos CSV/Excel de brokers locales y conciliación transaccional",
     },
+    market: {
+      title: "Monitor de Mercado BYMA",
+      subtitle: "Cotizaciones en tiempo real, especies y gráficos intradiarios",
+    },
   };
 
   return (

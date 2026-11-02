@@ -252,3 +252,39 @@ export interface BrokerReportUploadResponse {
   warnings?: string[];
 }
 
+// Market Data & Real-Time BYMA Contracts
+export interface MarketQuote {
+  ticker: string;
+  name: string;
+  asset_type: "STOCK" | "CEDEAR" | "BOND" | "OTHER";
+  currency: "ARS" | "USD";
+  last_price: number;
+  open_price?: number;
+  high_price?: number;
+  low_price?: number;
+  previous_close?: number;
+  change_pct: number;
+  change_nominal: number;
+  volume_shares?: number;
+  volume_amount?: number;
+  updated_at: string;
+}
+
+export interface MarketStatusInfo {
+  is_open: boolean;
+  market_name: string;
+  timezone: string;
+  current_time: string;
+  next_change: string;
+  message: string;
+}
+
+export interface HistoricalBar {
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+

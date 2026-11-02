@@ -5,13 +5,14 @@
 
 import { useEffect, useState } from "react";
 
-export type NavSection = "portfolios" | "health" | "metrics" | "ingestion";
+export type NavSection = "portfolios" | "health" | "metrics" | "ingestion" | "market";
 export type DetailTab = "holdings" | "rebalance" | "audit";
 
 export interface HashRoute {
   section: NavSection;
   portfolioId: string | null;
   tab: DetailTab;
+  ticker?: string | null;
 }
 
 /**
@@ -19,12 +20,12 @@ export interface HashRoute {
  */
 export function parseHashRoute(): HashRoute {
   if (typeof window === "undefined") {
-    return { section: "portfolios", portfolioId: null, tab: "holdings" };
+    return { section: "portfolios", portfolioId: null, tab: "holdings", ticker: null };
   }
 
   const rawHash = window.location.hash.replace(/^#/, "").trim();
   if (!rawHash) {
-    return { section: "portfolios", portfolioId: null, tab: "holdings" };
+    return { section: "portfolios", portfolioId: null, tab: "holdings", ticker: null };
   }
 
   const [path, queryString] = rawHash.split("?");
@@ -37,10 +38,13 @@ export function parseHashRoute(): HashRoute {
     section = "metrics";
   } else if (sectionLower === "ingestion") {
     section = "ingestion";
+  } else if (sectionLower === "market") {
+    section = "market";
   }
 
   let portfolioId: string | null = null;
   let tab: DetailTab = "holdings";
+  let ticker: string | null = null;
 
   if (queryString) {
     const params = new URLSearchParams(queryString);
@@ -54,9 +58,13 @@ export function parseHashRoute(): HashRoute {
     } else if (rawTab === "audit") {
       tab = "audit";
     }
+    const rawTicker = params.get("ticker");
+    if (rawTicker && rawTicker.trim()) {
+      ticker = rawTicker.trim().toUpperCase();
+    }
   }
 
-  return { section, portfolioId, tab };
+  return { section, portfolioId, tab, ticker };
 }
 
 /**
@@ -110,6 +118,16 @@ export function navigateToIngestion(): void {
 }
 
 /**
+ * Navigates directly to the live market monitor section with an optional ticker selection.
+ */
+export function navigateToMarket(ticker?: string): void {
+  if (typeof window !== "undefined") {
+    const suffix = ticker ? `?ticker=${encodeURIComponent(ticker.toUpperCase())}` : "";
+    window.location.hash = `#market${suffix}`;
+  }
+}
+
+/**
  * React hook to observe and navigate URL-first hash routes with strict lifecycle cleanup.
  */
 export function useHashRoute(): HashRoute & {
@@ -118,6 +136,7 @@ export function useHashRoute(): HashRoute & {
   navigateToPortfoliosList: () => void;
   navigateToSection: (section: NavSection) => void;
   navigateToIngestion: () => void;
+  navigateToMarket: (ticker?: string) => void;
 } {
   const [route, setRoute] = useState<HashRoute>(parseHashRoute);
 
@@ -137,5 +156,6 @@ export function useHashRoute(): HashRoute & {
     navigateToPortfoliosList,
     navigateToSection,
     navigateToIngestion,
+    navigateToMarket,
   };
 }
