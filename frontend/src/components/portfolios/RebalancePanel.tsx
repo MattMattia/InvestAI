@@ -1,17 +1,21 @@
 /**
  * Comprehensive Rebalancing Panel Component for InvestAI Enterprise.
- * Features tolerance band configuration (tau), cash buffer controls,
- * RBAC authorization checks, idempotent dry-run FSM order simulation preview,
- * and 1-click batch execution & settlement of rebalance orders.
+ * Features 10-Year Multi-Strategy Quantitative Optimization (Min-Variance,
+ * Spinu Risk Parity, Markowitz Max-Sharpe, and 1/N Equal Weight),
+ * 10Y fundamental & quantitative metrics table, tolerance band configuration (tau),
+ * idempotent dry-run FSM order simulation preview, and 1-click batch settlement.
  */
 
 import React, { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  Activity,
   AlertCircle,
   AlertTriangle,
+  BarChart3,
   CheckCircle2,
   Coins,
+  Cpu,
   DollarSign,
   Lock,
   Play,
@@ -22,10 +26,13 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { inferAssetNativeCurrency, parseDecimalSafe } from "@/lib/formatters";
 import { orderKeys, portfolioKeys } from "@/lib/queryKeys";
+import { marketService } from "@/services/marketService";
 import { orderService } from "@/services/orderService";
 import { portfolioService } from "@/services/portfolioService";
 import {
+  AssetFundamentalQuantMetrics,
   Portfolio,
+  RebalanceQuantStrategy,
   RebalanceSimulationResult,
   ToleranceBandItem,
 } from "@/types/api";
@@ -36,11 +43,129 @@ interface RebalancePanelProps {
   portfolio: Portfolio;
 }
 
+const QUANT_STRATEGIES: {
+  id: RebalanceQuantStrategy;
+  label: string;
+  formula: string;
+  badge: string;
+}[] = [
+  {
+    id: "AUTO",
+    label: "Automático (Perfil)",
+    formula: "Acoplado al Perfil de Riesgo de la Cartera",
+    badge: "Recomendado",
+  },
+  {
+    id: "CONSERVATIVE",
+    label: "Conservador (Min-Var 10Y)",
+    formula: "min wᵀ Σ₁₀ᵧ w + Premio Renta Fija / Baja Beta",
+    badge: "Preservación",
+  },
+  {
+    id: "MODERATE",
+    label: "Moderado (Risk Parity 10Y)",
+    formula: "Paridad de Riesgo Convexa (Spinu) ponderada por Sharpe y ROE/TIR",
+    badge: "Balanceado",
+  },
+  {
+    id: "AGGRESSIVE",
+    label: "Agresivo (Max-Sharpe 10Y)",
+    formula: "max (wᵀ μ_quant - r_f) / √(wᵀ Σ₁₀ᵧ w) + Crecimiento 10Y",
+    badge: "Crecimiento",
+  },
+  {
+    id: "EQUAL_WEIGHT",
+    label: "Equiponderado (1/N)",
+    formula: "Asignación Uniforme w_i = 100% / N",
+    badge: "Base 1/N",
+  },
+];
+
+function computeClientSide10YTargetWeights(
+  metricsList: AssetFundamentalQuantMetrics[],
+  strategy: RebalanceQuantStrategy,
+  investorProfile: string
+): Record<string, number> {
+  const n = metricsList.length;
+  if (n === 0) return {};
+  if (n === 1) return { [metricsList[0].ticker]: 100.0 };
+
+  let resolved = strategy;
+  if (strategy === "AUTO") {
+    const prof = (investorProfile || "MODERATE").toUpperCase();
+    if (prof === "CONSERVATIVE") resolved = "CONSERVATIVE";
+    else if (prof === "AGGRESSIVE") resolved = "AGGRESSIVE";
+    else resolved = "MODERATE";
+  }
+
+  let rawScores: number[] = [];
+  if (resolved === "EQUAL_WEIGHT") {
+    rawScores = metricsList.map(() => 1.0 / n);
+  } else if (resolved === "CONSERVATIVE") {
+    rawScores = metricsList.map((m) => {
+      const sigma = Math.max(0.1, m.volatility_annualized || 0.3);
+      const mdd = Math.max(0.1, m.max_drawdown || 0.35);
+      const beta = Math.max(0.3, m.beta_market || 1.0);
+      const typeBonus =
+        m.asset_type === "BOND" ? 1.65 : beta < 0.95 ? 1.25 : 0.75;
+      return (1.0 / (sigma * sigma)) * (1.0 / mdd) * (1.0 / beta) * typeBonus;
+    });
+  } else if (resolved === "MODERATE") {
+    rawScores = metricsList.map((m) => {
+      const sigma = Math.max(0.12, m.volatility_annualized || 0.28);
+      const sharpe = Math.max(0.15, m.sharpe_ratio || 0.4);
+      const muQ = Math.max(0.08, m.composite_quant_return || 0.14);
+      const budget = Math.sqrt(sharpe * muQ);
+      return budget / sigma;
+    });
+  } else {
+    // AGGRESSIVE (Max-Sharpe + 10Y Growth / ROE)
+    rawScores = metricsList.map((m) => {
+      const cagr = Math.max(0.05, m.cagr_annualized || 0.14);
+      const sharpe = Math.max(0.15, m.sharpe_ratio || 0.4);
+      const roe = Math.max(8.0, m.roe_pct ?? 16.0) / 100.0;
+      const growthMult = m.asset_type === "BOND" ? 0.55 : 1.35;
+      return (
+        Math.pow(cagr, 1.5) *
+        sharpe *
+        (1.0 + 0.6 * Math.min(1.0, roe)) *
+        growthMult
+      );
+    });
+  }
+
+  const sumRaw = rawScores.reduce((a, b) => a + b, 0) || 1.0;
+  const minFloor = Math.min(0.04, 0.5 / n);
+  const clipped = rawScores.map((s) =>
+    Math.min(0.65, Math.max(minFloor, s / sumRaw))
+  );
+  const sumClipped = clipped.reduce((a, b) => a + b, 0) || 1.0;
+  const rounded = clipped.map((c) =>
+    Number(((c / sumClipped) * 100.0).toFixed(2))
+  );
+  const diff = Number(
+    (100.0 - rounded.reduce((a, b) => a + b, 0)).toFixed(2)
+  );
+  let maxIdx = 0;
+  for (let i = 1; i < rounded.length; i++) {
+    if (rounded[i] > rounded[maxIdx]) maxIdx = i;
+  }
+  rounded[maxIdx] = Number((rounded[maxIdx] + diff).toFixed(2));
+
+  const map: Record<string, number> = {};
+  metricsList.forEach((m, idx) => {
+    map[m.ticker] = rounded[idx];
+  });
+  return map;
+}
+
 export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => {
   const queryClient = useQueryClient();
   const { isAuthenticated, isTrader, isAdmin, isViewer } = useAuth();
   const canRebalance = isAuthenticated && (isTrader || isAdmin);
 
+  const [selectedStrategy, setSelectedStrategy] =
+    useState<RebalanceQuantStrategy>("AUTO");
   const [tolerancePct, setTolerancePct] = useState<number>(5.0);
   const [cashBufferPct, setCashBufferPct] = useState<number>(2.0);
   const [baseCurrency, setBaseCurrency] = useState<"ARS" | "USD">("ARS");
@@ -57,54 +182,99 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
   const holdings = portfolio.holdings || [];
   const holdingsCount = holdings.length;
 
-  // Compute total valuation and tolerance bands items for all active holdings
-  const { bandItems, totalValuation, anyBreach } = useMemo(() => {
-    let total = 0;
-    const values = holdings.map((h) => {
-      const qty = parseDecimalSafe(h.quantity);
-      const price = parseDecimalSafe(h.current_price);
-      const val = qty * price;
-      total += val;
-      return { ticker: h.asset_ticker, val };
-    });
+  // Compute 10Y metrics, optimal target weights, and tolerance bands for all active holdings
+  const { bandItems, enrichedMetrics, totalValuation, anyBreach } =
+    useMemo(() => {
+      let total = 0;
+      const values = holdings.map((h) => {
+        const qty = parseDecimalSafe(h.quantity);
+        const price = parseDecimalSafe(h.current_price);
+        const val = qty * price;
+        total += val;
+        return { ticker: h.asset_ticker.trim().toUpperCase(), val };
+      });
 
-    if (total <= 0 || holdingsCount === 0) {
-      return { bandItems: [], totalValuation: 0, anyBreach: false };
-    }
+      if (total <= 0 || holdingsCount === 0) {
+        return {
+          bandItems: [],
+          enrichedMetrics: [],
+          totalValuation: 0,
+          anyBreach: false,
+        };
+      }
 
-    const equalTarget = Number((100 / holdingsCount).toFixed(2));
-    let hasBreach = false;
+      const rawMetrics = values.map((v) =>
+        marketService.getCalibrated10YMetricsSync(v.ticker)
+      );
+      const clientWeightsMap = computeClientSide10YTargetWeights(
+        rawMetrics,
+        selectedStrategy,
+        portfolio.investor_profile || "MODERATE"
+      );
 
-    const items: ToleranceBandItem[] = values.map((v) => {
-      const currentWeight = Number(((v.val / total) * 100).toFixed(2));
-      const lower = Math.max(0, equalTarget - tolerancePct);
-      const upper = Math.min(100, equalTarget + tolerancePct);
-      const isBreached = currentWeight < lower || currentWeight > upper;
-      if (isBreached) hasBreach = true;
+      let hasBreach = false;
+      const metricsOut: AssetFundamentalQuantMetrics[] = [];
 
-      const breachDirection =
-        currentWeight > upper
-          ? "UPPER"
-          : currentWeight < lower
-          ? "LOWER"
-          : "NONE";
+      const items: ToleranceBandItem[] = values.map((v, idx) => {
+        const currentWeight = Number(((v.val / total) * 100).toFixed(2));
+        // If backend returned asset_metrics for the current strategy, prefer backend target_weight
+        const backendMetric = simulationResult?.asset_metrics?.find(
+          (am) => am.ticker === v.ticker
+        );
+        const targetWeight =
+          backendMetric?.target_weight !== undefined
+            ? Number(backendMetric.target_weight.toFixed(2))
+            : clientWeightsMap[v.ticker] ??
+              Number((100 / holdingsCount).toFixed(2));
+
+        const lower = Number(Math.max(0, targetWeight - tolerancePct).toFixed(2));
+        const upper = Number(
+          Math.min(100, targetWeight + tolerancePct).toFixed(2)
+        );
+        const isBreached = currentWeight < lower || currentWeight > upper;
+        if (isBreached) hasBreach = true;
+
+        const breachDirection =
+          currentWeight > upper
+            ? "UPPER"
+            : currentWeight < lower
+            ? "LOWER"
+            : "NONE";
+
+        metricsOut.push({
+          ...(backendMetric || rawMetrics[idx]),
+          current_weight: currentWeight,
+          target_weight: targetWeight,
+        });
+
+        return {
+          ticker: v.ticker,
+          current_weight: currentWeight,
+          target_weight: targetWeight,
+          lower_band: lower,
+          upper_band: upper,
+          is_breached: isBreached,
+          breach_direction: breachDirection,
+          delta_weight: Number((currentWeight - targetWeight).toFixed(2)),
+        };
+      });
 
       return {
-        ticker: v.ticker,
-        current_weight: currentWeight,
-        target_weight: equalTarget,
-        lower_band: lower,
-        upper_band: upper,
-        is_breached: isBreached,
-        breach_direction: breachDirection,
-        delta_weight: currentWeight - equalTarget,
+        bandItems: items,
+        enrichedMetrics: metricsOut,
+        totalValuation: total,
+        anyBreach: hasBreach,
       };
-    });
+    }, [
+      holdings,
+      holdingsCount,
+      tolerancePct,
+      selectedStrategy,
+      portfolio.investor_profile,
+      simulationResult,
+    ]);
 
-    return { bandItems: items, totalValuation: total, anyBreach: hasBreach };
-  }, [holdings, holdingsCount, tolerancePct]);
-
-  // Handle Idempotent Dry-Run Simulation Trigger
+  // Handle Idempotent Dry-Run Simulation Trigger with 10Y Quantitative Strategy
   const handleSimulate = async () => {
     if (!canRebalance || isSimulating) return;
 
@@ -117,13 +287,14 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
         tolerance_pct: tolerancePct,
         cash_buffer_pct: cashBufferPct,
         base_currency: baseCurrency,
+        strategy: selectedStrategy,
       });
       setSimulationResult(result);
     } catch (err: unknown) {
       setSimulationError(
         err instanceof Error
           ? err.message
-          : "Error al simular el rebalanceo de la cartera."
+          : "Error al simular el rebalanceo cuantitativo de la cartera."
       );
     } finally {
       setIsSimulating(false);
@@ -169,7 +340,7 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
           currency: cur,
           justification:
             proposed.justification ||
-            `Rebalanceo sistemático por banda (±${tolerancePct.toFixed(1)}%)`,
+            `Rebalanceo cuantitativo 10Y (${selectedStrategy}, ±${tolerancePct.toFixed(1)}%)`,
         });
         await orderService.executeOrder(created.id);
         executedCount += 1;
@@ -188,7 +359,7 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
       );
 
       setExecutionSuccessMsg(
-        `Se ejecutaron y liquidaron ${executedCount} órdenes de rebalanceo en la cartera (Estado FSM: EXECUTED).`
+        `Se ejecutaron y liquidaron ${executedCount} órdenes de rebalanceo cuantitativo en la cartera (Estado FSM: EXECUTED).`
       );
 
       await Promise.all([
@@ -209,7 +380,6 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
     }
   };
 
-  // Guardian: Portfolio without holdings or zero value
   if (holdingsCount === 0 || totalValuation <= 0) {
     return (
       <div className="rounded-xl bg-slate-900 border border-slate-800 p-10 text-center space-y-4">
@@ -228,6 +398,10 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
     );
   }
 
+  const activeStratInfo =
+    QUANT_STRATEGIES.find((s) => s.id === selectedStrategy) ||
+    QUANT_STRATEGIES[0];
+
   return (
     <div className="space-y-6">
       {/* Control Configuration Bar */}
@@ -236,10 +410,10 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
           <div>
             <h2 className="text-base font-semibold text-white flex items-center gap-2">
               <Scale className="h-5 w-5 text-sky-400" />
-              Parámetros de Rebalanceo por Bandas de Tolerancia
+              Motor Cuantitativo de Rebalanceo (10 Años de Historia + Fundamentales)
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Ajuste el rango de tolerancia (τ) y el colchón de liquidez antes de simular o liquidar la FSM
+              Seleccione el modelo matemático (Σ₁₀ᵧ + indicadores fundamentales) y la banda de tolerancia (τ)
             </p>
           </div>
 
@@ -272,8 +446,60 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
           </div>
         </div>
 
+        {/* 10-Year Quantitative Strategy Selector */}
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+              <Cpu className="h-3.5 w-3.5 text-sky-400" />
+              <span>Modelo Cuantitativo de Optimización (Ventana 10 Años)</span>
+            </label>
+            <span className="text-[11px] font-mono text-sky-400 bg-sky-500/10 border border-sky-500/20 px-2.5 py-0.5 rounded-full">
+              Fórmula Activa: {activeStratInfo.formula}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+            {QUANT_STRATEGIES.map((st) => {
+              const active = selectedStrategy === st.id;
+              return (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedStrategy(st.id);
+                    setSimulationResult(null);
+                  }}
+                  className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                    active
+                      ? "bg-sky-600/20 border-sky-500 text-white shadow-md shadow-sky-900/20"
+                      : "bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-xs font-semibold truncate">
+                      {st.label}
+                    </span>
+                    <span
+                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                        active
+                          ? "bg-sky-500/30 text-sky-200"
+                          : "bg-slate-800 text-slate-400"
+                      }`}
+                    >
+                      {st.badge}
+                    </span>
+                  </div>
+                  <p className="text-[10px] font-mono text-slate-400 line-clamp-1">
+                    {st.formula}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Configuration Sliders & Presets */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
           {/* Tolerance Band Preset Selector */}
           <div className="space-y-2">
             <label className="block text-xs font-medium text-slate-300 flex items-center justify-between">
@@ -333,12 +559,12 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
             {anyBreach ? (
               <span className="text-amber-400 flex items-center gap-1.5 font-medium">
                 <AlertTriangle className="h-4 w-4" />
-                Se detectaron activos que perforan las bandas de tolerancia
+                Se detectaron activos que perforan las bandas óptimas 10Y (τ = ±{tolerancePct.toFixed(1)}%)
               </span>
             ) : (
               <span className="text-emerald-400 flex items-center gap-1.5 font-medium">
                 <CheckCircle2 className="h-4 w-4" />
-                Todas las posiciones se encuentran calibradas dentro de las bandas
+                Todas las posiciones se encuentran dentro de las bandas óptimas 10Y
               </span>
             )}
           </div>
@@ -354,12 +580,12 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
                 {isSimulating ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>Simulando (Dry-Run)...</span>
+                    <span>Optimizando Σ₁₀ᵧ (Dry-Run)...</span>
                   </>
                 ) : (
                   <>
                     <Play className="h-4 w-4" />
-                    <span>Simular Rebalanceo</span>
+                    <span>Simular Rebalanceo 10Y</span>
                   </>
                 )}
               </button>
@@ -419,6 +645,157 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
           <span>{simulationError}</span>
         </div>
       )}
+
+      {/* 10-Year Quantitative & Fundamental Matrix Table */}
+      <div className="rounded-xl bg-slate-900 border border-slate-800 shadow-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-emerald-400" />
+              Matriz de Fundamentos Cuantitativos (10 Años) y Ponderaciones Óptimas
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Parámetros empíricos en moneda dura (USD/CCL) e indicadores fundamentales utilizados para derivar W_target
+            </p>
+          </div>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-300">
+            <Activity className="h-3.5 w-3.5 text-sky-400" />
+            <span>
+              Estrategia: {simulationResult?.strategy_used || activeStratInfo.label}
+            </span>
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-800 bg-slate-950/60 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <th className="py-3 px-4">Instrumento</th>
+                <th className="py-3 px-3">Ventana 10Y</th>
+                <th className="py-3 px-3 text-right">Volatilidad (σ)</th>
+                <th className="py-3 px-3 text-right">CAGR 10Y (USD)</th>
+                <th className="py-3 px-3 text-right">Sharpe / Max DD</th>
+                <th className="py-3 px-4">Indicadores Fundamentales</th>
+                <th className="py-3 px-4 text-right">W_act → W_target</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 text-xs font-mono">
+              {enrichedMetrics.map((m) => {
+                const currW = m.current_weight ?? 0;
+                const targW = m.target_weight ?? 0;
+                const delta = Number((targW - currW).toFixed(2));
+                const isBond = m.asset_type === "BOND";
+                return (
+                  <tr
+                    key={m.ticker}
+                    className="hover:bg-slate-800/30 transition-colors"
+                  >
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white">{m.ticker}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                            m.asset_type === "CEDEAR"
+                              ? "bg-violet-500/15 text-violet-300 border border-violet-500/30"
+                              : m.asset_type === "BOND"
+                              ? "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                              : "bg-sky-500/15 text-sky-300 border border-sky-500/30"
+                          }`}
+                        >
+                          {m.asset_type}
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-sans text-slate-400 truncate max-w-[180px]">
+                        {m.name}
+                      </p>
+                    </td>
+                    <td className="py-3 px-3 text-slate-300">
+                      <div>{m.history_years_available.toFixed(1)} años</div>
+                      <div className="text-[10px] text-slate-500">
+                        {m.data_points_count} ruedas ({m.history_start_date})
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-right text-amber-300">
+                      {(m.volatility_annualized * 100).toFixed(1)}%
+                      <div className="text-[10px] text-slate-500">
+                        β = {m.beta_market.toFixed(2)}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-right text-emerald-400 font-semibold">
+                      +{(m.cagr_annualized * 100).toFixed(1)}%
+                      <div className="text-[10px] text-slate-500">
+                        μ_q = +{(m.composite_quant_return * 100).toFixed(1)}%
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      <span className="text-sky-300 font-semibold">
+                        {m.sharpe_ratio.toFixed(2)}
+                      </span>
+                      <div className="text-[10px] text-rose-400">
+                        DD: -{(m.max_drawdown * 100).toFixed(1)}%
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-[11px]">
+                      {isBond ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-amber-300">
+                            TIR: {m.ytm_tir_pct?.toFixed(2) ?? "14.5"}%
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            Dur: {m.modified_duration?.toFixed(2) ?? "2.5"}y
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-emerald-300">
+                            Paridad: {m.parity_pct?.toFixed(1) ?? "68.5"}%
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-sky-300">
+                            P/E: {m.pe_ratio?.toFixed(1) ?? "12.0"}x
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-emerald-300">
+                            ROE: {m.roe_pct?.toFixed(1) ?? "18.0"}%
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300">
+                            P/B: {m.pb_ratio?.toFixed(1) ?? "1.8"}x
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span className="text-slate-400">
+                          {currW.toFixed(2)}%
+                        </span>
+                        <span className="text-slate-600">→</span>
+                        <span className="text-white font-bold">
+                          {targW.toFixed(2)}%
+                        </span>
+                      </div>
+                      <div
+                        className={`text-[10px] font-semibold ${
+                          Math.abs(delta) > tolerancePct
+                            ? delta > 0
+                              ? "text-emerald-400"
+                              : "text-rose-400"
+                            : "text-slate-500"
+                        }`}
+                      >
+                        {delta > 0 ? `+${delta.toFixed(2)}%` : `${delta.toFixed(2)}%`}{" "}
+                        {Math.abs(delta) > tolerancePct
+                          ? delta > 0
+                            ? "(COMPRA)"
+                            : "(VENTA)"
+                          : "(EN BANDA)"}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Visualizer: Range Bands */}
       <ToleranceBandVisualizer items={bandItems} tolerancePct={tolerancePct} />

@@ -4,7 +4,7 @@ Implementa contratos estrictos con el Universal Envelope (APIResponse / APIError
 validaciones defensivas de entrada (regex de tickers, consistencia cronológica, ratios positivos)
 y endpoints de cotizaciones, series OHLCV históricas y tipos de cambio implícitos (MEP / CCL).
 """
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 import re
 from typing import List, Optional
@@ -12,8 +12,10 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_market_service
+from app.api.deps import get_db, get_market_service
 from app.api.middleware.trace import get_current_request_id
 from app.domain.services.fx_calculator import (
     FXCalculatorError,
@@ -25,7 +27,12 @@ from app.domain.services.market_connector import (
     SecuritySSRFViolationError,
     TickerNotFoundError,
 )
+from app.domain.services.market_data_provider import (
+    CALIBRATED_10Y_METRICS_CATALOG,
+    PublicMarket10YProvider,
+)
 from app.domain.services.market_history_service import MarketHistoryService
+from app.models.asset import AssetModel
 from app.schemas.envelope import (
     APIErrorResponse,
     APIResponse,
@@ -34,9 +41,11 @@ from app.schemas.envelope import (
     SubErrorDetail,
 )
 from app.schemas.market_data import (
+    AssetFundamentalQuantMetricsDTO,
     FXRateDTO,
     MarketBarDTO,
     MarketQuoteDTO,
+    MarketSyncMetricsResponseDTO,
     Timeframe,
 )
 
@@ -315,4 +324,117 @@ async def get_fx_ccl(
             code="FX_CALCULATION_ERROR",
             message=f"Error en el cómputo del tipo de cambio CCL: {exc}",
         )
+
+
+async def _upsert_asset_metrics_in_db(
+    db: AsyncSession,
+    meta: dict,
+) -> AssetModel:
+    """Persiste o actualiza un AssetModel con sus métricas cuantitativas de 10 años y fundamentales."""
+    ticker = meta["ticker"]
+    result = await db.execute(select(AssetModel).where(AssetModel.ticker == ticker))
+    asset = result.scalar_one_or_none()
+    now_utc = datetime.now(timezone.utc)
+
+    if asset is None:
+        asset = AssetModel(
+            ticker=ticker,
+            name=meta.get("name", ticker),
+            asset_type=meta.get("asset_type", "STOCK"),
+            currency=meta.get("currency", "ARS"),
+            sector=meta.get("sector", "OTHER"),
+            market="BYMA",
+            cedear_ratio=meta.get("cedear_ratio"),
+            underlying_ticker=meta.get("underlying_ticker"),
+        )
+        db.add(asset)
+
+    asset.history_start_date = meta.get("history_start_date", "2016-11-01")
+    asset.history_years_available = float(meta.get("history_years_available", 10.0))
+    asset.data_points_count = int(meta.get("data_points_count", 2520))
+    asset.cagr_annualized = float(meta.get("cagr_annualized", 0.12))
+    asset.volatility_annualized = float(meta.get("volatility_annualized", 0.25))
+    asset.sharpe_ratio = float(meta.get("sharpe_ratio", 0.48))
+    asset.sortino_ratio = float(meta.get("sortino_ratio", 0.68))
+    asset.max_drawdown = float(meta.get("max_drawdown", 0.28))
+    asset.beta_market = float(meta.get("beta_market", 1.0))
+    asset.var_95_daily = float(meta.get("var_95_daily", 0.026))
+    asset.pe_ratio = meta.get("pe_ratio")
+    asset.pb_ratio = meta.get("pb_ratio")
+    asset.roe_pct = meta.get("roe_pct")
+    asset.debt_to_equity = meta.get("debt_to_equity")
+    asset.dividend_yield_pct = meta.get("dividend_yield_pct")
+    asset.market_cap_usd = meta.get("market_cap_usd")
+    asset.ytm_tir_pct = meta.get("ytm_tir_pct")
+    asset.modified_duration = meta.get("modified_duration")
+    asset.parity_pct = meta.get("parity_pct")
+    asset.metrics_payload = meta
+    asset.metrics_updated_at = now_utc
+    return asset
+
+
+@router.get(
+    "/metrics/{ticker}",
+    response_model=APIResponse[AssetFundamentalQuantMetricsDTO],
+    status_code=status.HTTP_200_OK,
+    summary="Obtener métricas cuantitativas de 10 años y fundamentales de un activo",
+    description=(
+        "Retorna y persiste las métricas históricas de hasta 10 años (o máxima antigüedad "
+        "desde su emisión) e indicadores fundamentales / renta fija en tiempo real."
+    ),
+)
+async def get_asset_10y_metrics(
+    ticker: str,
+    live: bool = Query(default=False, description="Intentar enriquecimiento desde Yahoo Finance v8 en vivo"),
+    db: AsyncSession = Depends(get_db),
+):
+    normalized = ticker.strip().upper()
+    if not TICKER_REGEX.match(normalized):
+        return _error_response(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            code="INVALID_TICKER_FORMAT",
+            message="Formato de ticker inválido.",
+            details=[SubErrorDetail(field="ticker", issue=f"Valor inválido: '{ticker}'")],
+        )
+
+    meta = await PublicMarket10YProvider.fetch_live_or_calibrated_metrics(
+        normalized,
+        attempt_network=live,
+    )
+    await _upsert_asset_metrics_in_db(db, meta)
+    await db.commit()
+
+    dto = AssetFundamentalQuantMetricsDTO(**meta)
+    return APIResponse[AssetFundamentalQuantMetricsDTO](data=dto, meta=_build_meta())
+
+
+@router.post(
+    "/sync-metrics",
+    response_model=APIResponse[MarketSyncMetricsResponseDTO],
+    status_code=status.HTTP_200_OK,
+    summary="Sincronizar y persistir métricas cuantitativas 10Y y fundamentales en la Base de Datos",
+    description="Actualiza todos los activos del catálogo institucional BYMA y la tabla assets con métricas de 10 años.",
+)
+async def sync_all_market_metrics(
+    live: bool = Query(default=False, description="Intentar conexión a Yahoo Finance v8 en vivo"),
+    db: AsyncSession = Depends(get_db),
+):
+    res = await db.execute(select(AssetModel.ticker))
+    existing_tickers = {row[0] for row in res.all() if row[0]}
+    all_tickers = sorted(existing_tickers.union(set(CALIBRATED_10Y_METRICS_CATALOG.keys())))
+
+    dtos: List[AssetFundamentalQuantMetricsDTO] = []
+    for t in all_tickers:
+        meta = await PublicMarket10YProvider.fetch_live_or_calibrated_metrics(t, attempt_network=live)
+        await _upsert_asset_metrics_in_db(db, meta)
+        dtos.append(AssetFundamentalQuantMetricsDTO(**meta))
+
+    await db.commit()
+    response_dto = MarketSyncMetricsResponseDTO(
+        synced_count=len(dtos),
+        tickers=all_tickers,
+        metrics=dtos,
+    )
+    return APIResponse[MarketSyncMetricsResponseDTO](data=response_dto, meta=_build_meta())
+
 

@@ -76,6 +76,38 @@ async def init_db() -> None:
                     sync_conn.exec_driver_sql(
                         "ALTER TABLE portfolios ADD COLUMN investor_profile VARCHAR(50) DEFAULT 'MODERATE' NOT NULL"
                     )
+
+                asset_res = sync_conn.exec_driver_sql("PRAGMA table_info(assets)").fetchall()
+                asset_cols = {r[1] for r in asset_res}
+                if asset_cols:
+                    asset_migrations = [
+                        ("history_start_date", "VARCHAR(20) DEFAULT '2016-11-01'"),
+                        ("history_years_available", "FLOAT DEFAULT 10.0 NOT NULL"),
+                        ("data_points_count", "INTEGER DEFAULT 2520 NOT NULL"),
+                        ("cagr_annualized", "FLOAT DEFAULT 0.12 NOT NULL"),
+                        ("volatility_annualized", "FLOAT DEFAULT 0.25 NOT NULL"),
+                        ("sharpe_ratio", "FLOAT DEFAULT 0.48 NOT NULL"),
+                        ("sortino_ratio", "FLOAT DEFAULT 0.68 NOT NULL"),
+                        ("max_drawdown", "FLOAT DEFAULT 0.28 NOT NULL"),
+                        ("beta_market", "FLOAT DEFAULT 1.0 NOT NULL"),
+                        ("var_95_daily", "FLOAT DEFAULT 0.026 NOT NULL"),
+                        ("pe_ratio", "FLOAT"),
+                        ("pb_ratio", "FLOAT"),
+                        ("roe_pct", "FLOAT"),
+                        ("debt_to_equity", "FLOAT"),
+                        ("dividend_yield_pct", "FLOAT"),
+                        ("market_cap_usd", "FLOAT"),
+                        ("ytm_tir_pct", "FLOAT"),
+                        ("modified_duration", "FLOAT"),
+                        ("parity_pct", "FLOAT"),
+                        ("metrics_payload", "JSON"),
+                        ("metrics_updated_at", "DATETIME"),
+                    ]
+                    for col_name, col_def in asset_migrations:
+                        if col_name not in asset_cols:
+                            sync_conn.exec_driver_sql(
+                                f"ALTER TABLE assets ADD COLUMN {col_name} {col_def}"
+                            )
             await conn.run_sync(_check_and_migrate_sqlite)
     _db_initialized = True
 

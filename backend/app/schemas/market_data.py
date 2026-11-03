@@ -1,11 +1,11 @@
 """
-Contratos canónicos de mercado e ingesta en vivo (Módulo 6 - Fase 1).
+Contratos canónicos de mercado e ingesta en vivo (Módulo 6 - Fase 1 & Fase II 10Y Quant).
 DTOs inmutables basados en Pydantic v2 con validación defensiva estricta y precisión Decimal.
 """
 from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 from pydantic import Field, field_validator, model_validator
 
 from app.schemas.envelope import BaseSchema
@@ -116,27 +116,23 @@ class MarketBarDTO(BaseSchema):
 
     @model_validator(mode="after")
     def validate_ohlcv_integrity(self) -> "MarketBarDTO":
-        # 1. Integridad geométrica del rango: low <= min(open, close)
         min_body = min(self.open, self.close)
         if self.low > min_body:
             raise ValueError(
                 f"Barra corrupta: low ({self.low}) no puede ser mayor que min(open, close) ({min_body})."
             )
 
-        # 2. Integridad geométrica del rango: high >= max(open, close)
         max_body = max(self.open, self.close)
         if self.high < max_body:
             raise ValueError(
                 f"Barra corrupta: high ({self.high}) no puede ser menor que max(open, close) ({max_body})."
             )
 
-        # 3. Consistencia entre extremos
         if self.high < self.low:
             raise ValueError(
                 f"Barra corrupta: high ({self.high}) no puede ser estrictamente menor que low ({self.low})."
             )
 
-        # 4. Consistencia del VWAP si está informado
         if self.vwap is not None:
             if not (self.low <= self.vwap <= self.high):
                 raise ValueError("vwap must be between low and high prices")
@@ -178,3 +174,50 @@ class FXRateDTO(BaseSchema):
             raise ValueError("Timestamp must include UTC timezone information (offset 0)")
         return v
 
+
+class AssetFundamentalQuantMetricsDTO(BaseSchema):
+    """
+    Métricas cuantitativas históricas de hasta 10 años (o máxima antigüedad desde emisión)
+    e indicadores fundamentales / renta fija en tiempo real para un activo financiero.
+    """
+
+    ticker: str
+    name: str
+    asset_type: str
+    currency: str
+    sector: str
+    reference_price: float
+    history_start_date: str
+    history_years_available: float
+    data_points_count: int
+    cagr_annualized: float
+    volatility_annualized: float
+    sharpe_ratio: float
+    sortino_ratio: float
+    max_drawdown: float
+    beta_market: float
+    var_95_daily: float
+    composite_quant_return: float
+    pe_ratio: Optional[float] = None
+    pb_ratio: Optional[float] = None
+    roe_pct: Optional[float] = None
+    debt_to_equity: Optional[float] = None
+    dividend_yield_pct: Optional[float] = None
+    market_cap_usd: Optional[float] = None
+    ytm_tir_pct: Optional[float] = None
+    modified_duration: Optional[float] = None
+    parity_pct: Optional[float] = None
+    cedear_ratio: Optional[float] = None
+    underlying_ticker: Optional[str] = None
+    yahoo_symbol: Optional[str] = None
+    adr_symbol: Optional[str] = None
+    data_source: str = "BYMA_CALIBRATED_10Y_ENGINE"
+    updated_at: Optional[str] = None
+
+
+class MarketSyncMetricsResponseDTO(BaseSchema):
+    """Respuesta de sincronización en lote de métricas cuantitativas de 10 años en la BD."""
+
+    synced_count: int
+    tickers: List[str]
+    metrics: List[AssetFundamentalQuantMetricsDTO]

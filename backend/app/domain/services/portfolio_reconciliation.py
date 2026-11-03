@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.domain.services.ingestion.data_cleaning_pipeline import CleanHoldingRecord
+from app.domain.services.market_data_provider import infer_instrument_metadata
 from app.models.asset import AssetModel
 from app.models.holding import HoldingModel
 from app.models.portfolio import PortfolioModel
@@ -299,23 +300,69 @@ class PortfolioReconciliationService:
         db: AsyncSession,
         ticker: str,
         currency: str,
+        raw_fields: dict[str, Any] | None = None,
     ) -> AssetModel:
         """
         Ensure an `AssetModel` row exists in the database for `ticker` before
-        inserting a `HoldingModel` (satisfying foreign key constraints).
+        inserting a `HoldingModel` (satisfying foreign key constraints), populating
+        10Y historical & fundamental metrics and inferring asset_type from description.
         """
         normalized_ticker = ticker.strip().upper()
+        raw_desc = ""
+        raw_type_hint = ""
+        if raw_fields:
+            raw_desc = str(
+                raw_fields.get("Descripcion")
+                or raw_fields.get("descripcion")
+                or raw_fields.get("Especie")
+                or raw_fields.get("Instrumento")
+                or normalized_ticker
+            )
+            raw_type_hint = str(
+                raw_fields.get("Tipo")
+                or raw_fields.get("tipo")
+                or raw_fields.get("Clase")
+                or ""
+            )
+        meta = infer_instrument_metadata(
+            raw_desc or normalized_ticker,
+            raw_type_hint=raw_type_hint,
+            raw_currency_hint=currency,
+        )
+
         stmt = select(AssetModel).where(AssetModel.ticker == normalized_ticker)
         result = await db.execute(stmt)
         asset = result.scalar_one_or_none()
         if asset is None:
             asset = AssetModel(
                 ticker=normalized_ticker,
-                name=normalized_ticker,
-                asset_type=self._infer_asset_type(normalized_ticker),
+                name=meta.get("name", normalized_ticker),
+                asset_type=meta.get("asset_type") or self._infer_asset_type(normalized_ticker),
                 currency=currency,
-                sector="OTHER",
+                sector=meta.get("sector", "OTHER"),
                 market="BYMA",
+                cedear_ratio=meta.get("cedear_ratio"),
+                underlying_ticker=meta.get("underlying_ticker"),
+                history_start_date=meta.get("history_start_date", "2016-11-01"),
+                history_years_available=float(meta.get("history_years_available", 10.0)),
+                data_points_count=int(meta.get("data_points_count", 2520)),
+                cagr_annualized=float(meta.get("cagr_annualized", 0.14)),
+                volatility_annualized=float(meta.get("volatility_annualized", 0.25)),
+                sharpe_ratio=float(meta.get("sharpe_ratio", 0.48)),
+                sortino_ratio=float(meta.get("sortino_ratio", 0.68)),
+                max_drawdown=float(meta.get("max_drawdown", 0.28)),
+                beta_market=float(meta.get("beta_market", 1.0)),
+                var_95_daily=float(meta.get("var_95_daily", 0.026)),
+                pe_ratio=meta.get("pe_ratio"),
+                pb_ratio=meta.get("pb_ratio"),
+                roe_pct=meta.get("roe_pct"),
+                debt_to_equity=meta.get("debt_to_equity"),
+                dividend_yield_pct=meta.get("dividend_yield_pct"),
+                market_cap_usd=meta.get("market_cap_usd"),
+                ytm_tir_pct=meta.get("ytm_tir_pct"),
+                modified_duration=meta.get("modified_duration"),
+                parity_pct=meta.get("parity_pct"),
+                metrics_payload=meta,
             )
             db.add(asset)
             await db.flush()
@@ -487,7 +534,10 @@ class PortfolioReconciliationService:
             if ticker not in existing_by_ticker:
                 # Case A: New position (ADDED)
                 asset = await self._ensure_asset_model(
-                    db=db, ticker=ticker, currency=record.currency
+                    db=db,
+                    ticker=ticker,
+                    currency=record.currency,
+                    raw_fields=record.raw_fields,
                 )
                 if record.avg_price is None:
                     db_avg_price = 0.0
@@ -500,12 +550,19 @@ class PortfolioReconciliationService:
                     db_avg_price = float(record.avg_price)
                     event_new_avg_price = record.avg_price
 
+                ref_meta = infer_instrument_metadata(ticker, raw_currency_hint=record.currency)
+                effective_curr_price = (
+                    db_avg_price
+                    if db_avg_price > 0.0
+                    else float(ref_meta.get("reference_price", 0.0))
+                )
+
                 new_holding = HoldingModel(
                     portfolio_id=portfolio.id,
                     asset_ticker=ticker,
                     quantity=float(record.quantity),
                     average_buy_price=db_avg_price,
-                    current_price=db_avg_price,
+                    current_price=effective_curr_price,
                 )
                 new_holding.asset = asset
                 portfolio.holdings.append(new_holding)

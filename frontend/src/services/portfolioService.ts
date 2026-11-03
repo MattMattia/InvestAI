@@ -7,10 +7,12 @@ import { apiClient } from "@/lib/apiClient";
 import { parseDecimalSafe } from "@/lib/formatters";
 import {
   APIResponse,
+  AssetFundamentalQuantMetrics,
   OrderSide,
   OrderStatus,
   Portfolio,
   PortfolioCreateInput,
+  RebalanceQuantStrategy,
   RebalanceSimulationResult,
   RiskAuditSnapshot,
 } from "@/types/api";
@@ -29,6 +31,8 @@ interface BackendRebalanceOrder {
 
 interface BackendRebalancePlan {
   portfolio_id: string;
+  strategy_used?: string;
+  asset_metrics?: AssetFundamentalQuantMetrics[];
   orders: BackendRebalanceOrder[];
   total_buy_amount: number;
   total_sell_amount: number;
@@ -121,6 +125,7 @@ export const portfolioService = {
       tolerance_pct?: number;
       cash_buffer_pct?: number;
       base_currency?: "ARS" | "USD";
+      strategy?: RebalanceQuantStrategy;
       targets?: Array<{
         ticker: string;
         target_weight: number;
@@ -128,50 +133,25 @@ export const portfolioService = {
       }>;
     }
   ): Promise<RebalanceSimulationResult> {
-    let targets = params.targets;
     const defaultTolerance = params.tolerance_pct ?? 5.0;
+    const strategy = params.strategy || "AUTO";
 
-    if (!targets || targets.length === 0) {
-      const port = await portfolioService.getPortfolioById(portfolioId);
-      const holdings = port.holdings || [];
-      const count = holdings.length;
+    const payload: Record<string, unknown> = {
+      strategy,
+      tolerance_band: defaultTolerance,
+      include_hold: false,
+    };
 
-      if (count > 0) {
-        const equalWeight = Number((100 / count).toFixed(2));
-        targets = holdings.map((h) => ({
-          ticker: h.asset_ticker,
-          target_weight: equalWeight,
-          tolerance_band: defaultTolerance,
-        }));
-      } else {
-        targets = [];
-      }
-    }
-
-    if (targets.length === 0) {
-      return {
-        portfolio_id: portfolioId,
-        needs_rebalancing: false,
-        total_portfolio_value: 0,
-        base_currency: params.base_currency || "ARS",
-        breached_tickers: [],
-        orders: [],
-        generated_at: new Date().toISOString(),
-        is_liquidity_sufficient: true,
-      };
-    }
-
-    const payload = {
-      targets: targets.map((t) => ({
+    if (params.targets && params.targets.length > 0) {
+      payload.targets = params.targets.map((t) => ({
         ticker: t.ticker.trim().toUpperCase(),
         target_weight: parseDecimalSafe(t.target_weight),
         tolerance_band:
           t.tolerance_band !== undefined
             ? parseDecimalSafe(t.tolerance_band)
             : defaultTolerance,
-      })),
-      include_hold: false,
-    };
+      }));
+    }
 
     const response = await apiClient.post<
       BackendRebalancePlan | APIResponse<BackendRebalancePlan>
@@ -198,6 +178,8 @@ export const portfolioService = {
         (plan.available_cash || 0) + (plan.total_buy_amount || 0),
       base_currency: params.base_currency || "ARS",
       breached_tickers: breachedTickers,
+      strategy_used: plan.strategy_used || strategy,
+      asset_metrics: plan.asset_metrics || [],
       orders: actionableOrders.map((o) => ({
         portfolio_id: plan.portfolio_id,
         ticker: o.ticker,

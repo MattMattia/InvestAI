@@ -112,14 +112,23 @@ Para una defensa fluida ante el tribunal, se sugiere seguir este orden cronológ
   3. **Mitigación Anti-IDOR / Anti-BOLA (OWASP API1:2023):** Ningún endpoint confía únicamente en el UUID del recurso; todas las consultas y mutaciones de portafolios, tenencias, snapshots y órdenes filtran por `PortfolioModel.user_id == current_user.id` (devolviendo `404 Not Found` ante intentos de acceso cruzado para no filtrar la existencia del recurso).
   4. **Protección Anti-SSRF e Ingesta Segura:** Los conectores externos validan dominios contra listas blancas y bloquean rangos IP privados/loopback, mientras que el parser de archivos valida tamaño máximo (15 MB), extensión y estructura antes de procesar.
 
+### P4: *¿Cómo calcula el motor cuantitativo las ponderaciones objetivo ($W_{\text{target}}$) a partir de la historia de 10 años y los indicadores fundamentales?*
+- **Respuesta:** El servicio `PublicMarket10YProvider` (`backend/app/domain/services/market_data_provider.py`) computa una ventana histórica de hasta **10 años** (`2520` ruedas bursátiles en moneda dura `USD/CCL`, o la antigüedad exacta desde su fecha de emisión cuando el instrumento tiene menos de 10 años, como los bonos soberanos `AL30`/`GD30`/`AE38` emitidos en septiembre de 2020 con `5.8` años de historia real). Para cada activo se persisten en `AssetModel` sus métricas empíricas (`cagr_annualized`, `volatility_annualized`, `sharpe_ratio`, `sortino_ratio`, `max_drawdown`, `beta_market`, `var_95_daily`) y sus indicadores fundamentales (`P/E`, `P/B`, `ROE`, `Debt/Equity`, `Dividend Yield` para acciones/CEDEARs; `TIR/YTM`, `Modified Duration` y `Paridad %` para bonos). El vector de retornos esperados cuantitativos compuestos combina:
+  $$\mu_i^{\text{quant}} = 0.50 \cdot \text{CAGR}_{10Y,i} + 0.30 \cdot \text{Score}_{\text{Fundamental},i}(\text{ROE}, \text{P/E}, \text{TIR}) + 0.20 \cdot \text{Score}_{\text{Momentum},i}(\text{Sharpe}, \text{Sortino})$$
+  Sobre la matriz de covarianza anualizada de 10 años $\Sigma_{10Y}$, el endpoint `POST /api/v1/portfolios/{id}/rebalance` resuelve cuatro modelos distintos:
+  1. **Conservador (`CONSERVATIVE` / `MIN_VARIANCE`):** Minimiza $w^T \Sigma_{10Y} w$ premiando baja volatilidad, bajo *Max Drawdown*, baja Beta y renta fija soberana (`AL30`/`GD30`).
+  2. **Moderado (`MODERATE` / `RISK_PARITY`):** Resuelve la Paridad de Riesgo Convexa de Spinu ($\min_{x>0} \frac{1}{2} x^T \Sigma_{10Y} x - \sum b_i \ln x_i$) con presupuesto de riesgo $b_i \propto \sqrt{\text{Sharpe}_{10Y,i} \cdot \mu_i^{\text{quant}}}$.
+  3. **Agresivo (`AGGRESSIVE` / `MAX_SHARPE`):** Maximiza el Ratio de Sharpe $\frac{w^T \mu^{\text{quant}} - r_f}{\sqrt{w^T \Sigma_{10Y} w}}$ sobreponderando líderes en crecimiento de 10 años y `ROE` (`NVDA`, `AAPL`, `MSFT`, `YPFD`).
+  4. **Equiponderado (`EQUAL_WEIGHT`):** Asignación base $1/N$.
+
 ---
 
 ## 6. Comandos de Verificación Rápida para el Tribunal
 
-Para ejecutar la suite completa de **671 pruebas automatizadas** y verificar la compilación limpia del frontend en menos de 10 segundos:
+Para ejecutar la suite completa de **674 pruebas automatizadas** y verificar la compilación limpia del frontend en menos de 15 segundos:
 
 ```powershell
-# 1. Ejecutar las 671 pruebas unitarias y de integración del Backend (modo silencioso)
+# 1. Ejecutar las 674 pruebas unitarias y de integración del Backend (modo silencioso)
 $env:PYTHONPATH="backend"; python -m pytest backend/tests -q
 
 # 2. Verificar tipado estricto TypeScript y empaquetado de producción del Frontend

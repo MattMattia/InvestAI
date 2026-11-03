@@ -168,9 +168,18 @@ export const apiClient: AxiosInstance = axios.create({
   },
 });
 
-// Request Interceptor: Auth Bearer and X-Request-ID Injection
+// Request Interceptor: Auth Bearer, Multipart FormData Boundary, and X-Request-ID Injection
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // 0. If payload is FormData, remove default application/json Content-Type so browser sets multipart boundary
+    if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+      if (typeof config.headers?.delete === "function") {
+        config.headers.delete("Content-Type");
+      } else if (config.headers) {
+        delete config.headers["Content-Type"];
+      }
+    }
+
     // 1. Inject distributed trace header
     if (!config.headers["X-Request-ID"]) {
       config.headers["X-Request-ID"] = generateRequestId();

@@ -398,3 +398,265 @@ async def test_portfolio_crud_treasury_and_delete(
         headers=headers,
     )
     assert get_deleted.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_market_10y_metrics_and_sync_endpoint(
+    forensic_env: dict,
+) -> None:
+    """Verifica el endpoint de métricas cuantitativas de 10 años y fundamentales (APARTADO 9)."""
+    client: httpx.AsyncClient = forensic_env["client"]
+
+    # 1. Consultar activo con 10.0 años de historia (NVDA CEDEAR)
+    nvda_res = await client.get("/api/v1/market/metrics/NVDA")
+    assert nvda_res.status_code == 200
+    nvda_data = nvda_res.json()["data"]
+    assert nvda_data["ticker"] == "NVDA"
+    assert nvda_data["asset_type"] == "CEDEAR"
+    assert nvda_data["history_years_available"] == 10.0
+    assert nvda_data["data_points_count"] == 2520
+    assert nvda_data["cagr_annualized"] > 0.30
+    assert nvda_data["pe_ratio"] is not None
+    assert nvda_data["roe_pct"] is not None
+
+    # 2. Consultar bono soberano emitido en septiembre 2020 (~5.8 años de historia, AL30)
+    al30_res = await client.get("/api/v1/market/metrics/AL30")
+    assert al30_res.status_code == 200
+    al30_data = al30_res.json()["data"]
+    assert al30_data["ticker"] == "AL30"
+    assert al30_data["asset_type"] == "BOND"
+    assert al30_data["history_years_available"] == 5.8
+    assert al30_data["ytm_tir_pct"] is not None
+    assert al30_data["modified_duration"] is not None
+    assert al30_data["parity_pct"] is not None
+
+    # 3. Sincronizar catálogo completo en la BD
+    sync_res = await client.post("/api/v1/market/sync-metrics")
+    assert sync_res.status_code == 200
+    sync_data = sync_res.json()["data"]
+    assert sync_data["synced_count"] >= 20
+
+
+@pytest.mark.asyncio
+async def test_rebalance_10y_multi_strategy_differentiates_target_weights(
+    forensic_env: dict,
+) -> None:
+    """
+    Verifica que el motor cuantitativo 10Y (APARTADO 10) produce ponderaciones
+    objetivo (W_target) matemáticamente distintas para CONSERVATIVE (Min-Variance),
+    MODERATE (Risk Parity Spinu) y AGGRESSIVE (Max-Sharpe Markowitz).
+    """
+    client: httpx.AsyncClient = forensic_env["client"]
+    ctx = await _seed_trader_user(forensic_env["session_factory"], "quant_10y")
+    headers = ctx["headers"]
+
+    port_res = await client.post(
+        "/api/v1/portfolios",
+        headers=headers,
+        json={
+            "name": "Cartera Multi-Estrategia 10Y",
+            "investor_profile": "MODERATE",
+            "cash_balance_ars": 2000000.0,
+            "cash_balance_usd": 5000.0,
+            "holdings": [
+                {
+                    "ticker": "NVDA",
+                    "quantity": 100,
+                    "average_buy_price": 14000.0,
+                    "current_price": 14290.0,
+                    "currency": "ARS",
+                    "asset_type": "CEDEAR",
+                },
+                {
+                    "ticker": "GGAL",
+                    "quantity": 300,
+                    "average_buy_price": 5000.0,
+                    "current_price": 5120.0,
+                    "currency": "ARS",
+                    "asset_type": "STOCK",
+                },
+                {
+                    "ticker": "AL30",
+                    "quantity": 2000,
+                    "average_buy_price": 800.0,
+                    "current_price": 838.70,
+                    "currency": "ARS",
+                    "asset_type": "BOND",
+                },
+            ],
+        },
+    )
+    assert port_res.status_code == 201
+    pid = port_res.json()["id"]
+
+    cons_res = await client.post(
+        f"/api/v1/portfolios/{pid}/rebalance?dry_run=true",
+        headers=headers,
+        json={"strategy": "CONSERVATIVE", "tolerance_band": 2.0},
+    )
+    mod_res = await client.post(
+        f"/api/v1/portfolios/{pid}/rebalance?dry_run=true",
+        headers=headers,
+        json={"strategy": "MODERATE", "tolerance_band": 2.0},
+    )
+    agg_res = await client.post(
+        f"/api/v1/portfolios/{pid}/rebalance?dry_run=true",
+        headers=headers,
+        json={"strategy": "AGGRESSIVE", "tolerance_band": 2.0},
+    )
+
+    assert cons_res.status_code == 200
+    assert mod_res.status_code == 200
+    assert agg_res.status_code == 200
+
+    cons_weights = {m["ticker"]: m["target_weight"] for m in cons_res.json()["asset_metrics"]}
+    mod_weights = {m["ticker"]: m["target_weight"] for m in mod_res.json()["asset_metrics"]}
+    agg_weights = {m["ticker"]: m["target_weight"] for m in agg_res.json()["asset_metrics"]}
+
+    # En estrategia CONSERVATIVE, el bono soberano AL30 (menor volatilidad/beta) recibe mucho mayor peso que en AGGRESSIVE
+    assert cons_weights["AL30"] > agg_weights["AL30"]
+    # En estrategia AGGRESSIVE, NVDA (mayor CAGR 10Y y Sharpe) recibe mucho mayor peso que en CONSERVATIVE
+    assert agg_weights["NVDA"] > cons_weights["NVDA"]
+    assert cons_weights != mod_weights
+    assert mod_weights != agg_weights
+
+
+@pytest.mark.asyncio
+async def test_ingestion_upload_real_balanz_xlsx_and_csv_auto_classification(
+    forensic_env: dict,
+) -> None:
+    """
+    Verifica la ingesta end-to-end (POST /api/v1/ingestion/upload-report) tanto con el
+    CSV de prueba como con un archivo Excel (.xlsx) con las 14 columnas exactas de Balanz
+    (incluyendo Tipo='Cedears' y Descripcion='CEDEAR N'), comprobando que mapea 'CEDEAR N' -> 'NVDA'
+    y clasifica automáticamente CEDEAR, BOND y STOCK en la base de datos sin errores de 'Field'.
+    """
+    import io
+    import openpyxl
+
+    client: httpx.AsyncClient = forensic_env["client"]
+    ctx = await _seed_trader_user(forensic_env["session_factory"], "balanz_ingest")
+    headers = ctx["headers"]
+
+    port_res = await client.post(
+        "/api/v1/portfolios",
+        headers=headers,
+        json={
+            "name": "Cartera Balanz Real",
+            "investor_profile": "MODERATE",
+            "cash_balance_ars": 1000000.0,
+            "cash_balance_usd": 2000.0,
+        },
+    )
+    assert port_res.status_code == 201
+    pid = port_res.json()["id"]
+
+    # Construir libro Excel .xlsx idéntico al exportado por Balanz
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Tenencias"
+    ws.append(
+        [
+            "Tipo",
+            "Descripcion",
+            "Cantidad",
+            "Garantia",
+            "Precio",
+            "ValorActual",
+            "PrecioCompra",
+            "GananciaPorcentaje",
+            "GananciaPesos",
+            "ValorInicial",
+            "RendimientoPorcentaje",
+            "RendimientoPesos",
+            "PorcentajeCartera",
+            "Moneda",
+        ]
+    )
+    ws.append(
+        [
+            "Cedears",
+            "CEDEAR N",
+            1,
+            0,
+            14290,
+            14290,
+            14080,
+            "1.49%",
+            210,
+            14080,
+            "1.49%",
+            210,
+            "40%",
+            "Pesos",
+        ]
+    )
+    ws.append(
+        [
+            "Bonos",
+            "BONO AL30",
+            1000,
+            0,
+            838.70,
+            838700,
+            790.00,
+            "6.16%",
+            48700,
+            790000,
+            "6.16%",
+            48700,
+            "35%",
+            "Pesos",
+        ]
+    )
+    ws.append(
+        [
+            "Acciones",
+            "GGAL - Grupo Financiero Galicia",
+            200,
+            0,
+            5120,
+            1024000,
+            4850,
+            "5.56%",
+            54000,
+            970000,
+            "5.56%",
+            54000,
+            "25%",
+            "Pesos",
+        ]
+    )
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    xlsx_bytes = buf.getvalue()
+
+    upload_res = await client.post(
+        "/api/v1/ingestion/upload-report",
+        headers=headers,
+        data={"portfolio_id": pid, "mode": "SNAPSHOT"},
+        files={
+            "file": (
+                "Tenencias_Balanz_2026.xlsx",
+                xlsx_bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+    assert upload_res.status_code == 200
+    summary = upload_res.json()["data"]
+    assert summary["valid_records_count"] == 3
+    assert summary["invalid_records_count"] == 0
+
+    # Verificar que la cartera tiene NVDA (CEDEAR), AL30 (BOND) y GGAL (STOCK)
+    port_after = await client.get(f"/api/v1/portfolios/{pid}", headers=headers)
+    assert port_after.status_code == 200
+    holdings_by_ticker = {
+        h["asset_ticker"]: h for h in port_after.json()["holdings"]
+    }
+    assert set(holdings_by_ticker.keys()) == {"NVDA", "AL30", "GGAL"}
+    assert holdings_by_ticker["NVDA"]["asset"]["asset_type"] == "CEDEAR"
+    assert holdings_by_ticker["AL30"]["asset"]["asset_type"] == "BOND"
+    assert holdings_by_ticker["GGAL"]["asset"]["asset_type"] == "STOCK"
+

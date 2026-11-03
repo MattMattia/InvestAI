@@ -103,6 +103,7 @@ AVG_PRICE_HEADER_ALIASES: frozenset[str] = frozenset(
         "precio promedio compra ppc",
         "costo unitario",
         "precio compra",
+        "preciocompra",
         "precio pond",
         "prec prom compra",
     }

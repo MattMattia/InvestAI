@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app.core.database import AsyncSessionLocal, async_engine, init_db, is_sqlite
 from app.core.security import get_password_hash
+from app.domain.services.market_data_provider import infer_instrument_metadata
 from app.models import AssetModel, HoldingModel, PortfolioModel, UserModel
 from app.schemas.user import UserRole
 
@@ -111,19 +112,45 @@ async def seed_demo_data() -> None:
             await conn.run_sync(_migrate_sqlite_schema)
 
     async with AsyncSessionLocal() as session:
-        # 1. Asegurar Activos en BYMA en una sola consulta en lote
-        existing_assets_res = await session.execute(select(AssetModel.ticker))
-        existing_tickers = {row[0] for row in existing_assets_res.all()}
+        # 1. Asegurar Activos en BYMA en una sola consulta en lote con métricas 10Y
+        existing_assets_res = await session.execute(select(AssetModel))
+        existing_assets_map = {a.ticker: a for a in existing_assets_res.scalars().all()}
 
-        new_assets = [
-            AssetModel(**asset_data)
-            for asset_data in DEMO_ASSETS
-            if asset_data["ticker"] not in existing_tickers
-        ]
-        if new_assets:
-            session.add_all(new_assets)
-            await session.commit()
-            logger.info(f"Insertados {len(new_assets)} activos BYMA en catálogo.")
+        new_count = 0
+        for asset_data in DEMO_ASSETS:
+            t_sym = asset_data["ticker"]
+            meta = infer_instrument_metadata(t_sym)
+            if t_sym not in existing_assets_map:
+                asset_obj = AssetModel(**asset_data)
+                session.add(asset_obj)
+                new_count += 1
+            else:
+                asset_obj = existing_assets_map[t_sym]
+
+            asset_obj.history_start_date = meta.get("history_start_date", "2016-11-01")
+            asset_obj.history_years_available = float(meta.get("history_years_available", 10.0))
+            asset_obj.data_points_count = int(meta.get("data_points_count", 2520))
+            asset_obj.cagr_annualized = float(meta.get("cagr_annualized", 0.14))
+            asset_obj.volatility_annualized = float(meta.get("volatility_annualized", 0.25))
+            asset_obj.sharpe_ratio = float(meta.get("sharpe_ratio", 0.48))
+            asset_obj.sortino_ratio = float(meta.get("sortino_ratio", 0.68))
+            asset_obj.max_drawdown = float(meta.get("max_drawdown", 0.28))
+            asset_obj.beta_market = float(meta.get("beta_market", 1.0))
+            asset_obj.var_95_daily = float(meta.get("var_95_daily", 0.026))
+            asset_obj.pe_ratio = meta.get("pe_ratio")
+            asset_obj.pb_ratio = meta.get("pb_ratio")
+            asset_obj.roe_pct = meta.get("roe_pct")
+            asset_obj.debt_to_equity = meta.get("debt_to_equity")
+            asset_obj.dividend_yield_pct = meta.get("dividend_yield_pct")
+            asset_obj.market_cap_usd = meta.get("market_cap_usd")
+            asset_obj.ytm_tir_pct = meta.get("ytm_tir_pct")
+            asset_obj.modified_duration = meta.get("modified_duration")
+            asset_obj.parity_pct = meta.get("parity_pct")
+            asset_obj.metrics_payload = meta
+
+        await session.commit()
+        if new_count:
+            logger.info(f"Insertados {new_count} activos BYMA con métricas 10Y en catálogo.")
 
         # 2. Asegurar Usuario Demo (evita re-hashear bcrypt si ya existe)
         stmt = select(UserModel).where(UserModel.email == DEMO_EMAIL)

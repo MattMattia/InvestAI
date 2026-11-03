@@ -1,7 +1,8 @@
 /**
  * Pure SVG Accessible Donut Chart for Portfolio Asset Allocation.
  * Features institutional bimonetary toggle (ARS vs USD), integrated cash representation,
- * clipping-free viewBox (220x220 with r=80), smooth strokeWidth/opacity hover transitions,
+ * clipping-free viewBox (220x220 with r=80), exact non-overlapping SVG arc paths with
+ * fill="none" and pointerEvents="stroke" so hover only triggers on the exact painted ring slice,
  * and strict zero/100% boundary handling.
  */
 
@@ -45,7 +46,54 @@ const PALETTE = [
 
 const CENTER = 110;
 const RADIUS = 80;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS; // ~502.6548
+
+/**
+ * Converts polar angle (in degrees, where 0 deg is 12 o'clock top) to SVG Cartesian (x, y).
+ */
+function polarToCartesian(
+  cx: number,
+  cy: number,
+  r: number,
+  angleInDegrees: number
+): { x: number; y: number } {
+  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
+  return {
+    x: cx + r * Math.cos(angleInRadians),
+    y: cy + r * Math.sin(angleInRadians),
+  };
+}
+
+/**
+ * Builds an exact SVG arc path from startAngle to endAngle (in degrees, clockwise from 12 o'clock).
+ * Because each sector is an open arc path with fill="none" and pointerEvents="stroke",
+ * sectors never overlap in hit-testing and the center hole never intercepts mouse events.
+ */
+function describeDonutArcPath(
+  cx: number,
+  cy: number,
+  r: number,
+  startAngle: number,
+  endAngle: number
+): string {
+  const clampedSpan = Math.min(359.99, Math.max(0.01, endAngle - startAngle));
+  const effectiveEnd = startAngle + clampedSpan;
+  const start = polarToCartesian(cx, cy, r, startAngle);
+  const end = polarToCartesian(cx, cy, r, effectiveEnd);
+  const largeArcFlag = clampedSpan > 180 ? "1" : "0";
+  return [
+    "M",
+    start.x.toFixed(3),
+    start.y.toFixed(3),
+    "A",
+    r,
+    r,
+    0,
+    largeArcFlag,
+    1,
+    end.x.toFixed(3),
+    end.y.toFixed(3),
+  ].join(" ");
+}
 
 export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
   portfolio,
@@ -193,51 +241,80 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
         >
           <svg
             viewBox="0 0 220 220"
-            className="w-full h-full transform -rotate-90 overflow-visible"
+            className="w-full h-full overflow-visible"
             onMouseLeave={() => setHoveredSectorId(null)}
           >
-            {/* Background track circle */}
+            {/* Background track circle — pointerEvents="none" so it never steals hover */}
             <circle
               cx={CENTER}
               cy={CENTER}
               r={RADIUS}
-              fill="transparent"
+              fill="none"
               stroke="#1e293b"
-              strokeWidth="22"
+              strokeWidth={22}
+              pointerEvents="none"
             />
 
-            {/* Render Sectors */}
+            {/* Render Non-Overlapping Arc Sectors */}
             {totalValue > 0 && sectors.length > 0 ? (
               (() => {
-                let accumulatedFraction = 0;
+                let currentAngle = 0;
                 return sectors.map((sector) => {
                   const isHovered = hoveredSectorId === sector.id;
                   const isDimmed =
                     hoveredSectorId !== null && hoveredSectorId !== sector.id;
-                  const dash = Math.max(
-                    0,
-                    sector.fraction * CIRCUMFERENCE
-                  ).toFixed(2);
-                  const offset = (
-                    -accumulatedFraction * CIRCUMFERENCE
-                  ).toFixed(2);
-                  accumulatedFraction += sector.fraction;
+                  const sweepAngle = sector.fraction * 360;
+                  const startAngle = currentAngle;
+                  const endAngle = currentAngle + sweepAngle;
+                  currentAngle = endAngle;
+
+                  // Single 100% sector fallback
+                  if (sector.fraction >= 0.9995) {
+                    return (
+                      <circle
+                        key={sector.id}
+                        cx={CENTER}
+                        cy={CENTER}
+                        r={RADIUS}
+                        fill="none"
+                        stroke={sector.color}
+                        strokeWidth={isHovered ? 27 : 22}
+                        strokeOpacity={isDimmed ? 0.42 : 1}
+                        pointerEvents="stroke"
+                        style={{
+                          pointerEvents: "stroke",
+                          transition:
+                            "stroke-width 150ms ease, stroke-opacity 150ms ease",
+                        }}
+                        className="cursor-pointer"
+                        onMouseEnter={() => setHoveredSectorId(sector.id)}
+                        onMouseLeave={() => setHoveredSectorId(null)}
+                      />
+                    );
+                  }
+
+                  const arcPath = describeDonutArcPath(
+                    CENTER,
+                    CENTER,
+                    RADIUS,
+                    startAngle,
+                    endAngle
+                  );
 
                   return (
-                    <circle
+                    <path
                       key={sector.id}
-                      cx={CENTER}
-                      cy={CENTER}
-                      r={RADIUS}
-                      fill="transparent"
+                      d={arcPath}
+                      fill="none"
                       stroke={sector.color}
                       strokeWidth={isHovered ? 27 : 22}
                       strokeOpacity={isDimmed ? 0.42 : 1}
-                      strokeDasharray={`${dash} ${CIRCUMFERENCE.toFixed(2)}`}
-                      strokeDashoffset={offset}
+                      strokeLinecap="butt"
+                      pointerEvents="stroke"
                       style={{
+                        pointerEvents: "stroke",
                         transition:
-                          "stroke-width 180ms ease, stroke-opacity 180ms ease",
+                          "stroke-width 150ms ease, stroke-opacity 150ms ease",
                       }}
                       className="cursor-pointer"
                       onMouseEnter={() => setHoveredSectorId(sector.id)}
@@ -251,10 +328,11 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
                 cx={CENTER}
                 cy={CENTER}
                 r={RADIUS}
-                fill="transparent"
+                fill="none"
                 stroke="#334155"
-                strokeWidth="22"
+                strokeWidth={22}
                 strokeDasharray="4 4"
+                pointerEvents="none"
               />
             )}
           </svg>

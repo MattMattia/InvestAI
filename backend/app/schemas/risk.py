@@ -60,7 +60,19 @@ class TargetAllocationInput(BaseModel):
 class RebalanceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    targets: List[TargetAllocationInput] = Field(..., description="Lista de asignaciones objetivo")
+    targets: Optional[List[TargetAllocationInput]] = Field(
+        default=None,
+        description="Lista de asignaciones objetivo manuales. Si se omite o se indica strategy cuantitativa, el motor 10Y calcula los pesos óptimos.",
+    )
+    strategy: Optional[str] = Field(
+        default=None,
+        description="Modelo cuantitativo 10Y: AUTO, CONSERVATIVE, MODERATE, AGGRESSIVE, EQUAL_WEIGHT, MIN_VARIANCE, RISK_PARITY, MAX_SHARPE",
+    )
+    tolerance_band: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Banda de tolerancia global % (+/-) aplicada cuando los pesos objetivo son generados por el motor 10Y",
+    )
     custom_prices: Optional[Dict[str, float]] = Field(default=None, description="Precios de mercado opcionales")
     fx_ccl: float = Field(default=1300.0, gt=0.0, description="Dólar CCL de referencia")
     include_hold: bool = Field(default=False, description="Incluir órdenes de tipo HOLD")
@@ -84,6 +96,8 @@ class RebalancePlanResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     portfolio_id: str
+    strategy_used: str = "CUSTOM_TARGETS"
+    asset_metrics: List[Dict[str, Any]] = Field(default_factory=list)
     orders: List[RebalanceOrderResponse]
     total_buy_amount: float
     total_sell_amount: float

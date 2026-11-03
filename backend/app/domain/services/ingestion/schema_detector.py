@@ -136,6 +136,7 @@ _PRIMARY_SYNONYMS: dict[CanonicalReportField, frozenset[str]] = {
             "average price",
             "costo unitario",
             "precio compra",
+            "preciocompra",
             "precio pond",
             "prec prom compra",
         }
@@ -159,6 +160,9 @@ _PRIMARY_SYNONYMS: dict[CanonicalReportField, frozenset[str]] = {
             "monto",
             "importe",
             "valor actual",
+            "valoractual",
+            "valor inicial",
+            "valorinicial",
             "valuacion",
             "total",
             "monto total",
@@ -207,6 +211,10 @@ _AVG_PRICE_BLACKLIST_TOKENS: frozenset[str] = frozenset(
 
 _NON_HOLDING_NOISE_PREFIX_TOKENS: frozenset[str] = frozenset(
     {
+        "tipo",
+        "garantia",
+        "porcentaje",
+        "porcentajecartera",
         "fecha",
         "comision",
         "iva",
@@ -219,7 +227,11 @@ _NON_HOLDING_NOISE_PREFIX_TOKENS: frozenset[str] = frozenset(
         "plazo",
         "variacion",
         "ganancia",
+        "gananciaporcentaje",
+        "gananciapesos",
         "rendimiento",
+        "rendimientoporcentaje",
+        "rendimientopesos",
         "resultado",
         "comitente",
         "cuenta",

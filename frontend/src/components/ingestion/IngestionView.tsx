@@ -29,14 +29,12 @@ import { IngestionSummaryCard } from "./IngestionSummaryCard";
 import { UploadProgressBar } from "./UploadProgressBar";
 
 const SAMPLE_BALANZ_CSV_CONTENT = [
-  "Descripcion;Cantidad;Precio;ValorActual;%Ganancia;Ganancia$;Moneda",
-  "GGAL - Grupo Financiero Galicia;1800;5120,00;9216000,00;5,56%;486000,00;Pesos",
-  "YPFD - YPF S.A.;300;30200,00;9060000,00;5,96%;510000,00;Pesos",
-  "CEDEAR NVDA;150;14290,00;2143500,00;8,25%;163500,00;Pesos",
-  "CEDEAR AAPL;200;15450,00;3090000,00;8,80%;250000,00;Pesos",
-  "PAMP - Pampa Energia;850;3450,00;2932500,00;4,55%;127500,00;Pesos",
-  "BMA - Banco Macro;400;9120,00;3648000,00;6,05%;208000,00;Pesos",
-  "AL30 - Bono Rep. Argentina 2030;6000;838,70;5032200,00;6,16%;292200,00;Pesos",
+  "Tipo;Descripcion;Cantidad;Garantia;Precio;ValorActual;PrecioCompra;GananciaPorcentaje;GananciaPesos;ValorInicial;RendimientoPorcentaje;RendimientoPesos;PorcentajeCartera;Moneda",
+  "Cedears;CEDEAR N;150;0;14290,00;2143500,00;14080,00;1,49%;31500,00;2112000,00;1,49%;31500,00;18,50%;Pesos",
+  "Cedears;CEDEAR AAPL;200;0;15450,00;3090000,00;14200,00;8,80%;250000,00;2840000,00;8,80%;250000,00;24,10%;Pesos",
+  "Acciones;GGAL - Grupo Financiero Galicia;1800;0;5120,00;9216000,00;4850,00;5,56%;486000,00;8730000,00;5,56%;486000,00;28,40%;Pesos",
+  "Acciones;YPFD - YPF S.A.;300;0;30200,00;9060000,00;28500,00;5,96%;510000,00;8550000,00;5,96%;510000,00;16,20%;Pesos",
+  "Bonos;AL30 - Bono Rep. Argentina 2030;6000;0;838,70;5032200,00;790,00;6,16%;292200,00;4740000,00;6,16%;292200,00;12,80%;Pesos",
 ].join("\n");
 
 export const IngestionView: React.FC = () => {

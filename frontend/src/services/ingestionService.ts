@@ -61,6 +61,15 @@ export const ingestionService = {
       APIResponse<any> | any
     >("/ingestion/upload-report", formData, {
       signal,
+      params: {
+        ...(portfolioId && portfolioId.trim()
+          ? { portfolio_id: portfolioId.trim() }
+          : {}),
+        ...(mode ? { mode } : {}),
+      },
+      headers: {
+        "Content-Type": undefined as unknown as string,
+      },
       onUploadProgress: (progressEvent) => {
         if (progressEvent.total && onProgress) {
           const pct = Math.round(
@@ -69,8 +78,6 @@ export const ingestionService = {
           onProgress(Math.min(100, Math.max(0, pct)));
         }
       },
-      // Note: We deliberately do NOT set 'Content-Type': 'multipart/form-data'
-      // in headers so Axios/browser automatically injects boundary and charset.
     });
 
     const rawData = response.data;

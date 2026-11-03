@@ -18,6 +18,12 @@ from app.domain.services.ingestion.base_parser import (
     RawHoldingRecord,
     _sanitize_formula_prefix,
 )
+from app.domain.services.market_data_provider import (
+    BROKER_DESCRIPTION_TO_TICKER_MAP,
+    CALIBRATED_10Y_METRICS_CATALOG,
+    KNOWN_BOND_PREFIXES,
+    KNOWN_CEDEAR_TICKERS,
+)
 from app.schemas.envelope import BaseSchema
 
 # ============================================================================
@@ -310,15 +316,36 @@ class DataCleaningPipeline:
             if sep in cleaned:
                 cleaned = cleaned.split(sep, 1)[0].strip()
 
+        # Map truncated or descriptive broker labels directly (e.g. Balanz 'CEDEAR N' -> 'NVDA')
+        if cleaned in BROKER_DESCRIPTION_TO_TICKER_MAP:
+            cleaned = BROKER_DESCRIPTION_TO_TICKER_MAP[cleaned]
+
+        had_cedear_prefix = cleaned.startswith(("CEDEARS ", "CEDEAR "))
+
         # Strip common Argentine broker category prefixes (e.g. 'CEDEAR NVDA', 'BONO AL30')
-        for prefix in ("CEDEARS ", "CEDEAR ", "ACCIONES ", "ACCION ", "BONOS ", "BONO ", "ON ", "LETRA ", "FCI "):
+        for prefix in ("CEDEARS ", "CEDEAR ", "ACCIONES ", "ACCION ", "BONOS ", "BONO ", "BONAR ", "GLOBAL ", "ON ", "LETRA ", "LECAP ", "FCI "):
             if cleaned.startswith(prefix):
                 cleaned = cleaned[len(prefix) :].strip()
+
+        if had_cedear_prefix and cleaned == "N":
+            cleaned = "NVDA"
 
         # Strip common descriptive suffixes (e.g. 'AAPL CEDEAR N', 'NVDA CEDEAR', 'YPFD S.A.')
         for suffix in (" CEDEAR N", " CEDEAR", " S.A.I.C.", " S.A.", " SA", " INC.", " INC", " CORP.", " CORP"):
             if cleaned.endswith(suffix):
                 cleaned = cleaned[: -len(suffix)].strip()
+
+        # If multiple words remain (e.g. 'BONAR 2030 AL30'), extract known BYMA ticker token if present
+        if " " in cleaned:
+            for tok in cleaned.split():
+                tok_clean = tok.strip(".,;()")
+                if (
+                    tok_clean in CALIBRATED_10Y_METRICS_CATALOG
+                    or tok_clean in KNOWN_CEDEAR_TICKERS
+                    or any(tok_clean.startswith(pref) for pref in KNOWN_BOND_PREFIXES)
+                ):
+                    cleaned = tok_clean
+                    break
 
         had_local_suffix = False
         match = _LOCAL_EXCHANGE_SUFFIX_RE.search(cleaned)
@@ -499,6 +526,21 @@ class DataCleaningPipeline:
                         )
                     else:
                         avg_price = quantized_price
+
+            # 3b. If avg_price is None (e.g. PrecioCompra was 0 or absent in Balanz), fall back to 'Precio' column in raw_fields
+            if avg_price is None and raw.raw_fields:
+                for fallback_key in ("Precio", "precio", "PrecioCompra", "preciocompra"):
+                    fb_val = raw.raw_fields.get(fallback_key)
+                    if fb_val is not None and str(fb_val).strip().lower() not in _EMPTY_PRICE_PLACEHOLDERS:
+                        try:
+                            fb_dec = self.parse_decimal(fb_val).quantize(
+                                HOLDING_DECIMAL_QUANTIZE, rounding=ROUND_HALF_UP
+                            )
+                            if fb_dec > Decimal("0"):
+                                avg_price = fb_dec
+                                break
+                        except ValueError:
+                            pass
 
             # 4. Normalize or infer currency
             inferred_default = self._infer_default_currency(

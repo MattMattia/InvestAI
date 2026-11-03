@@ -144,6 +144,47 @@ export interface ToleranceBandItem {
   delta_weight: number;
 }
 
+export type RebalanceQuantStrategy =
+  | "AUTO"
+  | "CONSERVATIVE"
+  | "MODERATE"
+  | "AGGRESSIVE"
+  | "EQUAL_WEIGHT";
+
+export interface AssetFundamentalQuantMetrics {
+  ticker: string;
+  name: string;
+  asset_type: "STOCK" | "CEDEAR" | "BOND" | string;
+  currency: "ARS" | "USD" | string;
+  sector: string;
+  reference_price: number;
+  history_start_date: string;
+  history_years_available: number;
+  data_points_count: number;
+  cagr_annualized: number;
+  volatility_annualized: number;
+  sharpe_ratio: number;
+  sortino_ratio: number;
+  max_drawdown: number;
+  beta_market: number;
+  var_95_daily: number;
+  composite_quant_return: number;
+  pe_ratio?: number | null;
+  pb_ratio?: number | null;
+  roe_pct?: number | null;
+  debt_to_equity?: number | null;
+  dividend_yield_pct?: number | null;
+  market_cap_usd?: number | null;
+  ytm_tir_pct?: number | null;
+  modified_duration?: number | null;
+  parity_pct?: number | null;
+  cedear_ratio?: number | null;
+  underlying_ticker?: string | null;
+  current_weight?: number;
+  target_weight?: number;
+  data_source?: string;
+}
+
 export interface RebalanceSimulationResult {
   portfolio_id: string;
   needs_rebalancing: boolean;
@@ -152,6 +193,8 @@ export interface RebalanceSimulationResult {
   breached_tickers: string[];
   orders: RebalanceOrder[];
   generated_at: string;
+  strategy_used?: string;
+  asset_metrics?: AssetFundamentalQuantMetrics[];
   total_buy_amount?: number;
   total_sell_amount?: number;
   net_cash_flow?: number;
