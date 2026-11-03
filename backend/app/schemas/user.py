@@ -6,7 +6,7 @@ y validación defensiva de correos según RFC 5321/5322.
 from datetime import datetime, timezone
 import enum
 import re
-from typing import Any
+from typing import Optional
 import uuid
 
 from pydantic import ConfigDict, Field, SecretStr, field_validator
@@ -82,11 +82,33 @@ class UserCreate(UserBase):
         return v
 
 
+class UserUpdateRequest(BaseSchema):
+    """Esquema para actualización de perfil de usuario y simulación de rol RBAC."""
+
+    full_name: Optional[str] = Field(
+        default=None,
+        min_length=2,
+        max_length=100,
+        description="Nombre completo actualizado",
+    )
+    investor_profile: Optional[str] = Field(
+        default=None,
+        description="Perfil de inversor (CONSERVATIVE, MODERATE, AGGRESSIVE)",
+    )
+    role: Optional[UserRole] = Field(
+        default=None,
+        description="Rol RBAC activo (VIEWER, TRADER, ADMIN)",
+    )
+
 
 class UserResponse(UserBase):
     """Esquema de respuesta pública de usuario (sin secretos ni hashes)."""
 
     id: uuid.UUID = Field(description="Identificador único global del usuario (UUIDv4)")
+    investor_profile: str = Field(
+        default="MODERATE",
+        description="Perfil de riesgo del inversor asociado a la cuenta",
+    )
     created_at: datetime = Field(description="Fecha y hora de creación de la cuenta en UTC")
     updated_at: datetime = Field(description="Fecha y hora de última actualización de la cuenta en UTC")
 
@@ -103,4 +125,3 @@ class UserResponse(UserBase):
         if v.tzinfo is None:
             return v.replace(tzinfo=timezone.utc)
         return v.astimezone(timezone.utc)
-

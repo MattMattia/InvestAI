@@ -8,10 +8,18 @@ import { authStorage } from "@/lib/authStorage";
 import {
   APIResponse,
   AuthTokenResponse,
+  InvestorProfile,
   LoginCredentials,
   RegisterData,
   User,
+  UserRole,
 } from "@/types/api";
+
+export interface UpdateProfilePayload {
+  full_name?: string;
+  investor_profile?: InvestorProfile;
+  role?: UserRole;
+}
 
 export const authService = {
   /**
@@ -69,6 +77,17 @@ export const authService = {
   },
 
   /**
+   * Updates the authenticated user's profile and RBAC role via PATCH /auth/me.
+   */
+  async updateProfile(payload: UpdateProfilePayload): Promise<User> {
+    const response = await apiClient.patch<APIResponse<User>>(
+      "/auth/me",
+      payload
+    );
+    return response.data?.data || (response.data as unknown as User);
+  },
+
+  /**
    * Cleanses the active session and token storage.
    */
   async logout(): Promise<void> {
@@ -79,4 +98,3 @@ export const authService = {
     }
   },
 };
-

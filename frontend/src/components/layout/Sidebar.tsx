@@ -1,6 +1,6 @@
 /**
  * Institutional Sidebar Component for InvestAI Enterprise.
- * Features URL-first navigation via hash, financial branding, and user session status.
+ * Features URL-first navigation via hash, financial branding, and interactive user session card.
  */
 
 import React from "react";
@@ -9,6 +9,7 @@ import {
   BarChart3,
   Briefcase,
   LineChart,
+  Settings,
   ShieldCheck,
   TrendingUp,
   UploadCloud,
@@ -21,6 +22,8 @@ export type { NavSection };
 interface SidebarProps {
   activeSection: NavSection;
   onNavigate: (section: NavSection) => void;
+  onOpenProfileModal?: () => void;
+  onOpenAuthModal?: () => void;
 }
 
 interface NavItem {
@@ -70,6 +73,8 @@ const NAV_ITEMS: NavItem[] = [
 export const Sidebar: React.FC<SidebarProps> = ({
   activeSection,
   onNavigate,
+  onOpenProfileModal,
+  onOpenAuthModal,
 }) => {
   const { user, isAuthenticated, isAdmin, isTrader } = useAuth();
 
@@ -153,12 +158,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Institutional Metadata & Footer */}
       <div className="p-3 border-t border-slate-800/80 bg-slate-950/60 flex flex-col gap-3">
-        {/* User Identity Chip */}
+        {/* Clickable User Identity Chip */}
         {isAuthenticated && user ? (
-          <div className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800">
+          <button
+            type="button"
+            onClick={onOpenProfileModal}
+            title="Configurar perfil de inversor y rol RBAC"
+            className="w-full p-2.5 rounded-lg bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 hover:border-sky-500/40 text-left transition group"
+          >
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[11px] font-medium text-slate-200 truncate">
+              <span className="text-[11px] font-semibold text-slate-200 group-hover:text-white truncate flex items-center gap-1.5">
                 {user.full_name || user.email}
+                <Settings className="h-3 w-3 text-slate-500 group-hover:text-sky-400 transition-colors" />
               </span>
               <span
                 className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-semibold ${
@@ -172,19 +183,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {user.role}
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 font-mono truncate">
-              {user.email}
-            </p>
-          </div>
+            <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+              <span className="truncate max-w-[130px]">{user.email}</span>
+              <span className="text-sky-400/90">
+                {user.investor_profile || "MODERATE"}
+              </span>
+            </div>
+          </button>
         ) : (
-          <div className="p-2.5 rounded-lg bg-slate-900/40 border border-slate-800/60 text-center">
-            <span className="text-[11px] text-slate-400 block font-medium">
+          <button
+            type="button"
+            onClick={onOpenAuthModal}
+            className="w-full p-2.5 rounded-lg bg-slate-900/40 hover:bg-slate-900 border border-slate-800/60 hover:border-sky-500/40 text-center transition"
+          >
+            <span className="text-[11px] text-slate-300 block font-medium">
               Modo Invitado (Lectura)
             </span>
-            <span className="text-[10px] text-slate-400 block">
-              Inicia sesión para operar carteras
+            <span className="text-[10px] text-sky-400 block">
+              Clic aquí para iniciar sesión
             </span>
-          </div>
+          </button>
         )}
 
         <div className="flex items-center justify-between text-[10px] text-slate-400 px-1 font-mono">
@@ -192,7 +210,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
             BYMA / Merval
           </span>
-          <span>v1.0.0-p3</span>
+          <span>v1.0.0-ENT</span>
         </div>
       </div>
     </aside>

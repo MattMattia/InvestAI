@@ -1,5 +1,5 @@
 from typing import Annotated, List
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db_session, require_trader_or_admin
@@ -29,12 +29,16 @@ async def generate_portfolio_rebalance(
     payload: RebalanceRequest,
     current_user: Annotated[UserModel, Depends(require_trader_or_admin)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
+    dry_run: bool = Query(
+        default=False,
+        description="Si es True, simula el plan de rebalanceo sin persistir órdenes pendientes en la base de datos.",
+    ),
 ) -> RebalancePlanResponse:
     """
     Executes the deterministic Tolerance-Band Rebalancer against target allocations.
     Generates actionable integer BUY/SELL orders only when asset weights breach
     the allowed tolerance band, ensuring cash liquidity conservation.
-    Persists pending execution orders in the database.
+    Persists pending execution orders in the database unless dry_run=True.
     Enforces RBAC (TRADER or ADMIN) and anti-IDOR/BOLA tenant isolation.
     """
     portfolio_model = await get_user_portfolio_or_404(id, current_user, db)
@@ -57,23 +61,24 @@ async def generate_portfolio_rebalance(
         include_hold=payload.include_hold,
     )
 
-    # Persist pending orders
-    for order in plan.orders:
-        order_model = RebalanceOrderModel(
-            portfolio_id=portfolio_model.id,
-            ticker=order.ticker,
-            side=order.side.value,
-            current_weight=order.current_weight,
-            target_weight=order.target_weight,
-            delta_amount=order.delta_amount,
-            estimated_shares=order.estimated_shares,
-            price_used=order.price_used,
-            status="PENDING",
-            justification=order.justification,
-        )
-        db.add(order_model)
+    if not dry_run:
+        # Persist pending orders
+        for order in plan.orders:
+            order_model = RebalanceOrderModel(
+                portfolio_id=portfolio_model.id,
+                ticker=order.ticker,
+                side=order.side.value,
+                current_weight=order.current_weight,
+                target_weight=order.target_weight,
+                delta_amount=order.delta_amount,
+                estimated_shares=order.estimated_shares,
+                price_used=order.price_used,
+                status="PENDING",
+                justification=order.justification,
+            )
+            db.add(order_model)
 
-    await db.flush()
+        await db.flush()
 
     return RebalancePlanResponse(
         portfolio_id=portfolio_model.id,

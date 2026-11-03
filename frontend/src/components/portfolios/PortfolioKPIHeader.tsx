@@ -1,7 +1,8 @@
 /**
  * Analytical KPI Header for Portfolio Detail View in InvestAI Enterprise.
  * Displays navigation back-button, risk profile badge, bimonetary valuations,
- * and aggregated unrealized P&L telemetry.
+ * aggregated unrealized P&L telemetry, and quick actions for Treasury (Cash),
+ * Portfolio Settings/Delete, and Assisted Order Execution.
  */
 
 import React, { useMemo } from "react";
@@ -14,6 +15,7 @@ import {
   DollarSign,
   Minus,
   Plus,
+  Settings,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -28,11 +30,15 @@ import { InvestorProfile, Portfolio } from "@/types/api";
 interface PortfolioKPIHeaderProps {
   portfolio: Portfolio;
   onNewOrder?: () => void;
+  onManageCash?: () => void;
+  onEditPortfolio?: () => void;
 }
 
 export const PortfolioKPIHeader: React.FC<PortfolioKPIHeaderProps> = ({
   portfolio,
   onNewOrder,
+  onManageCash,
+  onEditPortfolio,
 }) => {
   const profile = (
     portfolio.investor_profile || "MODERATE"
@@ -78,10 +84,11 @@ export const PortfolioKPIHeader: React.FC<PortfolioKPIHeaderProps> = ({
 
   return (
     <div className="space-y-5">
-      {/* Top Bar: Back Button, Title, ID, Risk Badge */}
+      {/* Top Bar: Back Button, Title, ID, Risk Badge, Action Buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={() => navigateToPortfoliosList()}
             className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-1.5 text-xs"
             title="Volver al catálogo de portafolios"
@@ -93,7 +100,7 @@ export const PortfolioKPIHeader: React.FC<PortfolioKPIHeaderProps> = ({
           <div className="h-6 w-px bg-slate-800 hidden sm:block" />
 
           <div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-xl font-bold tracking-tight text-white">
                 {portfolio.name}
               </h1>
@@ -104,23 +111,50 @@ export const PortfolioKPIHeader: React.FC<PortfolioKPIHeaderProps> = ({
               </span>
             </div>
             <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono mt-0.5">
-              <span>ID: {portfolio.id}</span>
+              <span>ID: {portfolio.id.slice(0, 12)}</span>
               <span>•</span>
               <span>{kpis.holdingsCount} activos en cartera</span>
             </div>
           </div>
         </div>
 
-        {onNewOrder && (
-          <button
-            type="button"
-            onClick={onNewOrder}
-            className="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs shadow-lg shadow-sky-600/20 transition-all flex items-center gap-1.5 self-start sm:self-auto active:scale-95"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Nueva Orden</span>
-          </button>
-        )}
+        {/* Institutional Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {onManageCash && (
+            <button
+              type="button"
+              onClick={onManageCash}
+              className="px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-medium text-xs transition-all flex items-center gap-1.5 active:scale-95"
+              title="Depositar o retirar liquidez en ARS y USD"
+            >
+              <Wallet className="h-3.5 w-3.5" />
+              <span>Depositar / Caja</span>
+            </button>
+          )}
+
+          {onEditPortfolio && (
+            <button
+              type="button"
+              onClick={onEditPortfolio}
+              className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 font-medium text-xs transition-all flex items-center gap-1.5 active:scale-95"
+              title="Editar nombre, perfil de riesgo o eliminar cartera"
+            >
+              <Settings className="h-3.5 w-3.5 text-slate-400" />
+              <span>Ajustes</span>
+            </button>
+          )}
+
+          {onNewOrder && (
+            <button
+              type="button"
+              onClick={onNewOrder}
+              className="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs shadow-lg shadow-sky-600/20 transition-all flex items-center gap-1.5 active:scale-95"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Nueva Orden</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* KPI Cards Grid */}

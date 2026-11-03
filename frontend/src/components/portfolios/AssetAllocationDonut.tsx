@@ -1,12 +1,17 @@
 /**
  * Pure SVG Accessible Donut Chart for Portfolio Asset Allocation.
  * Features institutional bimonetary toggle (ARS vs USD), integrated cash representation,
- * responsive synchronized hover, and strict zero/100% boundary handling.
+ * clipping-free viewBox (220x220 with r=80), smooth strokeWidth/opacity hover transitions,
+ * and strict zero/100% boundary handling.
  */
 
 import React, { useMemo, useState } from "react";
 import { Coins, DollarSign, PieChart as PieChartIcon } from "lucide-react";
-import { formatMoney, parseDecimalSafe } from "@/lib/formatters";
+import {
+  formatMoney,
+  inferAssetNativeCurrency,
+  parseDecimalSafe,
+} from "@/lib/formatters";
 import { Holding, Portfolio } from "@/types/api";
 
 interface AssetAllocationDonutProps {
@@ -38,6 +43,7 @@ const PALETTE = [
   "#64748b", // Slate
 ];
 
+const CENTER = 110;
 const RADIUS = 80;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS; // ~502.6548
 
@@ -65,7 +71,9 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
         const qty = parseDecimalSafe(h.quantity);
         const price = parseDecimalSafe(h.current_price);
         const marketVal = qty * price;
-        const cur = h.asset?.currency?.toUpperCase() === "USD" ? "USD" : "ARS";
+        const assetCur =
+          h.asset?.currency?.toUpperCase() === "USD" ? "USD" : "ARS";
+        const cur = inferAssetNativeCurrency(h.asset_ticker, assetCur);
         return {
           ticker: h.asset_ticker,
           marketVal,
@@ -75,8 +83,7 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
       .filter((h) => h.currency === selectedCurrency && h.marketVal > 0);
 
     const rawTotal =
-      cashValue +
-      relevantHoldings.reduce((acc, h) => acc + h.marketVal, 0);
+      cashValue + relevantHoldings.reduce((acc, h) => acc + h.marketVal, 0);
 
     if (rawTotal <= 0) {
       return { sectors: [], totalValue: 0 };
@@ -130,19 +137,23 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
   }, [sectors, hoveredSectorId]);
 
   return (
-    <div className="rounded-xl bg-slate-900 border border-slate-800 p-5 shadow-lg flex flex-col justify-between space-y-5">
+    <div
+      className="rounded-xl bg-slate-900 border border-slate-800 p-5 shadow-lg flex flex-col justify-between space-y-5"
+      onMouseLeave={() => setHoveredSectorId(null)}
+    >
       {/* Header with Currency Switcher */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-800">
         <div className="flex items-center gap-2">
           <PieChartIcon className="h-4 w-4 text-sky-400" />
           <h3 className="font-semibold text-sm text-slate-100">
-            Asignación por Activo
+            Asignación por Activo ({selectedCurrency})
           </h3>
         </div>
 
         {/* Currency Toggle */}
         <div className="flex items-center p-0.5 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono">
           <button
+            type="button"
             onClick={() => {
               setSelectedCurrency("ARS");
               setHoveredSectorId(null);
@@ -157,6 +168,7 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
             <span>ARS</span>
           </button>
           <button
+            type="button"
             onClick={() => {
               setSelectedCurrency("USD");
               setHoveredSectorId(null);
@@ -175,19 +187,23 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
 
       {/* SVG Donut Centerpiece */}
       <div className="flex flex-col md:flex-row items-center justify-center gap-6">
-        <div className="relative w-48 h-48 shrink-0 flex items-center justify-center select-none">
+        <div
+          className="relative w-52 h-52 shrink-0 flex items-center justify-center select-none"
+          onMouseLeave={() => setHoveredSectorId(null)}
+        >
           <svg
-            viewBox="0 0 200 200"
-            className="w-full h-full transform -rotate-90"
+            viewBox="0 0 220 220"
+            className="w-full h-full transform -rotate-90 overflow-visible"
+            onMouseLeave={() => setHoveredSectorId(null)}
           >
             {/* Background track circle */}
             <circle
-              cx="100"
-              cy="100"
+              cx={CENTER}
+              cy={CENTER}
               r={RADIUS}
               fill="transparent"
               stroke="#1e293b"
-              strokeWidth="24"
+              strokeWidth="22"
             />
 
             {/* Render Sectors */}
@@ -196,7 +212,12 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
                 let accumulatedFraction = 0;
                 return sectors.map((sector) => {
                   const isHovered = hoveredSectorId === sector.id;
-                  const dash = (sector.fraction * CIRCUMFERENCE).toFixed(2);
+                  const isDimmed =
+                    hoveredSectorId !== null && hoveredSectorId !== sector.id;
+                  const dash = Math.max(
+                    0,
+                    sector.fraction * CIRCUMFERENCE
+                  ).toFixed(2);
                   const offset = (
                     -accumulatedFraction * CIRCUMFERENCE
                   ).toFixed(2);
@@ -205,15 +226,20 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
                   return (
                     <circle
                       key={sector.id}
-                      cx="100"
-                      cy="100"
+                      cx={CENTER}
+                      cy={CENTER}
                       r={RADIUS}
                       fill="transparent"
                       stroke={sector.color}
-                      strokeWidth={isHovered ? 28 : 24}
+                      strokeWidth={isHovered ? 27 : 22}
+                      strokeOpacity={isDimmed ? 0.42 : 1}
                       strokeDasharray={`${dash} ${CIRCUMFERENCE.toFixed(2)}`}
                       strokeDashoffset={offset}
-                      className="transition-all duration-200 cursor-pointer"
+                      style={{
+                        transition:
+                          "stroke-width 180ms ease, stroke-opacity 180ms ease",
+                      }}
+                      className="cursor-pointer"
                       onMouseEnter={() => setHoveredSectorId(sector.id)}
                       onMouseLeave={() => setHoveredSectorId(null)}
                     />
@@ -222,31 +248,31 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
               })()
             ) : (
               <circle
-                cx="100"
-                cy="100"
+                cx={CENTER}
+                cy={CENTER}
                 r={RADIUS}
                 fill="transparent"
                 stroke="#334155"
-                strokeWidth="24"
+                strokeWidth="22"
                 strokeDasharray="4 4"
               />
             )}
           </svg>
 
           {/* Central Hover Overlay */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 pointer-events-none">
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-5 pointer-events-none">
             {hoveredSector ? (
               <>
                 <span
-                  className="text-[10px] font-mono uppercase tracking-wider font-semibold truncate max-w-[120px]"
+                  className="text-[10px] font-mono uppercase tracking-wider font-semibold truncate max-w-[115px]"
                   style={{ color: hoveredSector.color }}
                 >
                   {hoveredSector.label}
                 </span>
-                <span className="text-base font-bold font-mono text-white mt-0.5">
+                <span className="text-base font-bold font-mono text-white mt-0.5 tabular-nums">
                   {hoveredSector.percentage.toFixed(1)}%
                 </span>
-                <span className="text-[10px] text-slate-400 font-mono mt-0.5 truncate max-w-[120px]">
+                <span className="text-[10px] text-slate-400 font-mono mt-0.5 truncate max-w-[120px] tabular-nums">
                   {formatMoney(hoveredSector.value, selectedCurrency)}
                 </span>
               </>
@@ -255,11 +281,12 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
                 <span className="text-[10px] uppercase font-mono tracking-wider text-slate-400">
                   Total {selectedCurrency}
                 </span>
-                <span className="text-sm font-bold font-mono text-slate-100 mt-0.5">
+                <span className="text-xs font-bold font-mono text-slate-100 mt-0.5 tabular-nums">
                   {formatMoney(totalValue, selectedCurrency)}
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono mt-0.5">
-                  {sectors.length} {sectors.length === 1 ? "sector" : "sectores"}
+                  {sectors.length}{" "}
+                  {sectors.length === 1 ? "posición" : "posiciones"}
                 </span>
               </>
             ) : (
@@ -271,7 +298,10 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
         </div>
 
         {/* Interactive Legend */}
-        <div className="flex-1 w-full max-h-48 overflow-y-auto space-y-1.5 pr-1">
+        <div
+          className="flex-1 w-full max-h-52 overflow-y-auto space-y-1.5 pr-1"
+          onMouseLeave={() => setHoveredSectorId(null)}
+        >
           {sectors.length > 0 ? (
             sectors.map((sector) => {
               const isHovered = hoveredSectorId === sector.id;
@@ -302,10 +332,10 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0 ml-2">
-                    <span className="text-slate-400 text-[11px]">
+                    <span className="text-slate-400 text-[11px] tabular-nums">
                       {formatMoney(sector.value, selectedCurrency)}
                     </span>
-                    <span className="font-semibold text-slate-200 text-right w-12">
+                    <span className="font-semibold text-slate-200 text-right w-12 tabular-nums">
                       {sector.percentage.toFixed(1)}%
                     </span>
                   </div>
@@ -322,4 +352,3 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
     </div>
   );
 };
-

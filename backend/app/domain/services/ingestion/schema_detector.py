@@ -92,12 +92,16 @@ _PRIMARY_SYNONYMS: dict[CanonicalReportField, frozenset[str]] = {
             "instrumento",
             "codigo",
             "titulo",
+            "descripcion",
+            "desc",
             "descripcion especie",
             "denominacion",
             "nombre especie",
             "cod especie",
             "codigo especie",
             "simb",
+            "papel",
+            "valor",
         }
     ),
     CanonicalReportField.QUANTITY: frozenset(

@@ -1,11 +1,21 @@
 /**
  * Modal Component for User Login & Registration.
- * Styled with Tailwind dark slate financial theme, keyboard accessibility (Escape),
- * and Pydantic 422 / 401 error mapping.
+ * Enforces strict credential hygiene (purging inputs on open/close/tab switch),
+ * real-time password strength validation on registration, and quick demo credentials helper.
  */
 
-import React, { useEffect, useState } from "react";
-import { AlertCircle, Lock, Mail, RefreshCw, UserCheck, X } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  KeyRound,
+  Lock,
+  Mail,
+  RefreshCw,
+  ShieldCheck,
+  UserCheck,
+  X,
+} from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, ValidationErrorDetail } from "@/lib/apiClient";
 import { InvestorProfile } from "@/types/api";
@@ -21,7 +31,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   initialMode = "login",
 }) => {
-  const { login, register } = useAuth();
+  const { login, register, isAuthenticated } = useAuth();
   const [mode, setMode] = useState<"login" | "register">(initialMode);
 
   // Form Fields
@@ -38,25 +48,62 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     ValidationErrorDetail[]
   >([]);
 
-  // Synchronize initial mode
+  const resetFormState = () => {
+    setEmail("");
+    setPassword("");
+    setFullName("");
+    setInvestorProfile("MODERATE");
+    setErrorMessage(null);
+    setValidationErrors([]);
+  };
+
+  // Purge all credentials when modal opens, closes, or auth state changes
   useEffect(() => {
+    resetFormState();
     if (isOpen) {
       setMode(initialMode);
-      setErrorMessage(null);
-      setValidationErrors([]);
     }
-  }, [isOpen, initialMode]);
+  }, [isOpen, initialMode, isAuthenticated]);
+
+  const handleModeSwitch = (targetMode: "login" | "register") => {
+    setMode(targetMode);
+    resetFormState();
+  };
+
+  const handleClose = () => {
+    resetFormState();
+    onClose();
+  };
 
   // Handle ESC key to dismiss modal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen) {
-        onClose();
+        handleClose();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen]);
+
+  // Real-time password strength checks for Registration
+  const passwordChecks = useMemo(() => {
+    const hasMinLength = password.length >= 8;
+    const hasUppercase = /[A-Z]/.test(password);
+    const hasNumberOrSymbol = /[0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(
+      password
+    );
+    const passedCount = [hasMinLength, hasUppercase, hasNumberOrSymbol].filter(
+      Boolean
+    ).length;
+    return {
+      hasMinLength,
+      hasUppercase,
+      hasNumberOrSymbol,
+      isValid: hasMinLength && hasUppercase && hasNumberOrSymbol,
+      passedCount,
+    };
+  }, [password]);
 
   if (!isOpen) return null;
 
@@ -64,6 +111,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     e.preventDefault();
     setErrorMessage(null);
     setValidationErrors([]);
+
+    if (mode === "register" && !passwordChecks.isValid) {
+      setErrorMessage(
+        "La contraseña debe tener al menos 8 caracteres, una letra mayúscula y un número o símbolo."
+      );
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -77,7 +132,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           investor_profile: investorProfile,
         });
       }
-      onClose();
+      handleClose();
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         setErrorMessage(err.detail);
@@ -94,10 +149,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  const handleFillDemoCredentials = () => {
+    setEmail("demo@investai.com");
+    setPassword("InvestAI2026!");
+    setErrorMessage(null);
+    setValidationErrors([]);
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div
         className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col"
@@ -110,11 +172,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <div className="flex gap-4">
             <button
               type="button"
-              onClick={() => {
-                setMode("login");
-                setErrorMessage(null);
-                setValidationErrors([]);
-              }}
+              onClick={() => handleModeSwitch("login")}
               className={`text-sm font-semibold pb-2 border-b-2 transition-colors ${
                 mode === "login"
                   ? "border-sky-500 text-white"
@@ -125,11 +183,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => {
-                setMode("register");
-                setErrorMessage(null);
-                setValidationErrors([]);
-              }}
+              onClick={() => handleModeSwitch("register")}
               className={`text-sm font-semibold pb-2 border-b-2 transition-colors ${
                 mode === "register"
                   ? "border-sky-500 text-white"
@@ -141,7 +195,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
 
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
             aria-label="Cerrar modal"
           >
@@ -150,7 +204,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </div>
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
+        <form
+          onSubmit={handleSubmit}
+          autoComplete="off"
+          className="p-6 flex flex-col gap-4"
+        >
           {/* Error Banner */}
           {errorMessage && (
             <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-800/80 text-rose-300 text-xs flex items-start gap-2.5">
@@ -161,13 +219,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <ul className="mt-1 list-disc list-inside space-y-0.5 text-rose-300/80">
                     {validationErrors.map((v, i) => (
                       <li key={i}>
-                        {v.field ? <span className="font-mono">{v.field}: </span> : null}
+                        {v.field ? (
+                          <span className="font-mono">{v.field}: </span>
+                        ) : null}
                         {v.issue}
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Quick Demo Credentials Banner on Login */}
+          {mode === "login" && (
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs text-slate-300">
+                <KeyRound className="h-4 w-4 text-sky-400 shrink-0" />
+                <div>
+                  <span className="font-medium block">Cuenta Institucional Demo</span>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    demo@investai.com
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleFillDemoCredentials}
+                className="px-2.5 py-1.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-[11px] font-semibold transition"
+              >
+                Usar Demo
+              </button>
             </div>
           )}
 
@@ -183,6 +265,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <input
                     type="text"
                     required
+                    minLength={2}
+                    autoComplete="off"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Ej. Martín González"
@@ -193,7 +277,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Perfil de Inversor
+                  Perfil de Inversor Inicial
                 </label>
                 <select
                   value={investorProfile}
@@ -202,10 +286,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   }
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
                 >
-                  <option value="CONSERVATIVE">Conservador (Baja volatilidad, Renta fija)</option>
-                  <option value="MODERATE">Moderado (Equilibrio retorno/riesgo)</option>
-                  <option value="AGGRESSIVE">Agresivo (Renta variable, Renta mixta)</option>
+                  <option value="CONSERVATIVE">
+                    Conservador (Baja volatilidad, Renta fija)
+                  </option>
+                  <option value="MODERATE">
+                    Moderado (Equilibrio retorno/riesgo)
+                  </option>
+                  <option value="AGGRESSIVE">
+                    Agresivo (Renta variable, Crecimiento)
+                  </option>
                 </select>
+                <p className="text-[11px] text-emerald-400/90 mt-1 flex items-center gap-1">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Se asignará rol operativo TRADER por defecto para operar carteras.
+                </p>
               </div>
             </>
           )}
@@ -219,7 +313,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <Mail className="h-4 w-4 text-slate-500 absolute left-3 top-3" />
               <input
                 type="email"
+                name="investai_auth_email"
                 required
+                autoComplete="off"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="analista@investai.market"
@@ -236,20 +332,92 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <Lock className="h-4 w-4 text-slate-500 absolute left-3 top-3" />
               <input
                 type="password"
+                name="investai_auth_password"
                 required
                 minLength={8}
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••••••"
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
               />
             </div>
+
+            {/* Password Strength Meter in Register Mode */}
+            {mode === "register" && (
+              <div className="mt-2.5 p-3 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400">Fortaleza de clave:</span>
+                  <span
+                    className={`font-semibold ${
+                      passwordChecks.passedCount === 3
+                        ? "text-emerald-400"
+                        : passwordChecks.passedCount === 2
+                        ? "text-amber-400"
+                        : "text-rose-400"
+                    }`}
+                  >
+                    {passwordChecks.passedCount === 3
+                      ? "Fuerte (Apta)"
+                      : passwordChecks.passedCount === 2
+                      ? "Media (Incompleta)"
+                      : "Débil"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 h-1.5">
+                  {[1, 2, 3].map((step) => (
+                    <div
+                      key={step}
+                      className={`rounded-full transition-colors ${
+                        passwordChecks.passedCount >= step
+                          ? passwordChecks.passedCount === 3
+                            ? "bg-emerald-500"
+                            : "bg-amber-500"
+                          : "bg-slate-800"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <ul className="space-y-1 text-[11px]">
+                  <li
+                    className={`flex items-center gap-1.5 ${
+                      passwordChecks.hasMinLength
+                        ? "text-emerald-400"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    <CheckCircle2 className="h-3 w-3 shrink-0" />
+                    Mínimo 8 caracteres
+                  </li>
+                  <li
+                    className={`flex items-center gap-1.5 ${
+                      passwordChecks.hasUppercase
+                        ? "text-emerald-400"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    <CheckCircle2 className="h-3 w-3 shrink-0" />
+                    Al menos una letra mayúscula (A-Z)
+                  </li>
+                  <li
+                    className={`flex items-center gap-1.5 ${
+                      passwordChecks.hasNumberOrSymbol
+                        ? "text-emerald-400"
+                        : "text-slate-400"
+                    }`}
+                  >
+                    <CheckCircle2 className="h-3 w-3 shrink-0" />
+                    Al menos un número (0-9) o símbolo (!@#$%)
+                  </li>
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || (mode === "register" && !passwordChecks.isValid)}
             className="mt-2 w-full py-2.5 px-4 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-medium text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-sky-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? (
@@ -268,4 +436,3 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     </div>
   );
 };
-

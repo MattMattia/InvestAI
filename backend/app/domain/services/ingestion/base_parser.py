@@ -55,12 +55,16 @@ TICKER_HEADER_ALIASES: frozenset[str] = frozenset(
         "instrumento",
         "codigo",
         "titulo",
+        "descripcion",
+        "desc",
         "descripcion especie",
         "denominacion",
         "nombre especie",
         "cod especie",
         "codigo especie",
         "simb",
+        "papel",
+        "valor",
     }
 )
 
@@ -129,6 +133,22 @@ IGNORED_SUMMARY_TICKERS: frozenset[str] = frozenset(
         "total general",
         "saldo",
         "resumen",
+        "descripcion",
+        "ticker",
+        "especie",
+        "simbolo",
+        "instrumento",
+        "activo",
+        "acciones",
+        "cedears",
+        "bonos",
+        "titulos publicos",
+        "obligaciones negociables",
+        "fondos comunes",
+        "cauciones",
+        "liquidez",
+        "disponibilidades",
+        "efectivo",
     }
 )
 
@@ -277,7 +297,7 @@ class RawHoldingRecord(BaseSchema):
     row_number: int = Field(ge=1, description="1-based row number in the source report")
     raw_ticker: str = Field(
         min_length=1,
-        max_length=64,
+        max_length=255,
         description="Sanitized raw instrument ticker or symbol",
     )
     raw_quantity: str | Decimal | int | float = Field(
@@ -289,7 +309,7 @@ class RawHoldingRecord(BaseSchema):
     )
     raw_currency: str | None = Field(
         default=None,
-        max_length=16,
+        max_length=64,
         description="Optional raw currency code or label",
     )
     raw_fields: dict[str, Any] = Field(

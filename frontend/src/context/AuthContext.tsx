@@ -1,7 +1,7 @@
 /**
  * React Authentication Context for InvestAI Enterprise Frontend.
  * Manages synchronous token inspection, initial profile hydration, multi-tab sync,
- * and secure cache purges upon session termination.
+ * live RBAC / investor profile hot-swapping, and secure cache purges upon session termination.
  */
 
 import React, {
@@ -12,7 +12,7 @@ import React, {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { authStorage } from "@/lib/authStorage";
-import { authService } from "@/services/authService";
+import { authService, UpdateProfilePayload } from "@/services/authService";
 import { LoginCredentials, RegisterData, User } from "@/types/api";
 
 export interface AuthContextType {
@@ -24,6 +24,7 @@ export interface AuthContextType {
   isViewer: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
+  updateUserProfile: (payload: UpdateProfilePayload) => Promise<User>;
   logout: () => Promise<void>;
 }
 
@@ -148,7 +149,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       authStorage.clearTokens();
       setUser(null);
       setIsAuthenticated(false);
-      throw err; // Re-throw ApiError for component error presentation
+      throw err;
     } finally {
       setIsLoading(false);
     }
@@ -163,26 +164,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         email: data.email,
         password: data.password,
       });
-      const currentUser = await authService.getCurrentUser();
-      setUser(currentUser);
+      // Immediately assign operational TRADER role and selected investor_profile
+      const updatedUser = await authService.updateProfile({
+        role: "TRADER",
+        investor_profile: data.investor_profile || "MODERATE",
+      });
+      setUser(updatedUser);
       setIsAuthenticated(true);
     } catch (err) {
-      throw err; // Re-throw ApiError for component error presentation
+      throw err;
     } finally {
       setIsLoading(false);
     }
   };
 
+  const updateUserProfile = async (
+    payload: UpdateProfilePayload
+  ): Promise<User> => {
+    const updatedUser = await authService.updateProfile(payload);
+    setUser(updatedUser);
+    await queryClient.invalidateQueries();
+    return updatedUser;
+  };
+
   const logout = async (): Promise<void> => {
     try {
-      // 1. Cancel in-flight queries
       await queryClient.cancelQueries();
-      // 2. Clear sensitive client cache
       queryClient.clear();
-      // 3. Clear auth storage
       await authService.logout();
     } finally {
-      // 4. Reset component state
       setUser(null);
       setIsAuthenticated(false);
     }
@@ -197,6 +207,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isViewer,
     login,
     register,
+    updateUserProfile,
     logout,
   };
 

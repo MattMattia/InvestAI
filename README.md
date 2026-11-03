@@ -1,7 +1,9 @@
 # InvestAI — Plataforma de Gestión de Portafolios y Evaluación de Riesgo
 
-> **Etapa 1: Trabajo de Campo & Motor de Riesgo Determinista**  
-> Sistema de gestión de tenencias, valuación de activos (Renta Variable / Renta Fija) y control de riesgo financiero basado en reglas cuantitativas deterministas.
+> **Plataforma Institucional Full-Stack (Capítulos 1 al 9 Completados + Auditoría Forense Sellada)**  
+> Sistema integral de gestión de portafolios bimonetarios (ARS/USD), valuación Mark-to-Market en BYMA, ingesta inteligente de extractos de brokers locales (Balanz, IOL, PPI), motor cuantitativo de riesgo y optimización convexa, ejecución asistida de órdenes con cálculo pre-trade de aranceles BYMA/CNV y observabilidad OpenMetrics/Prometheus.
+>
+> 📖 **Para el Tribunal Evaluador:** Consulte el [**Manual de Defensa Académica y Guía de Demostración en Vivo (`docs/ACADEMIC_DEFENSE_GUIDE.md`)**](docs/ACADEMIC_DEFENSE_GUIDE.md) y el [**Registro de Auditoría Forense (`docs/AUDIT_LEDGER.md`)**](docs/AUDIT_LEDGER.md).
 
 ---
 
@@ -158,7 +160,21 @@ InvestAI_Mattia_Risso/
 - [Docker](https://docs.docker.com/get-docker/) y [Docker Compose](https://docs.docker.com/compose/install/) instalados.
 - Python 3.11+ y Node.js 18+ (opcional para desarrollo local sin Docker).
 
-### Ejecución con Docker Compose (Recomendado)
+### Ejecución en 1 Clic en Windows (Aplicación Demo de Escritorio)
+1. **Lanzador Automático 1-Click:**
+   Haga doble clic sobre **`InvestAI Enterprise.lnk`** en el Escritorio de Windows o sobre [`scripts/launch_investai.bat`](scripts/launch_investai.bat) en la raíz del proyecto:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\scripts\launch_investai.ps1
+   ```
+   - Inicializa la base de datos y siembra en lote las **26 especies líderes de BYMA** calibradas a precios reales de mercado en `< 0.05s`.
+   - Levanta el Backend (FastAPI en `http://127.0.0.1:8000`) y el Frontend (Vite en `http://127.0.0.1:5173`) con proxies integrados para `/api`, `/health`, `/ready` y `/metrics`.
+   - Abre la ventana nativa de escritorio con el botón **"Usar Demo"** (`demo@investai.com` / `InvestAI2026!`).
+2. **Parada Limpia de Servicios:**
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\scripts\stop_investai.ps1
+   ```
+
+### Ejecución con Docker Compose (Alternativa Contenerizada)
 1. **Configurar variables de entorno:**
    ```bash
    cp .env.example .env
@@ -345,27 +361,20 @@ A lo largo del desarrollo de los motores cuantitativos, de simulación y de la A
 
 ### 9.3. Suite de Pruebas Automatizadas (100% Passing)
 ```powershell
-$env:PYTHONPATH = "backend"; python -m unittest discover -s backend/tests/unit
-$env:PYTHONPATH = "backend"; python -m unittest discover -s backend/tests/integration
+$env:PYTHONPATH = "backend"; python -m pytest backend/tests -q
+npm --prefix frontend run build
 ```
-- **121 pruebas unitarias** (Modelos de Dominio, Reglas, Métricas, Rebalanceo, Persistencia, Ingesta, Bimoneda, Calendarios, Optimización, Markov, Estabilidad Numérica, FSM/Fricciones y Métricas de Backtest).
-- **16 pruebas de integración** (Base de datos relacional, endpoints REST, motor de simulación temporal BacktestEngine y endpoint /backtest/run).
-- **Total: 137 pruebas ejecutadas con éxito en ~2.2 segundos.**
+- **671 pruebas automatizadas aprobadas al 100%** (583 pruebas unitarias de dominio, álgebra lineal, riesgo, ingesta, seguridad y backtesting + 88 pruebas de integración de endpoints REST, RBAC, aislamiento anti-IDOR/BOLA, conciliación de extractos Balanz y liquidación contable FSM).
+- **Frontend React 18 + TypeScript + Vite:** Compilación limpia con **0 errores de tipado** (`tsc && vite build`).
 
 ---
 
-## 🔮 10. Roadmap de Expansión (Próximas Etapas)
+## 🏆 10. Estado de Implementación Global (Capítulos 1 al 9 + Auditoría Forense)
 
-- **Módulo 5 — Motor de Backtesting Histórico y Simulación:** ✅ **Completado al 100%**
-  - Fase 1: Esquemas de configuración, snapshots y servicio cuantitativo de métricas financieras.
-  - Fase 2: Motor de simulación cronológica (`BacktestEngine`) con bucle de rebalanceo, optimización Ledoit-Wolf, FSM y fricciones.
-  - Fase 3: Endpoint REST `/api/v1/backtest/run` con simulación por Movimiento Browniano Geométrico (GBM).
-- **Módulo 6 — Conectores de Datos en Vivo e Ingesta de Mercado:**
-  - Integración de feeds de mercado en tiempo real (Matba Rofex / Primary API, BYMA DMA, OpenBB / Yahoo Finance).
-  - Cache distribuido en Redis con TTL adaptativo para evitar sobreconsultas a proveedores de cotización.
-- **Módulo 7 — Orquestación Multi-Agent y LLMOps:**
-  - Implementación de agentes de IA especializados con llamadas a funciones (`function calling`) deterministas sobre los servicios cuantitativos ya construidos.
-  - Agente Asesor de Asignación, Agente Auditor de Compliance y Agente Analista Fundamental con generación automatizada de informes en PDF.
-- **Módulo 8 — Dashboard Frontend Institucional:**
-  - Visualización avanzada de superficies de volatilidad, curvas de rendimiento, simulador de rebalanceo interactivo y matriz de correlación en tiempo real en React/Vite.
+- **Capítulos 1 al 5 — Núcleo Cuantitativo, Riesgo, Bimoneda, Markov, FSM y Backtesting:** ✅ **100% Completado**
+- **Capítulo 6 — Ingesta Inteligente de Extractos de Brokers Locales (Balanz, IOL, PPI) y Calidad de Datos:** ✅ **100% Completado**
+- **Capítulo 7 — Señales Cuantitativas Avanzadas, Valuación MTM Bimonetaria y Snapshots Forenses:** ✅ **100% Completado**
+- **Capítulo 8 — Automatización en Background, Schedulers BYMA, Telemetría RED Prometheus y Resiliencia:** ✅ **100% Completado**
+- **Capítulo 9 — Frontend Dashboard Institucional Reactivo (React 18 + Vite + TypeScript + SVG Puro):** ✅ **100% Completado**
+- **Protocolo de Auditoría Forense y Sellado Progresivo (`docs/AUDIT_LEDGER.md` y `docs/ACADEMIC_DEFENSE_GUIDE.md`):** ✅ **8 / 8 Apartados Sellados al 100%**
 

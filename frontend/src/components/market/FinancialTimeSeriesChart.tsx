@@ -2,14 +2,16 @@
  * FinancialTimeSeriesChart Component for InvestAI Enterprise.
  * High-performance pure SVG financial charting without external bundle bloat.
  * Features semaphoric area gradients, zero-division immunity, interactive crosshair,
- * adaptive timeframe selectors, and proportional volume histogram.
+ * adaptive timeframe selectors, ARS ($) / USD (CCL) currency toggle, and volume histogram.
  */
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { formatMoney, formatSignedPercent } from "@/lib/formatters";
+import { CCL_REFERENCE_RATE } from "@/services/marketService";
 import { HistoricalBar, MarketQuote } from "@/types/api";
 
 export type ChartTimeframe = "1D" | "1W" | "1M" | "1Y";
+export type ChartCurrencyMode = "ARS" | "USD";
 
 interface FinancialTimeSeriesChartProps {
   bars: HistoricalBar[];
@@ -37,17 +39,46 @@ export const FinancialTimeSeriesChart: React.FC<
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const nativeCurrency: ChartCurrencyMode = quote?.currency === "USD" ? "USD" : "ARS";
+  const [displayCurrency, setDisplayCurrency] = useState<ChartCurrencyMode>(nativeCurrency);
+
+  // Sync default display currency when user selects an instrument with a different native currency
+  useEffect(() => {
+    setDisplayCurrency(nativeCurrency);
+    setHoverIndex(null);
+  }, [activeTicker, nativeCurrency]);
 
   // SVG dimensions
   const viewWidth = 800;
   const viewHeight = 360;
   const paddingLeft = 15;
-  const paddingRight = 75; // Space for right Y-axis price labels
+  const paddingRight = 82; // Space for right Y-axis price labels
   const paddingTop = 25;
   const priceChartHeight = 220; // Price area: Y: 25 to 245
   const volumeChartTop = 265;
   const volumeChartHeight = 55; // Volume area: Y: 265 to 320
   const chartWidth = viewWidth - paddingLeft - paddingRight;
+
+  // Currency conversion factor between native quote currency and selected chart currency (CCL Ref $1,180)
+  const fxFactor = useMemo(() => {
+    if (displayCurrency === nativeCurrency) return 1.0;
+    if (nativeCurrency === "ARS" && displayCurrency === "USD") {
+      return 1.0 / CCL_REFERENCE_RATE;
+    }
+    return CCL_REFERENCE_RATE;
+  }, [displayCurrency, nativeCurrency]);
+
+  const convertedBars = useMemo(() => {
+    if (!bars || bars.length === 0) return [];
+    if (fxFactor === 1.0) return bars;
+    return bars.map((b) => ({
+      ...b,
+      open: Number((b.open * fxFactor).toFixed(2)),
+      high: Number((b.high * fxFactor).toFixed(2)),
+      low: Number((b.low * fxFactor).toFixed(2)),
+      close: Number((b.close * fxFactor).toFixed(2)),
+    }));
+  }, [bars, fxFactor]);
 
   // Price calculations and strict zero-division protection
   const {
@@ -60,7 +91,7 @@ export const FinancialTimeSeriesChart: React.FC<
     yTicks,
     maxVolume,
   } = useMemo(() => {
-    if (!bars || bars.length === 0) {
+    if (!convertedBars || convertedBars.length === 0) {
       return {
         points: [],
         firstPrice: 0,
@@ -73,7 +104,7 @@ export const FinancialTimeSeriesChart: React.FC<
       };
     }
 
-    const prices = bars.map((b) => b.close);
+    const prices = convertedBars.map((b) => b.close);
     let min = Math.min(...prices);
     let max = Math.max(...prices);
 
@@ -90,23 +121,27 @@ export const FinancialTimeSeriesChart: React.FC<
     }
 
     const priceRange = max - min;
-    const n = bars.length;
+    const n = convertedBars.length;
     const stepX = n > 1 ? chartWidth / (n - 1) : chartWidth;
 
-    const computedPoints = bars.map((b, idx) => {
+    const computedPoints = convertedBars.map((b, idx) => {
       const x = paddingLeft + idx * stepX;
       const normalizedPrice = (b.close - min) / priceRange;
       const y = paddingTop + priceChartHeight - normalizedPrice * priceChartHeight;
       return { x, y, bar: b };
     });
 
-    const first = bars[0].close;
-    const last = bars[bars.length - 1].close;
+    const first = convertedBars[0].close;
+    const last = convertedBars[convertedBars.length - 1].close;
     const pos = last >= first;
 
     // SVG Path assembly
     const path = computedPoints
-      .map((p, idx) => (idx === 0 ? `M ${p.x.toFixed(1)} ${p.y.toFixed(1)}` : `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`))
+      .map((p, idx) =>
+        idx === 0
+          ? `M ${p.x.toFixed(1)} ${p.y.toFixed(1)}`
+          : `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`
+      )
       .join(" ");
 
     // Area closed path
@@ -123,7 +158,7 @@ export const FinancialTimeSeriesChart: React.FC<
       return { val, y };
     });
 
-    const maxVol = Math.max(...bars.map((b) => b.volume), 1);
+    const maxVol = Math.max(...convertedBars.map((b) => b.volume), 1);
 
     return {
       points: computedPoints,
@@ -137,7 +172,7 @@ export const FinancialTimeSeriesChart: React.FC<
       yTicks: ticks,
       maxVolume: maxVol,
     };
-  }, [bars, chartWidth]);
+  }, [convertedBars, chartWidth]);
 
   // Mouse hover event handler on SVG surface
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -167,18 +202,19 @@ export const FinancialTimeSeriesChart: React.FC<
   };
 
   const activePoint = hoverIndex !== null && points[hoverIndex] ? points[hoverIndex] : null;
-  const activeBar = activePoint ? activePoint.bar : bars[bars.length - 1] || null;
+  const activeBar = activePoint
+    ? activePoint.bar
+    : convertedBars[convertedBars.length - 1] || null;
 
-  const currency = quote?.currency || "ARS";
-  const periodChange = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice) : 0;
+  const periodChange = firstPrice > 0 ? (lastPrice - firstPrice) / firstPrice : 0;
   const periodMetrics = formatSignedPercent(periodChange);
 
   return (
     <div className="w-full rounded-2xl bg-slate-900 border border-slate-800 p-5 shadow-xl space-y-4">
-      {/* Top Header: Active Ticker & Period Selectors */}
+      {/* Top Header: Active Ticker, Currency Toggle & Period Selectors */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
         <div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <h3 className="text-lg font-bold text-white font-mono tracking-tight">
               {activeTicker}
             </h3>
@@ -190,12 +226,17 @@ export const FinancialTimeSeriesChart: React.FC<
             <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
               {quote?.asset_type || "BYMA"}
             </span>
+            {displayCurrency !== nativeCurrency && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                TC CCL Ref: $1.180,00 ARS/USD
+              </span>
+            )}
           </div>
 
           {activeBar && (
             <div className="flex items-center gap-3 mt-1 font-mono">
               <span className="text-xl font-bold text-slate-100 tabular-nums">
-                {formatMoney(activeBar.close, currency)}
+                {formatMoney(activeBar.close, displayCurrency)}
               </span>
               <span
                 className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
@@ -210,27 +251,62 @@ export const FinancialTimeSeriesChart: React.FC<
           )}
         </div>
 
-        {/* Timeframe Tabs */}
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-950 border border-slate-800 self-start sm:self-auto">
-          {TIMEFRAME_LABELS.map((item) => (
+        {/* Right Controls: Currency Selector (ARS / USD CCL) + Timeframe Tabs */}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {/* Currency Toggle */}
+          <div
+            className="flex items-center gap-1 p-1 rounded-xl bg-slate-950 border border-slate-800"
+            role="group"
+            aria-label="Moneda de visualización del gráfico"
+          >
             <button
-              key={item.id}
               type="button"
-              onClick={() => onTimeframeChange(item.id)}
-              className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all ${
-                timeframe === item.id
-                  ? "bg-sky-500/20 text-sky-400 border border-sky-500/30 shadow-sm"
+              onClick={() => setDisplayCurrency("ARS")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
+                displayCurrency === "ARS"
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm"
                   : "text-slate-400 hover:text-slate-200"
               }`}
+              title="Visualizar serie histórica en Pesos Argentinos (ARS)"
             >
-              {item.label}
+              ARS ($)
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => setDisplayCurrency("USD")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
+                displayCurrency === "USD"
+                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+              title="Visualizar serie histórica en Dólar CCL ($1.180 ARS/USD)"
+            >
+              USD (CCL)
+            </button>
+          </div>
+
+          {/* Timeframe Tabs */}
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-950 border border-slate-800">
+            {TIMEFRAME_LABELS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onTimeframeChange(item.id)}
+                className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all ${
+                  timeframe === item.id
+                    ? "bg-sky-500/20 text-sky-400 border border-sky-500/30 shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* SVG Canvas Area */}
-      {bars.length === 0 ? (
+      {convertedBars.length === 0 ? (
         <div className="h-64 flex flex-col items-center justify-center text-slate-400 text-xs font-mono space-y-2">
           <span>No existen registros de cotizaciones históricas para {activeTicker}.</span>
           <span className="text-slate-400">Seleccione otra especie o verifique el rango.</span>
@@ -278,7 +354,7 @@ export const FinancialTimeSeriesChart: React.FC<
                   fontFamily="monospace"
                   textAnchor="start"
                 >
-                  {tick.val.toFixed(2)}
+                  {displayCurrency === "USD" ? `US$${tick.val.toFixed(2)}` : `$${tick.val.toFixed(2)}`}
                 </text>
               </g>
             ))}
@@ -386,7 +462,7 @@ export const FinancialTimeSeriesChart: React.FC<
                   fontSize="10"
                   fontFamily="monospace"
                 >
-                  {new Date(bars[0].timestamp).toLocaleDateString("es-AR", {
+                  {new Date(convertedBars[0].timestamp).toLocaleDateString("es-AR", {
                     day: "2-digit",
                     month: "2-digit",
                   })}
@@ -399,13 +475,12 @@ export const FinancialTimeSeriesChart: React.FC<
                   fontFamily="monospace"
                   textAnchor="end"
                 >
-                  {new Date(bars[bars.length - 1].timestamp).toLocaleDateString(
-                    "es-AR",
-                    {
-                      day: "2-digit",
-                      month: "2-digit",
-                    }
-                  )}
+                  {new Date(
+                    convertedBars[convertedBars.length - 1].timestamp
+                  ).toLocaleDateString("es-AR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                  })}
                 </text>
               </>
             )}
@@ -418,7 +493,7 @@ export const FinancialTimeSeriesChart: React.FC<
               style={{
                 left: `${Math.min(
                   Math.max(activePoint.x - 80, 10),
-                  viewWidth - 190
+                  viewWidth - 205
                 )}px`,
                 top: `${Math.max(activePoint.y - 75, 10)}px`,
               }}
@@ -434,7 +509,7 @@ export const FinancialTimeSeriesChart: React.FC<
               <div className="flex justify-between gap-4">
                 <span className="text-slate-400">Cierre:</span>
                 <span className="font-bold text-white tabular-nums">
-                  {formatMoney(activeBar.close, currency)}
+                  {formatMoney(activeBar.close, displayCurrency)}
                 </span>
               </div>
               <div className="flex justify-between gap-4">

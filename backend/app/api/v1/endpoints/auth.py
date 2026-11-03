@@ -4,6 +4,7 @@ Implementa registro público blindado contra Mass Assignment, inicio de sesión 
 de Timing Attacks (CWE-204), rotación criptográfica de Refresh Tokens y perfil de sesión activa,
 bajo el contrato canónico Universal Envelope (APIResponse[T] / APIErrorResponse).
 """
+from datetime import datetime, timezone
 from typing import Annotated
 import uuid
 
@@ -30,7 +31,7 @@ from app.models.user import UserModel
 from app.schemas.auth import LoginRequest, RegisterRequest
 from app.schemas.envelope import APIErrorResponse, APIResponse
 from app.schemas.token import RefreshTokenRequest, TokenResponse, TokenType
-from app.schemas.user import UserResponse, UserRole
+from app.schemas.user import UserResponse, UserRole, UserUpdateRequest
 
 router = APIRouter()
 
@@ -118,7 +119,6 @@ async def login_user(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     _rate_limit: None = Depends(check_login_rate_limit),
 ) -> APIResponse[TokenResponse]:
-
     """
     Endpoint de autenticación de credenciales con protección contra Timing Attacks.
     """
@@ -248,3 +248,45 @@ async def get_current_user_profile(
     """
     return APIResponse(data=UserResponse.model_validate(current_user))
 
+
+@router.patch(
+    "/me",
+    response_model=APIResponse[UserResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Actualizar perfil de inversor y rol operativo del usuario autenticado",
+    description="Permite actualizar nombre, perfil de riesgo e intercambiar rol RBAC para pruebas institucionales.",
+    responses={
+        401: {"model": APIErrorResponse},
+        403: {"model": APIErrorResponse},
+        422: {"model": APIErrorResponse},
+    },
+)
+async def update_current_user_profile(
+    payload: UserUpdateRequest,
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> APIResponse[UserResponse]:
+    """
+    Actualiza los atributos de perfil y rol en caliente del usuario autenticado.
+    """
+    if payload.full_name is not None:
+        current_user.full_name = payload.full_name.strip()
+
+    if payload.investor_profile is not None:
+        normalized_profile = payload.investor_profile.strip().upper()
+        if normalized_profile not in {"CONSERVATIVE", "MODERATE", "AGGRESSIVE"}:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Invalid investor_profile. Allowed: CONSERVATIVE, MODERATE, AGGRESSIVE",
+            )
+        current_user.investor_profile = normalized_profile
+
+    if payload.role is not None:
+        current_user.role = (
+            payload.role.value if isinstance(payload.role, UserRole) else str(payload.role)
+        )
+
+    current_user.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(current_user)
+    return APIResponse(data=UserResponse.model_validate(current_user))

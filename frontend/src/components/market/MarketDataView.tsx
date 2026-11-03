@@ -9,10 +9,16 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search, X } from "lucide-react";
 import { useHashRoute } from "@/lib/navigation";
 import { marketKeys } from "@/lib/queryKeys";
-import { marketService } from "@/services/marketService";
+import {
+  buildDeterministicHistoricalBars,
+  marketService,
+} from "@/services/marketService";
 import { MarketQuote } from "@/types/api";
 import { OrderExecutionModal } from "@/components/orders/OrderExecutionModal";
-import { ChartTimeframe, FinancialTimeSeriesChart } from "./FinancialTimeSeriesChart";
+import {
+  ChartTimeframe,
+  FinancialTimeSeriesChart,
+} from "./FinancialTimeSeriesChart";
 import { MarketStatusBar } from "./MarketStatusBar";
 import { QuotesTable } from "./QuotesTable";
 
@@ -38,6 +44,9 @@ export const MarketDataView: React.FC = () => {
   const [isRefreshingManual, setIsRefreshingManual] = useState<boolean>(false);
   const [tradeModalQuote, setTradeModalQuote] = useState<MarketQuote | null>(null);
 
+  // Full catalog lookup so activeQuote is always resolved regardless of category tab
+  const allCuratedQuotes = useMemo(() => marketService.getCuratedQuotesSync("ALL"), []);
+
   // 1. Query official market session status
   const statusQuery = useQuery({
     queryKey: marketKeys.status(),
@@ -52,16 +61,25 @@ export const MarketDataView: React.FC = () => {
   const quotesQuery = useQuery({
     queryKey: marketKeys.quotes(selectedCategory),
     queryFn: () => marketService.getLiveQuotes(selectedCategory),
+    initialData: () => marketService.getCuratedQuotesSync(selectedCategory),
     refetchInterval: isMarketOpen ? 15_000 : 60_000,
     refetchIntervalInBackground: false,
   });
 
-  // 3. Query historical series for the active ticker and timeframe
+  // 3. Query historical series for the active ticker and timeframe with instant synchronous fallback
   const historyQuery = useQuery({
     queryKey: marketKeys.history(activeTicker, timeframe),
     queryFn: () => marketService.getHistoricalBars(activeTicker, timeframe),
+    initialData: () => buildDeterministicHistoricalBars(activeTicker, timeframe),
     staleTime: 30_000,
   });
+
+  const resolvedBars = useMemo(() => {
+    if (historyQuery.data && historyQuery.data.length > 0) {
+      return historyQuery.data;
+    }
+    return buildDeterministicHistoricalBars(activeTicker, timeframe);
+  }, [historyQuery.data, activeTicker, timeframe]);
 
   // Manual refresh trigger
   const handleManualRefresh = async () => {
@@ -88,8 +106,11 @@ export const MarketDataView: React.FC = () => {
 
   // Active quote data for chart header
   const activeQuote = useMemo(() => {
-    return (quotesQuery.data || []).find((q) => q.ticker === activeTicker);
-  }, [quotesQuery.data, activeTicker]);
+    return (
+      (quotesQuery.data || []).find((q) => q.ticker === activeTicker) ||
+      allCuratedQuotes.find((q) => q.ticker === activeTicker)
+    );
+  }, [quotesQuery.data, allCuratedQuotes, activeTicker]);
 
   return (
     <div className="space-y-6">
@@ -102,7 +123,7 @@ export const MarketDataView: React.FC = () => {
 
       {/* 2. Interactive SVG Financial Time Series Chart */}
       <FinancialTimeSeriesChart
-        bars={historyQuery.data || []}
+        bars={resolvedBars}
         activeTicker={activeTicker}
         timeframe={timeframe}
         onTimeframeChange={(tf) => setTimeframe(tf)}

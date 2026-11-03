@@ -1,9 +1,10 @@
 /**
  * Institutional Application Layout for InvestAI Enterprise.
- * Unifies fixed Sidebar, TopHeader, and dedicated responsive scrollable viewport.
+ * Unifies fixed Sidebar, TopHeader, UserProfileModal, and dedicated responsive scrollable viewport.
  */
 
-import React from "react";
+import React, { useState } from "react";
+import { UserProfileModal } from "@/components/auth/UserProfileModal";
 import { NavSection, Sidebar } from "./Sidebar";
 import { TopHeader } from "./TopHeader";
 
@@ -22,10 +23,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   onOpenAuthModal,
   children,
 }) => {
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-sans selection:bg-sky-500 selection:text-white">
       {/* Institutional Left Sidebar */}
-      <Sidebar activeSection={activeSection} onNavigate={onNavigate} />
+      <Sidebar
+        activeSection={activeSection}
+        onNavigate={onNavigate}
+        onOpenProfileModal={() => setIsProfileModalOpen(true)}
+        onOpenAuthModal={onOpenAuthModal}
+      />
 
       {/* Main Viewport Column */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -34,6 +42,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           activeSection={activeSection}
           portfolioId={portfolioId}
           onOpenAuthModal={onOpenAuthModal}
+          onOpenProfileModal={() => setIsProfileModalOpen(true)}
         />
 
         {/* Scrollable Content Body */}
@@ -54,7 +63,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           </div>
         </footer>
       </div>
+
+      {/* User Profile & RBAC Simulation Modal */}
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
     </div>
   );
 };
-

@@ -1,7 +1,7 @@
 /**
  * Institutional Top Header Component for InvestAI Enterprise.
  * Features dynamic breadcrumbs, live backend connectivity telemetry,
- * and session state controls.
+ * and interactive session / RBAC profile controls.
  */
 
 import React from "react";
@@ -13,6 +13,7 @@ import {
   LogIn,
   LogOut,
   RefreshCw,
+  Settings,
   User as UserIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -24,6 +25,7 @@ interface TopHeaderProps {
   activeSection: NavSection;
   portfolioId?: string | null;
   onOpenAuthModal: () => void;
+  onOpenProfileModal?: () => void;
 }
 
 interface HealthResponse {
@@ -38,18 +40,42 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   activeSection,
   portfolioId,
   onOpenAuthModal,
+  onOpenProfileModal,
 }) => {
-  const { user, isAuthenticated, isLoading: authLoading, logout, isAdmin, isTrader } =
-    useAuth();
+  const {
+    user,
+    isAuthenticated,
+    isLoading: authLoading,
+    logout,
+    isAdmin,
+    isTrader,
+  } = useAuth();
 
-  // Query Backend Health endpoint every 10 seconds
+  // Query Backend Health endpoint every 10 seconds with fallback
   const healthQuery = useQuery({
     queryKey: systemKeys.health(),
     queryFn: async (): Promise<HealthResponse> => {
-      const res = await axios.get<HealthResponse>("/health", {
-        headers: { "Content-Type": "application/json" },
-      });
-      return res.data;
+      try {
+        const res = await axios.get<HealthResponse>("/health", {
+          headers: { Accept: "application/json" },
+        });
+        if (
+          res.data &&
+          typeof res.data === "object" &&
+          typeof res.data.status === "string"
+        ) {
+          return res.data;
+        }
+      } catch {
+        // Fallback
+      }
+      const directRes = await axios.get<HealthResponse>(
+        "http://127.0.0.1:8000/health",
+        {
+          headers: { Accept: "application/json" },
+        }
+      );
+      return directRes.data;
     },
     refetchInterval: 10000,
   });
@@ -136,9 +162,14 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           </div>
         ) : isAuthenticated && user ? (
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/90 border border-slate-700 text-xs shadow-sm">
+            <button
+              type="button"
+              onClick={onOpenProfileModal}
+              title="Configurar Perfil de Inversor y Rol RBAC"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700/90 border border-slate-700 hover:border-sky-500/40 text-xs shadow-sm transition group"
+            >
               <UserIcon className="h-3.5 w-3.5 text-sky-400" />
-              <span className="font-medium text-slate-200">
+              <span className="font-medium text-slate-200 group-hover:text-white">
                 {user.full_name || user.email}
               </span>
               <span
@@ -152,7 +183,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               >
                 {user.role}
               </span>
-            </div>
+              <Settings className="h-3.5 w-3.5 text-slate-400 group-hover:text-sky-400 transition-colors" />
+            </button>
 
             <button
               onClick={() => logout()}
@@ -176,4 +208,3 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
     </header>
   );
 };
-

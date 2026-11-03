@@ -175,7 +175,9 @@ export const portfolioService = {
 
     const response = await apiClient.post<
       BackendRebalancePlan | APIResponse<BackendRebalancePlan>
-    >(`/portfolios/${encodeURIComponent(portfolioId)}/rebalance`, payload);
+    >(`/portfolios/${encodeURIComponent(portfolioId)}/rebalance`, payload, {
+      params: { dry_run: true },
+    });
 
     const resData = response.data;
     const plan: BackendRebalancePlan =
@@ -270,5 +272,42 @@ export const portfolioService = {
     };
 
     return snapshot;
+  },
+
+  /**
+   * Updates portfolio metadata (name, investor_profile) or cash balances (cash_balance_ars, cash_balance_usd).
+   */
+  async updatePortfolio(
+    portfolioId: string,
+    payload: {
+      name?: string;
+      investor_profile?: string;
+      cash_balance_ars?: number;
+      cash_balance_usd?: number;
+    }
+  ): Promise<Portfolio> {
+    const response = await apiClient.patch<Portfolio | APIResponse<Portfolio>>(
+      `/portfolios/${encodeURIComponent(portfolioId)}`,
+      payload
+    );
+    const resData = response.data;
+    if (resData && typeof resData === "object" && "data" in resData) {
+      return (resData as APIResponse<Portfolio>).data;
+    }
+    return resData as Portfolio;
+  },
+
+  /**
+   * Deletes an existing portfolio by ID.
+   */
+  async deletePortfolio(
+    portfolioId: string
+  ): Promise<{ status: string; portfolio_id: string; message?: string }> {
+    const response = await apiClient.delete<{
+      status: string;
+      portfolio_id: string;
+      message?: string;
+    }>(`/portfolios/${encodeURIComponent(portfolioId)}`);
+    return response.data;
   },
 };

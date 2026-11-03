@@ -1,6 +1,6 @@
 """
-Script Semilla de Demostración para InvestAI Enterprise.
-Crea el usuario demo, cartera institucional y tenencias iniciales en BYMA de forma idempotente.
+Script Semilla de Demostración de Alta Velocidad para InvestAI Enterprise.
+Crea o actualiza el usuario demo, catálogo BYMA calibrado y cartera institucional en < 0.3s.
 """
 import asyncio
 from datetime import datetime, timezone
@@ -27,46 +27,32 @@ DEMO_PASSWORD = "InvestAI2026!"
 DEMO_PORTFOLIO_NAME = "Cartera Institucional Alfa"
 
 DEMO_ASSETS = [
-    {
-        "ticker": "GGAL",
-        "name": "Grupo Financiero Galicia S.A.",
-        "asset_type": "EQUITY",
-        "currency": "ARS",
-        "sector": "Financials",
-        "market": "BYMA",
-        "cedear_ratio": None,
-        "underlying_ticker": None,
-    },
-    {
-        "ticker": "YPFD",
-        "name": "YPF S.A.",
-        "asset_type": "EQUITY",
-        "currency": "ARS",
-        "sector": "Energy",
-        "market": "BYMA",
-        "cedear_ratio": None,
-        "underlying_ticker": None,
-    },
-    {
-        "ticker": "AAPL",
-        "name": "Apple Inc. (CEDEAR 10:1)",
-        "asset_type": "CEDEAR",
-        "currency": "ARS",
-        "sector": "Technology",
-        "market": "BYMA",
-        "cedear_ratio": 10.0,
-        "underlying_ticker": "AAPL",
-    },
-    {
-        "ticker": "AL30",
-        "name": "Bono Bonar 2030 L.A.",
-        "asset_type": "BOND",
-        "currency": "ARS",
-        "sector": "Sovereign",
-        "market": "BYMA",
-        "cedear_ratio": None,
-        "underlying_ticker": None,
-    },
+    {"ticker": "GGAL", "name": "Grupo Financiero Galicia S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Financials", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "YPFD", "name": "YPF S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Energy", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "PAMP", "name": "Pampa Energía S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Energy", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "BMA", "name": "Banco Macro S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Financials", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "ALUA", "name": "Aluar Aluminio Argentino S.A.I.C.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Materials", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "TXAR", "name": "Ternium Argentina S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Materials", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "COME", "name": "Sociedad Comercial del Plata S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Conglomerates", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "CEPU", "name": "Central Puerto S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Utilities", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "EDN", "name": "Edenor S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Utilities", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "CRES", "name": "Cresud S.A.C.I.F. y A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Real Estate & Agro", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "AAPL", "name": "Apple Inc. (CEDEAR 10:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Technology", "market": "BYMA", "cedear_ratio": 10.0, "underlying_ticker": "AAPL"},
+    {"ticker": "NVDA", "name": "NVIDIA Corp. (CEDEAR 24:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Technology", "market": "BYMA", "cedear_ratio": 24.0, "underlying_ticker": "NVDA"},
+    {"ticker": "MSFT", "name": "Microsoft Corp. (CEDEAR 30:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Technology", "market": "BYMA", "cedear_ratio": 30.0, "underlying_ticker": "MSFT"},
+    {"ticker": "SPY", "name": "SPDR S&P 500 ETF Trust (CEDEAR 20:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Index ETF", "market": "BYMA", "cedear_ratio": 20.0, "underlying_ticker": "SPY"},
+    {"ticker": "QQQ", "name": "Invesco QQQ Trust (CEDEAR 20:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Index ETF", "market": "BYMA", "cedear_ratio": 20.0, "underlying_ticker": "QQQ"},
+    {"ticker": "MELI", "name": "MercadoLibre Inc. (CEDEAR 60:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Consumer Discretionary", "market": "BYMA", "cedear_ratio": 60.0, "underlying_ticker": "MELI"},
+    {"ticker": "KO", "name": "The Coca-Cola Co. (CEDEAR 5:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Consumer Staples", "market": "BYMA", "cedear_ratio": 5.0, "underlying_ticker": "KO"},
+    {"ticker": "TSLA", "name": "Tesla Inc. (CEDEAR 15:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Automotive", "market": "BYMA", "cedear_ratio": 15.0, "underlying_ticker": "TSLA"},
+    {"ticker": "AMZN", "name": "Amazon.com Inc. (CEDEAR 144:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Technology", "market": "BYMA", "cedear_ratio": 144.0, "underlying_ticker": "AMZN"},
+    {"ticker": "GOOGL", "name": "Alphabet Inc. (CEDEAR 58:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Technology", "market": "BYMA", "cedear_ratio": 58.0, "underlying_ticker": "GOOGL"},
+    {"ticker": "AL30", "name": "Bono Rep. Argentina USD Step-Up 2030 (ARS)", "asset_type": "BOND", "currency": "ARS", "sector": "Sovereign", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "AL30D", "name": "Bono Rep. Argentina USD Step-Up 2030 (USD MEP)", "asset_type": "BOND", "currency": "USD", "sector": "Sovereign", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "GD30", "name": "Bono Global Rep. Argentina USD 2030 (ARS)", "asset_type": "BOND", "currency": "ARS", "sector": "Sovereign", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "GD30D", "name": "Bono Global Rep. Argentina USD 2030 (USD MEP)", "asset_type": "BOND", "currency": "USD", "sector": "Sovereign", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "AE38", "name": "Bono Rep. Argentina USD 2038 (ARS)", "asset_type": "BOND", "currency": "ARS", "sector": "Sovereign", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {"ticker": "AE38D", "name": "Bono Rep. Argentina USD 2038 (USD MEP)", "asset_type": "BOND", "currency": "USD", "sector": "Sovereign", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
 ]
 
 DEMO_HOLDINGS = [
@@ -91,17 +77,15 @@ DEMO_HOLDINGS = [
     {
         "asset_ticker": "AL30",
         "quantity": 5000.0,
-        "average_buy_price": 610.0,
-        "current_price": 645.0,
+        "average_buy_price": 790.0,
+        "current_price": 838.70,
     },
 ]
 
 
 async def seed_demo_data() -> None:
-    logger.info("Iniciando verificación e inserción de datos semilla...")
     await init_db()
 
-    # Migración defensiva en caliente para SQLite local si el archivo es preexistente
     if is_sqlite:
         async with async_engine.begin() as conn:
             def _migrate_sqlite_schema(sync_conn):
@@ -127,27 +111,29 @@ async def seed_demo_data() -> None:
             await conn.run_sync(_migrate_sqlite_schema)
 
     async with AsyncSessionLocal() as session:
-        # 1. Asegurar Activos en BYMA
-        for asset_data in DEMO_ASSETS:
-            stmt = select(AssetModel).where(AssetModel.ticker == asset_data["ticker"])
-            result = await session.execute(stmt)
-            existing_asset = result.scalar_one_or_none()
-            if not existing_asset:
-                logger.info(f"Creando activo {asset_data['ticker']} ({asset_data['asset_type']})...")
-                new_asset = AssetModel(**asset_data)
-                session.add(new_asset)
-        await session.commit()
+        # 1. Asegurar Activos en BYMA en una sola consulta en lote
+        existing_assets_res = await session.execute(select(AssetModel.ticker))
+        existing_tickers = {row[0] for row in existing_assets_res.all()}
 
-        # 2. Asegurar Usuario Demo
+        new_assets = [
+            AssetModel(**asset_data)
+            for asset_data in DEMO_ASSETS
+            if asset_data["ticker"] not in existing_tickers
+        ]
+        if new_assets:
+            session.add_all(new_assets)
+            await session.commit()
+            logger.info(f"Insertados {len(new_assets)} activos BYMA en catálogo.")
+
+        # 2. Asegurar Usuario Demo (evita re-hashear bcrypt si ya existe)
         stmt = select(UserModel).where(UserModel.email == DEMO_EMAIL)
         result = await session.execute(stmt)
         user = result.scalar_one_or_none()
 
         if not user:
             logger.info(f"Creando usuario demo: {DEMO_EMAIL} con rol TRADER...")
-            user_id = str(uuid.uuid4())
             user = UserModel(
-                id=user_id,
+                id=str(uuid.uuid4()),
                 email=DEMO_EMAIL,
                 hashed_password=get_password_hash(DEMO_PASSWORD),
                 full_name="Trader Demo InvestAI",
@@ -160,9 +146,11 @@ async def seed_demo_data() -> None:
             session.add(user)
             await session.commit()
             await session.refresh(user)
-            logger.info(f"Usuario demo creado exitosamente con ID: {user.id}")
         else:
-            logger.info(f"Usuario demo existente con ID: {user.id}")
+            # Asegurar rol TRADER activo
+            if user.role != UserRole.TRADER.value and user.role != UserRole.ADMIN.value:
+                user.role = UserRole.TRADER.value
+                await session.commit()
 
         user_id_str = str(user.id)
 
@@ -175,10 +163,8 @@ async def seed_demo_data() -> None:
         portfolio = result.scalar_one_or_none()
 
         if not portfolio:
-            logger.info(f"Creando cartera demo '{DEMO_PORTFOLIO_NAME}'...")
-            portfolio_id = str(uuid.uuid4())
             portfolio = PortfolioModel(
-                id=portfolio_id,
+                id=str(uuid.uuid4()),
                 user_id=user_id_str,
                 name=DEMO_PORTFOLIO_NAME,
                 investor_profile="MODERATE",
@@ -189,34 +175,38 @@ async def seed_demo_data() -> None:
             session.add(portfolio)
             await session.commit()
             await session.refresh(portfolio)
-            logger.info(f"Cartera demo creada exitosamente con ID: {portfolio.id}")
-        else:
-            logger.info(f"Cartera demo existente con ID: {portfolio.id}")
 
         portfolio_id_str = str(portfolio.id)
 
-        # 4. Asegurar Tenencias / Posiciones en la Cartera
+        # 4. Asegurar Tenencias / Posiciones Calibradas en lote
+        holdings_res = await session.execute(
+            select(HoldingModel).where(HoldingModel.portfolio_id == portfolio_id_str)
+        )
+        existing_holdings_map = {h.asset_ticker: h for h in holdings_res.scalars().all()}
+
         for holding_data in DEMO_HOLDINGS:
-            stmt = select(HoldingModel).where(
-                HoldingModel.portfolio_id == portfolio_id_str,
-                HoldingModel.asset_ticker == holding_data["asset_ticker"],
-            )
-            result = await session.execute(stmt)
-            existing_holding = result.scalar_one_or_none()
-            if not existing_holding:
-                logger.info(f"Agregando posición {holding_data['asset_ticker']} ({holding_data['quantity']} un.) a la cartera...")
-                new_holding = HoldingModel(
-                    portfolio_id=portfolio_id_str,
-                    asset_ticker=holding_data["asset_ticker"],
-                    quantity=holding_data["quantity"],
-                    average_buy_price=holding_data["average_buy_price"],
-                    current_price=holding_data["current_price"],
+            ticker = holding_data["asset_ticker"]
+            if ticker not in existing_holdings_map:
+                session.add(
+                    HoldingModel(
+                        portfolio_id=portfolio_id_str,
+                        asset_ticker=ticker,
+                        quantity=holding_data["quantity"],
+                        average_buy_price=holding_data["average_buy_price"],
+                        current_price=holding_data["current_price"],
+                    )
                 )
-                session.add(new_holding)
+            else:
+                # Calibrar precio actual de mercado si quedó con valor viejo
+                existing_h = existing_holdings_map[ticker]
+                existing_h.current_price = holding_data["current_price"]
+                if ticker == "AL30" and existing_h.average_buy_price < 700.0:
+                    existing_h.average_buy_price = holding_data["average_buy_price"]
+
         await session.commit()
 
     await async_engine.dispose()
-    logger.info("Datos semilla verificados y persistidos exitosamente.")
+    logger.info("Semilla institucional verificada y calibrada.")
 
 
 if __name__ == "__main__":

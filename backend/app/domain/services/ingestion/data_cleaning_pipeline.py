@@ -301,6 +301,25 @@ class DataCleaningPipeline:
         if not cleaned:
             raise ValueError("Ticker is empty after normalization")
 
+        # Reject strings containing prohibited punctuation (e.g. '!', '@', '#', '$', '%', '?')
+        if any(ch in cleaned for ch in "!@#$%^&*?=~`|\\<>"):
+            raise ValueError(f"Invalid ticker format: '{raw_ticker}'")
+
+        # Strip descriptive broker suffixes after ' - ', ' – ', or ' (' (e.g. 'GGAL - Grupo Galicia', 'AL30 (Bono)')
+        for sep in (" - ", " – ", " — ", " ("):
+            if sep in cleaned:
+                cleaned = cleaned.split(sep, 1)[0].strip()
+
+        # Strip common Argentine broker category prefixes (e.g. 'CEDEAR NVDA', 'BONO AL30')
+        for prefix in ("CEDEARS ", "CEDEAR ", "ACCIONES ", "ACCION ", "BONOS ", "BONO ", "ON ", "LETRA ", "FCI "):
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix) :].strip()
+
+        # Strip common descriptive suffixes (e.g. 'AAPL CEDEAR N', 'NVDA CEDEAR', 'YPFD S.A.')
+        for suffix in (" CEDEAR N", " CEDEAR", " S.A.I.C.", " S.A.", " SA", " INC.", " INC", " CORP.", " CORP"):
+            if cleaned.endswith(suffix):
+                cleaned = cleaned[: -len(suffix)].strip()
+
         had_local_suffix = False
         match = _LOCAL_EXCHANGE_SUFFIX_RE.search(cleaned)
         if match:

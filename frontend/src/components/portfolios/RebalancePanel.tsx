@@ -1,10 +1,12 @@
 /**
  * Comprehensive Rebalancing Panel Component for InvestAI Enterprise.
  * Features tolerance band configuration (tau), cash buffer controls,
- * RBAC authorization checks, and visual FSM order simulation preview.
+ * RBAC authorization checks, idempotent dry-run FSM order simulation preview,
+ * and 1-click batch execution & settlement of rebalance orders.
  */
 
 import React, { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   AlertTriangle,
@@ -15,9 +17,12 @@ import {
   Play,
   RefreshCw,
   Scale,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { parseDecimalSafe } from "@/lib/formatters";
+import { inferAssetNativeCurrency, parseDecimalSafe } from "@/lib/formatters";
+import { orderKeys, portfolioKeys } from "@/lib/queryKeys";
+import { orderService } from "@/services/orderService";
 import { portfolioService } from "@/services/portfolioService";
 import {
   Portfolio,
@@ -32,6 +37,7 @@ interface RebalancePanelProps {
 }
 
 export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => {
+  const queryClient = useQueryClient();
   const { isAuthenticated, isTrader, isAdmin, isViewer } = useAuth();
   const canRebalance = isAuthenticated && (isTrader || isAdmin);
 
@@ -40,9 +46,13 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
   const [baseCurrency, setBaseCurrency] = useState<"ARS" | "USD">("ARS");
 
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
+  const [isExecutingBatch, setIsExecutingBatch] = useState<boolean>(false);
   const [simulationResult, setSimulationResult] =
     useState<RebalanceSimulationResult | null>(null);
   const [simulationError, setSimulationError] = useState<string | null>(null);
+  const [executionSuccessMsg, setExecutionSuccessMsg] = useState<string | null>(
+    null
+  );
 
   const holdings = portfolio.holdings || [];
   const holdingsCount = holdings.length;
@@ -94,12 +104,13 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
     return { bandItems: items, totalValuation: total, anyBreach: hasBreach };
   }, [holdings, holdingsCount, tolerancePct]);
 
-  // Handle Simulation Trigger
+  // Handle Idempotent Dry-Run Simulation Trigger
   const handleSimulate = async () => {
     if (!canRebalance || isSimulating) return;
 
     setIsSimulating(true);
     setSimulationError(null);
+    setExecutionSuccessMsg(null);
 
     try {
       const result = await portfolioService.simulateRebalance(portfolio.id, {
@@ -116,6 +127,85 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
       );
     } finally {
       setIsSimulating(false);
+    }
+  };
+
+  // Handle 1-Click Batch Execution & Settlement of Proposed Rebalance Orders
+  const handleExecuteRebalanceOrders = async () => {
+    if (
+      !canRebalance ||
+      isExecutingBatch ||
+      !simulationResult ||
+      simulationResult.orders.length === 0
+    ) {
+      return;
+    }
+
+    setIsExecutingBatch(true);
+    setSimulationError(null);
+    setExecutionSuccessMsg(null);
+
+    try {
+      let executedCount = 0;
+      for (const proposed of simulationResult.orders) {
+        if (proposed.side !== "BUY" && proposed.side !== "SELL") continue;
+        const shares = Math.max(
+          1,
+          Math.round(parseDecimalSafe(proposed.estimated_shares) || 1)
+        );
+        const price = Math.max(
+          0.01,
+          parseDecimalSafe(proposed.price_used) || 1.0
+        );
+        const cur = inferAssetNativeCurrency(proposed.ticker, "ARS");
+
+        const created = await orderService.createOrder({
+          portfolio_id: portfolio.id,
+          ticker: proposed.ticker,
+          side: proposed.side,
+          order_type: "MARKET",
+          quantity: shares,
+          price,
+          currency: cur,
+          justification:
+            proposed.justification ||
+            `Rebalanceo sistemático por banda (±${tolerancePct.toFixed(1)}%)`,
+        });
+        await orderService.executeOrder(created.id);
+        executedCount += 1;
+      }
+
+      setSimulationResult((prev) =>
+        prev
+          ? {
+              ...prev,
+              orders: prev.orders.map((o) => ({
+                ...o,
+                status: "EXECUTED",
+              })),
+            }
+          : null
+      );
+
+      setExecutionSuccessMsg(
+        `Se ejecutaron y liquidaron ${executedCount} órdenes de rebalanceo en la cartera (Estado FSM: EXECUTED).`
+      );
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: portfolioKeys.lists() }),
+        queryClient.invalidateQueries({
+          queryKey: portfolioKeys.detail(portfolio.id),
+        }),
+        queryClient.invalidateQueries({ queryKey: orderKeys.all }),
+      ]);
+    } catch (err: unknown) {
+      setSimulationError(
+        err instanceof Error
+          ? err.message
+          : "Error al ejecutar y liquidar las órdenes de rebalanceo."
+      );
+    } finally {
+      setIsExecutingBatch(false);
     }
   };
 
@@ -149,13 +239,14 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
               Parámetros de Rebalanceo por Bandas de Tolerancia
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Ajuste el rango de tolerancia ($\tau$) y el colchón de liquidez antes de simular la FSM
+              Ajuste el rango de tolerancia (τ) y el colchón de liquidez antes de simular o liquidar la FSM
             </p>
           </div>
 
           {/* Currency Selector */}
           <div className="flex items-center p-0.5 rounded-lg bg-slate-950 border border-slate-800 text-xs font-mono">
             <button
+              type="button"
               onClick={() => setBaseCurrency("ARS")}
               className={`flex items-center gap-1 px-3 py-1.5 rounded-md transition-all ${
                 baseCurrency === "ARS"
@@ -167,6 +258,7 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
               <span>ARS</span>
             </button>
             <button
+              type="button"
               onClick={() => setBaseCurrency("USD")}
               className={`flex items-center gap-1 px-3 py-1.5 rounded-md transition-all ${
                 baseCurrency === "USD"
@@ -185,7 +277,7 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
           {/* Tolerance Band Preset Selector */}
           <div className="space-y-2">
             <label className="block text-xs font-medium text-slate-300 flex items-center justify-between">
-              <span>Banda de Tolerancia ($\tau$)</span>
+              <span>Banda de Tolerancia (τ)</span>
               <span className="font-mono text-sky-400 font-bold">
                 ±{tolerancePct.toFixed(1)}%
               </span>
@@ -252,23 +344,49 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
           </div>
 
           {canRebalance ? (
-            <button
-              onClick={handleSimulate}
-              disabled={isSimulating}
-              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium shadow-lg shadow-sky-600/30 transition-all disabled:opacity-50 active:scale-95 shrink-0"
-            >
-              {isSimulating ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span>Simulando FSM...</span>
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4" />
-                  <span>Simular Rebalanceo</span>
-                </>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={handleSimulate}
+                disabled={isSimulating || isExecutingBatch}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium shadow-lg shadow-sky-600/30 transition-all disabled:opacity-50 active:scale-95 shrink-0"
+              >
+                {isSimulating ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Simulando (Dry-Run)...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4" />
+                    <span>Simular Rebalanceo</span>
+                  </>
+                )}
+              </button>
+
+              {simulationResult && simulationResult.orders.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleExecuteRebalanceOrders}
+                  disabled={isExecutingBatch || isSimulating}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/30 transition-all disabled:opacity-50 active:scale-95 shrink-0"
+                >
+                  {isExecutingBatch ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <span>Liquidando Órdenes...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="h-4 w-4" />
+                      <span>
+                        Ejecutar Órdenes de Rebalanceo ({simulationResult.orders.length})
+                      </span>
+                    </>
+                  )}
+                </button>
               )}
-            </button>
+            </div>
           ) : isAuthenticated && isViewer ? (
             <div
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 text-slate-400 text-xs cursor-not-allowed border border-slate-700"
@@ -285,6 +403,14 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
           )}
         </div>
       </div>
+
+      {/* Execution Success Banner */}
+      {executionSuccessMsg && (
+        <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-3">
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+          <span>{executionSuccessMsg}</span>
+        </div>
+      )}
 
       {/* Error Banner */}
       {simulationError && (

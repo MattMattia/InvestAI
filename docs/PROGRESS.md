@@ -196,12 +196,12 @@
 
 ---
 
-## ESTADO FINAL DEL PLAN MAESTRO: 100% COMPLETADO (9 / 9 CAPÍTULOS)
+## ESTADO FINAL DEL PLAN MAESTRO: 100% COMPLETADO (9 / 9 CAPÍTULOS + AUDITORÍA FORENSE SELLADA)
 
-> **Estado Global:** **PLAN MAESTRO DE INVESTAI COMPLETADO AL 100%**  
-> **Backend:** 666 tests en verde (582 unitarios + 84 de integración — 0 fallos, 0 regresiones)  
-> **Frontend:** Scaffolding reactivo institucional completo (React 18 + Vite + TypeScript estricto + Tailwind CSS) compilando limpiamente con 0 errores de tipado en todos sus módulos y componentes.  
-> **Arquitectura:** Clean Architecture, Domain-Driven Design (DDD), Seguridad Criptográfica SEC-03, Aislamiento Anti-IDOR/BOLA, RBAC institucional (ADMIN / TRADER / VIEWER), Cálculos Cuantitativos Vectorizados con precisión monetaria estricta, Schedulers bursátiles BYMA con locks distribuidos, Telemetría RED Prometheus, Ingesta Multipart de extractos de brokers locales, Monitor de Mercado en Tiempo Real con despacho asistido de órdenes y cómputo de aranceles.
+> **Estado Global:** **PLAN MAESTRO DE INVESTAI COMPLETADO Y SELLADO AL 100%**  
+> **Backend:** **671 tests en verde** (583 unitarios + 88 de integración — 0 fallos, 0 regresiones)  
+> **Frontend:** Scaffolding reactivo institucional completo (React 18 + Vite + TypeScript estricto + Tailwind CSS) compilando limpiamente con **0 errores de tipado** en todos sus módulos y componentes.  
+> **Auditoría Forense Multi-Ronda (`docs/AUDIT_LEDGER.md`):** **8 / 8 Apartados Sellados (`[x] [SEALED - 100% VERIFIED]`)** — Proxy OpenMetrics `/metrics` con 4 KPIs ejecutivos, Lanzador Desktop 1-Click en < 1s, Higiene Criptográfica de Auth + Hot-Swap de Rol/Perfil (`PATCH /api/v1/auth/me`), Motor de Ingesta compatible con extractos reales de Balanz Excel/CSV, Catálogo de 26 especies BYMA calibradas con gráfico SVG 0ms y toggle `ARS ($)` | `USD (CCL)`, Boleta Pre-Trade con selector dinámico y liquidación contable FSM (`POST /orders/{id}/execute` y `/cancel`), Donut SVG sin recortes, Visor Ejecutivo de Snapshots Forenses, CRUD de Tesorería Bimonetaria y Manual de Defensa Académica (`docs/ACADEMIC_DEFENSE_GUIDE.md`).
 
 ### Resumen Consolidado de Ejecución por Capítulos:
 1. **Capítulo 1**: Fundaciones del Dominio Cuantitativo y Arquitectura Base — 10 / 10 fases (137 tests) [x]
@@ -213,6 +213,7 @@
 7. **Capítulo 7**: Motores Cuantitativos Avanzados, Señales y Valuación MTM — 9 / 9 fases (621 tests) [x]
 8. **Capítulo 8**: Ciclo de Vida de Base de Datos y Automatización en Background — 7 / 7 fases (666 tests) [x]
 9. **Capítulo 9**: Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) — 9 / 9 fases (Build Verificado) [x]
+10. **Auditoría Forense Multi-Ronda y Defensa Académica**: 8 / 8 apartados sellados (`docs/AUDIT_LEDGER.md`, `docs/ACADEMIC_DEFENSE_GUIDE.md` — **671 tests passed**) [x]
 
 
 

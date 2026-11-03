@@ -49,16 +49,51 @@ export function formatMoney(
   return `${prefix}${formatter.format(num)}`;
 }
 
+const USD_NATIVE_TICKERS = new Set([
+  "AL30D",
+  "GD30D",
+  "AE38D",
+  "AL35D",
+  "GD35",
+  "GD35D",
+]);
+
 /**
- * Formats a date string (ISO 8601) to standard Argentina locale (es-AR).
- * Example: "2026-11-02T18:30:00Z" -> "02/11/2026 15:30"
+ * Infers the native settlement currency ('ARS' or 'USD') of a BYMA instrument from its ticker.
+ */
+export function inferAssetNativeCurrency(
+  ticker: string | null | undefined,
+  fallback: "ARS" | "USD" = "ARS"
+): "ARS" | "USD" {
+  if (!ticker) return fallback;
+  const clean = ticker.trim().toUpperCase();
+  if (USD_NATIVE_TICKERS.has(clean)) {
+    return "USD";
+  }
+  return "ARS";
+}
+
+/**
+ * Formats a date string (ISO 8601) to standard Argentina locale (es-AR) in ART (UTC-3).
+ * Appends 'Z' to naive UTC timestamps emitted by SQLite/FastAPI so they convert accurately to UTC-3.
+ * Example: "2026-11-02T18:30:00" -> "02/11/2026 15:30"
  */
 export function formatDate(isoString: string | null | undefined): string {
   if (!isoString) return "—";
   try {
-    const date = new Date(isoString);
+    let normalized = isoString.trim();
+    // If timestamp has time component but lacks 'Z' or explicit timezone offset (+HH:MM / -HH:MM), treat as UTC
+    if (
+      (normalized.includes("T") || /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(normalized)) &&
+      !normalized.endsWith("Z") &&
+      !/[+-]\d{2}:?\d{2}$/.test(normalized)
+    ) {
+      normalized = normalized.replace(" ", "T") + "Z";
+    }
+    const date = new Date(normalized);
     if (isNaN(date.getTime())) return "—";
     return new Intl.DateTimeFormat("es-AR", {
+      timeZone: "America/Argentina/Buenos_Aires",
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
