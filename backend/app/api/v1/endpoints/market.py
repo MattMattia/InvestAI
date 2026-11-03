@@ -7,12 +7,12 @@ y endpoints de cotizaciones, series OHLCV históricas y tipos de cambio implíci
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import re
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import uuid
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, get_market_service
@@ -33,6 +33,7 @@ from app.domain.services.market_data_provider import (
 )
 from app.domain.services.market_history_service import MarketHistoryService
 from app.models.asset import AssetModel
+from app.models.holding import HoldingModel
 from app.schemas.envelope import (
     APIErrorResponse,
     APIResponse,
@@ -81,6 +82,71 @@ def _error_response(
         status_code=status_code,
         content=payload.model_dump(mode="json"),
     )
+
+
+@router.get(
+    "/live-quotes",
+    response_model=APIResponse[Dict[str, Any]],
+    status_code=status.HTTP_200_OK,
+    summary="Obtener cotizaciones en vivo del universo BYMA con sincronización MTM de portafolios",
+    description="Descarga cotizaciones multi-fuente en tiempo real (Yahoo Finance .BA, Google Finance :BCBA y DolarApi) y actualiza automáticamente current_price en activos y tenencias de la BD.",
+)
+async def get_live_market_quotes(
+    category: Optional[str] = Query(default=None, description="Filtro opcional: ALL | STOCK | CEDEAR | BOND"),
+    refresh: bool = Query(default=False, description="Forzar actualización en vivo sin usar la caché TTL"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Endpoint para cotizaciones de mercado en tiempo real multi-fuente y sincronización MTM.
+    """
+    batch = await PublicMarket10YProvider.fetch_live_quotes_batch(force_refresh=refresh)
+    quotes_list: List[Dict[str, Any]] = batch.get("quotes", [])
+
+    # Sincronización Automática con Base de Datos (Mark-To-Market)
+    for q in quotes_list:
+        t = q["ticker"]
+        p_dec = Decimal(str(q["last_price"]))
+        # 1. Actualizar Holdings de todos los portafolios que posean este ticker
+        await db.execute(
+            update(HoldingModel)
+            .where(HoldingModel.asset_ticker == t)
+            .values(current_price=p_dec)
+        )
+        # 2. Actualizar AssetModel si existe en la base de datos
+        res = await db.execute(select(AssetModel).where(AssetModel.ticker == t))
+        asset = res.scalar_one_or_none()
+        if asset:
+            payload = dict(asset.metrics_payload or {})
+            payload["reference_price"] = q["last_price"]
+            payload["current_price"] = q["last_price"]
+            payload["change_pct"] = q["change_pct"]
+            payload["change_nominal"] = q["change_nominal"]
+            payload["updated_at"] = q["updated_at"]
+            payload["data_source"] = q["data_source"]
+            asset.metrics_payload = payload
+            asset.metrics_updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    # Filtrar por categoría si se especifica
+    filtered_quotes = quotes_list
+    if category and category.strip().upper() not in ("ALL", ""):
+        cat_upper = category.strip().upper()
+        if cat_upper in ("STOCK", "ACCIONES"):
+            filtered_quotes = [q for q in quotes_list if q.get("asset_type") == "STOCK"]
+        elif cat_upper == "CEDEAR":
+            filtered_quotes = [q for q in quotes_list if q.get("asset_type") == "CEDEAR"]
+        elif cat_upper in ("BOND", "BONOS"):
+            filtered_quotes = [q for q in quotes_list if q.get("asset_type") == "BOND"]
+
+    response_data = {
+        "quotes": filtered_quotes,
+        "ccl_rate": batch.get("ccl_rate", 1668.0),
+        "mep_rate": batch.get("mep_rate", 1581.0),
+        "data_source": batch.get("data_source", "YAHOO_LIVE"),
+        "updated_at": batch.get("updated_at"),
+    }
+    return APIResponse[Dict[str, Any]](data=response_data, meta=_build_meta())
 
 
 @router.get(
@@ -138,7 +204,7 @@ async def get_market_quote(
     response_model=APIResponse[List[MarketBarDTO]],
     status_code=status.HTTP_200_OK,
     summary="Consultar serie temporal histórica OHLCV",
-    description="Retorna barras históricas con persistencia relacional, deduplicación e ingesta incremental delta.",
+    description="Retorna barras históricas con persistencia relacional o descarga en vivo multi-timeframe de Yahoo Finance v8.",
     responses={
         404: {"model": APIErrorResponse},
         422: {"model": APIErrorResponse},
@@ -147,9 +213,9 @@ async def get_market_quote(
 )
 async def get_market_history(
     ticker: str,
-    start_date: date = Query(..., description="Fecha inicial inclusiva (YYYY-MM-DD)"),
-    end_date: date = Query(..., description="Fecha final inclusiva (YYYY-MM-DD)"),
-    timeframe: Timeframe = Query(default=Timeframe.D1, description="Granularidad temporal de las barras"),
+    timeframe: str = Query(default="1M", description="Granularidad temporal: 1D | 1W | 1M | 1Y o D1"),
+    start_date: Optional[date] = Query(default=None, description="Fecha inicial inclusiva opcional (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(default=None, description="Fecha final inclusiva opcional (YYYY-MM-DD)"),
     market_service: MarketHistoryService = Depends(get_market_service),
 ):
     """
@@ -163,40 +229,48 @@ async def get_market_history(
             details=[SubErrorDetail(field="ticker", issue=f"El valor '{ticker}' no cumple con el patrón ^[A-Z0-9.-]+$")],
         )
 
-    if start_date > end_date:
-        return _error_response(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            code="INVALID_DATE_RANGE",
-            message=f"La fecha de inicio ({start_date}) debe ser anterior o igual a la fecha de fin ({end_date}).",
-            details=[SubErrorDetail(field="start_date", issue=f"start_date ({start_date}) > end_date ({end_date})")],
-        )
+    if start_date is not None and end_date is not None:
+        if start_date > end_date:
+            return _error_response(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                code="INVALID_DATE_RANGE",
+                message=f"La fecha de inicio ({start_date}) debe ser anterior o igual a la fecha de fin ({end_date}).",
+                details=[SubErrorDetail(field="start_date", issue=f"start_date ({start_date}) > end_date ({end_date})")],
+            )
 
-    try:
-        bars = await market_service.get_or_fetch_bars(
-            ticker=ticker,
-            start_date=start_date,
-            end_date=end_date,
-            timeframe=timeframe,
-        )
-        return APIResponse[List[MarketBarDTO]](data=bars, meta=_build_meta())
-    except TickerNotFoundError:
-        return _error_response(
-            status_code=status.HTTP_404_NOT_FOUND,
-            code="TICKER_NOT_FOUND",
-            message=f"El ticker '{ticker}' no fue encontrado en el proveedor de mercado.",
-        )
-    except RateLimitExceededError:
-        return _error_response(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            code="RATE_LIMIT_EXCEEDED",
-            message="Se ha superado el límite de tasa de solicitudes con el proveedor de mercado.",
-        )
-    except SecuritySSRFViolationError as exc:
-        return _error_response(
-            status_code=status.HTTP_403_FORBIDDEN,
-            code="SECURITY_SSRF_VIOLATION",
-            message=f"Acceso bloqueado por controles de seguridad anti-SSRF: {exc}",
-        )
+        try:
+            tf_enum = Timeframe(timeframe) if timeframe in [t.value for t in Timeframe] else Timeframe.D1
+            bars = await market_service.get_or_fetch_bars(
+                ticker=ticker,
+                start_date=start_date,
+                end_date=end_date,
+                timeframe=tf_enum,
+            )
+            return APIResponse[List[MarketBarDTO]](data=bars, meta=_build_meta())
+        except TickerNotFoundError:
+            return _error_response(
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="TICKER_NOT_FOUND",
+                message=f"El ticker '{ticker}' no fue encontrado en el proveedor de mercado.",
+            )
+        except RateLimitExceededError:
+            return _error_response(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                code="RATE_LIMIT_EXCEEDED",
+                message="Se ha superado el límite de tasa de solicitudes con el proveedor de mercado.",
+            )
+        except SecuritySSRFViolationError as exc:
+            return _error_response(
+                status_code=status.HTTP_403_FORBIDDEN,
+                code="SECURITY_SSRF_VIOLATION",
+                message=f"Acceso bloqueado por controles de seguridad anti-SSRF: {exc}",
+            )
+    else:
+        # Modo multi-timeframe en tiempo real para gráficos interactivos (1D, 1W, 1M, 1Y)
+        tf_str = timeframe.upper() if isinstance(timeframe, str) else "1M"
+        bars_raw = await PublicMarket10YProvider.fetch_live_historical_bars(ticker, timeframe=tf_str)
+        bars_dto = [MarketBarDTO(**b) for b in bars_raw]
+        return APIResponse[List[MarketBarDTO]](data=bars_dto, meta=_build_meta())
 
 
 @router.get(

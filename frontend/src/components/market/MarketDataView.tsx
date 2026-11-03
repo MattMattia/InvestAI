@@ -8,7 +8,7 @@ import React, { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search, X } from "lucide-react";
 import { useHashRoute } from "@/lib/navigation";
-import { marketKeys } from "@/lib/queryKeys";
+import { marketKeys, portfolioKeys } from "@/lib/queryKeys";
 import {
   buildDeterministicHistoricalBars,
   marketService,
@@ -57,11 +57,17 @@ export const MarketDataView: React.FC = () => {
 
   const isMarketOpen = statusQuery.data?.is_open ?? false;
 
-  // 2. Query live quotes with dynamic interval based on session state
-  const quotesQuery = useQuery({
+  // 2. Query live feed (quotes + CCL/MEP + data source) from backend
+  const feedQuery = useQuery({
     queryKey: marketKeys.quotes(selectedCategory),
-    queryFn: () => marketService.getLiveQuotes(selectedCategory),
-    initialData: () => marketService.getCuratedQuotesSync(selectedCategory),
+    queryFn: () => marketService.getLiveMarketFeed(selectedCategory, isRefreshingManual),
+    initialData: () => ({
+      quotes: marketService.getCuratedQuotesSync(selectedCategory),
+      ccl_rate: 1668.0,
+      mep_rate: 1581.0,
+      data_source: "CACHE_FALLBACK",
+      updated_at: new Date().toISOString(),
+    }),
     refetchInterval: isMarketOpen ? 15_000 : 60_000,
     refetchIntervalInBackground: false,
   });
@@ -81,11 +87,15 @@ export const MarketDataView: React.FC = () => {
     return buildDeterministicHistoricalBars(activeTicker, timeframe);
   }, [historyQuery.data, activeTicker, timeframe]);
 
-  // Manual refresh trigger
+  // Manual refresh trigger: refetches live quotes and invalidates portfolio cache (MTM sync)
   const handleManualRefresh = async () => {
     setIsRefreshingManual(true);
-    await queryClient.invalidateQueries({ queryKey: marketKeys.all });
-    setTimeout(() => setIsRefreshingManual(false), 500);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: marketKeys.all }),
+      queryClient.invalidateQueries({ queryKey: portfolioKeys.all }),
+    ]);
+    await feedQuery.refetch();
+    setTimeout(() => setIsRefreshingManual(false), 600);
   };
 
   const handleSelectTicker = (ticker: string) => {
@@ -94,7 +104,7 @@ export const MarketDataView: React.FC = () => {
 
   // Filtered quotes based on search query
   const filteredQuotes = useMemo(() => {
-    const raw = quotesQuery.data || [];
+    const raw = feedQuery.data?.quotes || [];
     if (!searchQuery.trim()) return raw;
     const term = searchQuery.trim().toLowerCase();
     return raw.filter(
@@ -102,15 +112,15 @@ export const MarketDataView: React.FC = () => {
         q.ticker.toLowerCase().includes(term) ||
         q.name.toLowerCase().includes(term)
     );
-  }, [quotesQuery.data, searchQuery]);
+  }, [feedQuery.data?.quotes, searchQuery]);
 
   // Active quote data for chart header
   const activeQuote = useMemo(() => {
     return (
-      (quotesQuery.data || []).find((q) => q.ticker === activeTicker) ||
+      (feedQuery.data?.quotes || []).find((q) => q.ticker === activeTicker) ||
       allCuratedQuotes.find((q) => q.ticker === activeTicker)
     );
-  }, [quotesQuery.data, allCuratedQuotes, activeTicker]);
+  }, [feedQuery.data?.quotes, allCuratedQuotes, activeTicker]);
 
   // 10-Year Quantitative & Fundamental Metrics for activeTicker
   const activeMetrics10Y = useMemo(
@@ -120,21 +130,32 @@ export const MarketDataView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* 1. Official BYMA Session Status Bar */}
+      {/* 1. Official BYMA Session Status Bar with Live Multi-Source Badge & FX Rates */}
       <MarketStatusBar
         status={statusQuery.data}
         onRefresh={handleManualRefresh}
-        isRefreshing={isRefreshingManual || quotesQuery.isFetching}
+        isRefreshing={isRefreshingManual || feedQuery.isFetching}
+        dataSource={feedQuery.data?.data_source}
+        cclRate={feedQuery.data?.ccl_rate}
+        mepRate={feedQuery.data?.mep_rate}
       />
 
       {/* 2. Interactive SVG Financial Time Series Chart */}
-      <FinancialTimeSeriesChart
-        bars={resolvedBars}
-        activeTicker={activeTicker}
-        timeframe={timeframe}
-        onTimeframeChange={(tf) => setTimeframe(tf)}
-        quote={activeQuote}
-      />
+      <div className="relative">
+        {historyQuery.isFetching && (
+          <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950/80 border border-sky-500/30 text-[11px] font-mono text-sky-400 backdrop-blur-sm shadow-sm animate-pulse">
+            <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+            <span>Actualizando velas...</span>
+          </div>
+        )}
+        <FinancialTimeSeriesChart
+          bars={resolvedBars}
+          activeTicker={activeTicker}
+          timeframe={timeframe}
+          onTimeframeChange={(tf) => setTimeframe(tf)}
+          quote={activeQuote}
+        />
+      </div>
 
       {/* 2.5. Real-Time 10-Year Quantitative & Fundamental Metrics Card */}
       <div className="p-5 rounded-xl bg-slate-900 border border-slate-800 shadow-lg space-y-4">
@@ -283,7 +304,7 @@ export const MarketDataView: React.FC = () => {
         selectedTicker={activeTicker}
         onSelectTicker={handleSelectTicker}
         onTradeTicker={(q) => setTradeModalQuote(q)}
-        isLoading={quotesQuery.isLoading}
+        isLoading={feedQuery.isLoading}
       />
 
       {/* 5. Assisted Order Execution Modal */}

@@ -16,6 +16,14 @@ import { apiClient } from "@/lib/apiClient";
 
 export const CCL_REFERENCE_RATE = 1180.0;
 
+export interface LiveMarketFeedPayload {
+  quotes: MarketQuote[];
+  ccl_rate: number;
+  mep_rate: number;
+  data_source: string;
+  updated_at: string;
+}
+
 interface CalibratedInstrumentSeed {
   ticker: string;
   name: string;
@@ -279,21 +287,82 @@ export const marketService = {
   },
 
   /**
+   * Retrieves full real-time market feed with quotes, CCL/MEP exchange rates,
+   * and active data source origin via FastAPI /api/v1/market/live-quotes.
+   */
+  async getLiveMarketFeed(
+    category?: string,
+    forceRefresh = false
+  ): Promise<LiveMarketFeedPayload> {
+    try {
+      const response = await apiClient.get<
+        APIResponse<{
+          quotes: MarketQuote[];
+          ccl_rate: number;
+          mep_rate: number;
+          data_source: string;
+          updated_at: string;
+        }>
+      >("/market/live-quotes", {
+        params: {
+          category: category && category !== "ALL" ? category : undefined,
+          refresh: forceRefresh,
+        },
+      });
+      const data = response.data?.data;
+      if (data && Array.isArray(data.quotes) && data.quotes.length > 0) {
+        return {
+          quotes: data.quotes,
+          ccl_rate: data.ccl_rate || 1668.0,
+          mep_rate: data.mep_rate || 1581.0,
+          data_source: data.data_source || "YAHOO_LIVE",
+          updated_at: data.updated_at || new Date().toISOString(),
+        };
+      }
+    } catch {
+      // Offline fallback
+    }
+
+    const fallbackQuotes = this.getCuratedQuotesSync(category);
+    return {
+      quotes: fallbackQuotes,
+      ccl_rate: 1668.0,
+      mep_rate: 1581.0,
+      data_source: "CACHE_FALLBACK",
+      updated_at: new Date().toISOString(),
+    };
+  },
+
+  /**
    * Retrieves live quotes for Argentine instruments with category filtering.
    */
-  async getLiveQuotes(category?: string): Promise<MarketQuote[]> {
-    return this.getCuratedQuotesSync(category);
+  async getLiveQuotes(category?: string, forceRefresh = false): Promise<MarketQuote[]> {
+    const feed = await this.getLiveMarketFeed(category, forceRefresh);
+    return feed.quotes;
   },
 
   /**
    * Retrieves historical OHLCV bars for any BYMA asset across selectable timeframes:
    * '1D' (intradiary), '1W' (1 week), '1M' (1 month), '1Y' (1 year).
-   * Guaranteed to resolve immediately with a non-empty calibrated OHLCV series.
+   * Queries FastAPI backend /api/v1/market/history with real Yahoo Finance .BA bars,
+   * falling back gracefully to deterministic series anchored to the latest price.
    */
   async getHistoricalBars(
     ticker: string,
     timeframe: "1D" | "1W" | "1M" | "1Y" = "1M"
   ): Promise<HistoricalBar[]> {
+    try {
+      const clean = (ticker || "GGAL").trim().toUpperCase();
+      const response = await apiClient.get<APIResponse<HistoricalBar[]>>(
+        `/market/history/${encodeURIComponent(clean)}`,
+        { params: { timeframe } }
+      );
+      if (response.data?.data && Array.isArray(response.data.data) && response.data.data.length > 0) {
+        return response.data.data;
+      }
+    } catch {
+      // Fallback to calibrated deterministic bars
+    }
     return buildDeterministicHistoricalBars(ticker, timeframe);
   },
 
