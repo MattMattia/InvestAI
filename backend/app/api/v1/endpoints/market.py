@@ -201,7 +201,7 @@ async def get_market_quote(
 
 @router.get(
     "/history/{ticker}",
-    response_model=APIResponse[List[MarketBarDTO]],
+    response_model=APIResponse[List[Any]],
     status_code=status.HTTP_200_OK,
     summary="Consultar serie temporal histórica OHLCV",
     description="Retorna barras históricas con persistencia relacional o descarga en vivo multi-timeframe de Yahoo Finance v8.",
@@ -246,7 +246,7 @@ async def get_market_history(
                 end_date=end_date,
                 timeframe=tf_enum,
             )
-            return APIResponse[List[MarketBarDTO]](data=bars, meta=_build_meta())
+            return APIResponse[List[Any]](data=bars, meta=_build_meta())
         except TickerNotFoundError:
             return _error_response(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -269,8 +269,7 @@ async def get_market_history(
         # Modo multi-timeframe en tiempo real para gráficos interactivos (1D, 1W, 1M, 1Y)
         tf_str = timeframe.upper() if isinstance(timeframe, str) else "1M"
         bars_raw = await PublicMarket10YProvider.fetch_live_historical_bars(ticker, timeframe=tf_str)
-        bars_dto = [MarketBarDTO(**b) for b in bars_raw]
-        return APIResponse[List[MarketBarDTO]](data=bars_dto, meta=_build_meta())
+        return APIResponse[List[Any]](data=bars_raw, meta=_build_meta())
 
 
 @router.get(

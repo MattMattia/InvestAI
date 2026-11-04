@@ -1,7 +1,8 @@
 /**
  * MarketDataView Component for InvestAI Enterprise.
  * Comprehensive Real-Time Market Monitor for BYMA, featuring category filters,
- * instant ticker search, interactive SVG chart, high-density quotes table, and smart polling.
+ * instant ticker search, interactive SVG chart, high-density quotes table,
+ * 5-second polling auto-sync, resilient error boundary, and 10Y quantitative analytics.
  */
 
 import React, { useMemo, useState } from "react";
@@ -31,6 +32,66 @@ const CATEGORY_TABS: { id: MarketCategory; label: string }[] = [
   { id: "BOND", label: "Bonos Soberanos" },
 ];
 
+function formatQuantPct(val: number | null | undefined): string {
+  if (val === null || val === undefined || !Number.isFinite(Number(val))) {
+    return "0.0%";
+  }
+  const abs = Math.abs(Number(val));
+  if (abs > 1.0) {
+    return `${abs.toFixed(1)}%`;
+  }
+  return `${(abs * 100).toFixed(1)}%`;
+}
+
+interface ChartErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ChartErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ChartErrorBoundary extends React.Component<
+  ChartErrorBoundaryProps,
+  ChartErrorBoundaryState
+> {
+  constructor(props: ChartErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): ChartErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("ChartErrorBoundary caught render error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full rounded-2xl bg-slate-900 border border-slate-800 p-8 shadow-xl flex flex-col items-center justify-center text-center space-y-3">
+          <span className="text-amber-400 font-mono text-xs font-semibold">
+            ⚠️ Ocurrió una inconsistencia transitoria al renderizar el gráfico.
+          </span>
+          <p className="text-slate-400 text-xs max-w-md">
+            Las cotizaciones en vivo y la ejecución de órdenes continúan operando con normalidad.
+          </p>
+          <button
+            type="button"
+            onClick={() => this.setState({ hasError: false })}
+            className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-mono transition-colors cursor-pointer border border-slate-700"
+          >
+            Reintentar visualización
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export const MarketDataView: React.FC = () => {
   const { ticker: routeTicker, navigateToMarket } = useHashRoute();
   const queryClient = useQueryClient();
@@ -51,33 +112,34 @@ export const MarketDataView: React.FC = () => {
   const statusQuery = useQuery({
     queryKey: marketKeys.status(),
     queryFn: () => marketService.getMarketStatus(),
-    refetchInterval: 60_000,
+    refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });
 
-  const isMarketOpen = statusQuery.data?.is_open ?? false;
-
-  // 2. Query live feed (quotes + CCL/MEP + data source) from backend
+  // 2. Query live feed with 5s continuous polling and auto-sync
   const feedQuery = useQuery({
     queryKey: marketKeys.quotes(selectedCategory),
     queryFn: () => marketService.getLiveMarketFeed(selectedCategory, isRefreshingManual),
     initialData: () => ({
       quotes: marketService.getCuratedQuotesSync(selectedCategory),
-      ccl_rate: 1668.0,
-      mep_rate: 1581.0,
+      ccl_rate: 1668.8,
+      mep_rate: 1581.1,
       data_source: "CACHE_FALLBACK",
       updated_at: new Date().toISOString(),
     }),
-    refetchInterval: isMarketOpen ? 15_000 : 60_000,
-    refetchIntervalInBackground: false,
+    refetchInterval: 5000,
+    staleTime: 0,
+    refetchIntervalInBackground: true,
   });
 
-  // 3. Query historical series for the active ticker and timeframe with instant synchronous fallback
+  // 3. Query historical series with 5s auto-sync and smooth placeholder transitions
   const historyQuery = useQuery({
     queryKey: marketKeys.history(activeTicker, timeframe),
     queryFn: () => marketService.getHistoricalBars(activeTicker, timeframe),
     initialData: () => buildDeterministicHistoricalBars(activeTicker, timeframe),
-    staleTime: 30_000,
+    refetchInterval: 5000,
+    staleTime: 0,
+    placeholderData: (prev) => prev,
   });
 
   const resolvedBars = useMemo(() => {
@@ -140,21 +202,24 @@ export const MarketDataView: React.FC = () => {
         mepRate={feedQuery.data?.mep_rate}
       />
 
-      {/* 2. Interactive SVG Financial Time Series Chart */}
+      {/* 2. Interactive SVG Financial Time Series Chart with Error Boundary */}
       <div className="relative">
         {historyQuery.isFetching && (
           <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950/80 border border-sky-500/30 text-[11px] font-mono text-sky-400 backdrop-blur-sm shadow-sm animate-pulse">
             <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
-            <span>Actualizando velas...</span>
+            <span>Actualizando 5s...</span>
           </div>
         )}
-        <FinancialTimeSeriesChart
-          bars={resolvedBars}
-          activeTicker={activeTicker}
-          timeframe={timeframe}
-          onTimeframeChange={(tf) => setTimeframe(tf)}
-          quote={activeQuote}
-        />
+        <ChartErrorBoundary key={`${activeTicker}-${timeframe}`}>
+          <FinancialTimeSeriesChart
+            bars={resolvedBars}
+            activeTicker={activeTicker}
+            timeframe={timeframe}
+            onTimeframeChange={(tf) => setTimeframe(tf)}
+            quote={activeQuote}
+            cclRate={feedQuery.data?.ccl_rate}
+          />
+        </ChartErrorBoundary>
       </div>
 
       {/* 2.5. Real-Time 10-Year Quantitative & Fundamental Metrics Card */}
@@ -200,13 +265,13 @@ export const MarketDataView: React.FC = () => {
           <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800/80">
             <span className="text-[10px] text-slate-400 block font-sans">Max Drawdown</span>
             <span className="text-sm font-bold text-rose-400">
-              -{(activeMetrics10Y.max_drawdown * 100).toFixed(1)}%
+              -{formatQuantPct(activeMetrics10Y.max_drawdown)}
             </span>
           </div>
           <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800/80">
             <span className="text-[10px] text-slate-400 block font-sans">Beta / VaR 95% (1D)</span>
             <span className="text-sm font-bold text-slate-200">
-              {activeMetrics10Y.beta_market.toFixed(2)} / {(activeMetrics10Y.var_95_daily * 100).toFixed(1)}%
+              {activeMetrics10Y.beta_market.toFixed(2)} / {formatQuantPct(activeMetrics10Y.var_95_daily)}
             </span>
           </div>
           {activeMetrics10Y.asset_type === "BOND" ? (
@@ -264,7 +329,7 @@ export const MarketDataView: React.FC = () => {
               key={cat.id}
               type="button"
               onClick={() => setSelectedCategory(cat.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
                 selectedCategory === cat.id
                   ? "bg-sky-500/20 text-sky-400 border border-sky-500/30 shadow-sm"
                   : "text-slate-400 hover:text-slate-200"
@@ -289,7 +354,7 @@ export const MarketDataView: React.FC = () => {
             <button
               type="button"
               onClick={() => setSearchQuery("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 cursor-pointer"
               title="Limpiar búsqueda"
             >
               <X className="h-3.5 w-3.5" />

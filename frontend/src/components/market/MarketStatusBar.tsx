@@ -46,7 +46,9 @@ export const MarketStatusBar: React.FC<MarketStatusBarProps> = ({
   }, []);
 
   const isOpen = status?.is_open ?? false;
-  const isLive = dataSource === "YAHOO_LIVE" || dataSource === "GOOGLE_BCBA_LIVE";
+  const isLive = dataSource === "YAHOO_LIVE" || dataSource === "GOOGLE_BCBA_LIVE" || dataSource === "YAHOO_BCBA_LIVE_5S";
+  const safeCcl = Number(cclRate) > 0 ? Number(cclRate) : 1668.8;
+  const safeMep = Number(mepRate) > 0 ? Number(mepRate) : 1581.1;
 
   return (
     <div className="w-full rounded-2xl bg-slate-900 border border-slate-800 p-4 shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
@@ -64,14 +66,20 @@ export const MarketStatusBar: React.FC<MarketStatusBarProps> = ({
               isOpen ? "bg-emerald-400 animate-pulse" : "bg-amber-400"
             }`}
           />
-          <span>{isOpen ? "MERCADO ABIERTO" : "MERCADO CERRADO"}</span>
+          <span>
+            {isOpen
+              ? "MERCADO ABIERTO"
+              : "MERCADO CERRADO (MODO CONTINUO / AFTER-HOURS ACTIVO)"}
+          </span>
         </div>
 
         {/* Live Multi-source Feed Badge */}
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-emerald-500/30 font-mono text-xs text-emerald-400 shadow-sm">
           <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
           <span className="font-semibold tracking-wide">
-            FEED EN VIVO: {isLive ? "BYMA (.BA) / Google Finance BCBA" : "CATÁLOGO CALIBRADO (FALLBACK)"}
+            {isLive
+              ? "⚡ LIVE FEED (AUTO-SYNC 5s): YAHOO .BA / GOOGLE BCBA"
+              : "⚡ FEED CALIBRADO (FALLBACK 5s)"}
           </span>
         </div>
 
@@ -79,12 +87,12 @@ export const MarketStatusBar: React.FC<MarketStatusBarProps> = ({
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 font-mono text-xs text-slate-300">
           <span className="text-slate-400">CCL:</span>
           <span className="font-bold text-sky-400">
-            ${cclRate.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+            ${safeCcl.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
           </span>
           <span className="text-slate-600">|</span>
           <span className="text-slate-400">MEP:</span>
           <span className="font-bold text-emerald-400">
-            ${mepRate.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+            ${safeMep.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
           </span>
         </div>
       </div>

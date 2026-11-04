@@ -14,7 +14,11 @@ import {
 } from "@/types/api";
 import { apiClient } from "@/lib/apiClient";
 
-export const CCL_REFERENCE_RATE = 1180.0;
+export const CCL_REFERENCE_RATE = 1668.8;
+
+export interface HistoricalBarExtended extends HistoricalBar {
+  is_market_open?: boolean;
+}
 
 export interface LiveMarketFeedPayload {
   quotes: MarketQuote[];
@@ -22,6 +26,41 @@ export interface LiveMarketFeedPayload {
   mep_rate: number;
   data_source: string;
   updated_at: string;
+}
+
+function sanitizeQuote(raw: any): MarketQuote {
+  const lastPrice = Number(raw.last_price) || 0;
+  const prevClose = Number(raw.previous_close) || lastPrice;
+  const chgNom = Number(raw.change_nominal) || Number((lastPrice - prevClose).toFixed(2));
+  const chgPct = Number(raw.change_pct) || (prevClose > 0 ? Number(((chgNom / prevClose) * 100).toFixed(2)) : 0);
+  return {
+    ticker: String(raw.ticker || "").toUpperCase(),
+    name: String(raw.name || raw.ticker || ""),
+    asset_type: raw.asset_type || "STOCK",
+    currency: raw.currency === "USD" ? "USD" : "ARS",
+    last_price: lastPrice,
+    open_price: Number(raw.open_price) || lastPrice,
+    high_price: Number(raw.high_price) || lastPrice,
+    low_price: Number(raw.low_price) || lastPrice,
+    previous_close: prevClose,
+    change_pct: chgPct,
+    change_nominal: chgNom,
+    volume_shares: Number(raw.volume_shares) || 0,
+    volume_amount: Number(raw.volume_amount) || Number((lastPrice * (Number(raw.volume_shares) || 0)).toFixed(2)),
+    updated_at: String(raw.updated_at || new Date().toISOString()),
+  };
+}
+
+function sanitizeBar(raw: any): HistoricalBarExtended {
+  return {
+    timestamp: String(raw.timestamp || new Date().toISOString()),
+    open: Number(raw.open) || 0,
+    high: Number(raw.high) || 0,
+    low: Number(raw.low) || 0,
+    close: Number(raw.close) || 0,
+    volume: Number(raw.volume) || 0,
+    is_market_open: typeof raw.is_market_open === "boolean" ? raw.is_market_open : true,
+  };
 }
 
 interface CalibratedInstrumentSeed {
@@ -312,9 +351,9 @@ export const marketService = {
       const data = response.data?.data;
       if (data && Array.isArray(data.quotes) && data.quotes.length > 0) {
         return {
-          quotes: data.quotes,
-          ccl_rate: data.ccl_rate || 1668.0,
-          mep_rate: data.mep_rate || 1581.0,
+          quotes: data.quotes.map(sanitizeQuote),
+          ccl_rate: Number(data.ccl_rate) > 0 ? Number(data.ccl_rate) : CCL_REFERENCE_RATE,
+          mep_rate: Number(data.mep_rate) > 0 ? Number(data.mep_rate) : 1581.1,
           data_source: data.data_source || "YAHOO_LIVE",
           updated_at: data.updated_at || new Date().toISOString(),
         };
@@ -323,11 +362,11 @@ export const marketService = {
       // Offline fallback
     }
 
-    const fallbackQuotes = this.getCuratedQuotesSync(category);
+    const fallbackQuotes = this.getCuratedQuotesSync(category).map(sanitizeQuote);
     return {
       quotes: fallbackQuotes,
-      ccl_rate: 1668.0,
-      mep_rate: 1581.0,
+      ccl_rate: CCL_REFERENCE_RATE,
+      mep_rate: 1581.1,
       data_source: "CACHE_FALLBACK",
       updated_at: new Date().toISOString(),
     };
@@ -350,20 +389,20 @@ export const marketService = {
   async getHistoricalBars(
     ticker: string,
     timeframe: "1D" | "1W" | "1M" | "1Y" = "1M"
-  ): Promise<HistoricalBar[]> {
+  ): Promise<HistoricalBarExtended[]> {
     try {
       const clean = (ticker || "GGAL").trim().toUpperCase();
-      const response = await apiClient.get<APIResponse<HistoricalBar[]>>(
+      const response = await apiClient.get<APIResponse<HistoricalBarExtended[]>>(
         `/market/history/${encodeURIComponent(clean)}`,
         { params: { timeframe } }
       );
       if (response.data?.data && Array.isArray(response.data.data) && response.data.data.length > 0) {
-        return response.data.data;
+        return response.data.data.map(sanitizeBar);
       }
     } catch {
       // Fallback to calibrated deterministic bars
     }
-    return buildDeterministicHistoricalBars(ticker, timeframe);
+    return buildDeterministicHistoricalBars(ticker, timeframe).map(sanitizeBar);
   },
 
   /**

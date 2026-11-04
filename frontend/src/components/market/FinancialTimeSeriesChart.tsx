@@ -2,23 +2,25 @@
  * FinancialTimeSeriesChart Component for InvestAI Enterprise.
  * High-performance pure SVG financial charting without external bundle bloat.
  * Features semaphoric area gradients, zero-division immunity, interactive crosshair,
- * adaptive timeframe selectors, ARS ($) / USD (CCL) currency toggle, and volume histogram.
+ * adaptive timeframe selectors, ARS ($) / USD (CCL) currency toggle, volume histogram,
+ * visual market session markers (official session vs after-hours 5s ticks), and pulsing live dot.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { formatMoney, formatSignedPercent } from "@/lib/formatters";
-import { CCL_REFERENCE_RATE } from "@/services/marketService";
+import { CCL_REFERENCE_RATE, HistoricalBarExtended } from "@/services/marketService";
 import { HistoricalBar, MarketQuote } from "@/types/api";
 
 export type ChartTimeframe = "1D" | "1W" | "1M" | "1Y";
 export type ChartCurrencyMode = "ARS" | "USD";
 
 interface FinancialTimeSeriesChartProps {
-  bars: HistoricalBar[];
+  bars: (HistoricalBar | HistoricalBarExtended)[];
   activeTicker: string;
   timeframe: ChartTimeframe;
   onTimeframeChange: (tf: ChartTimeframe) => void;
   quote?: MarketQuote;
+  cclRate?: number;
 }
 
 const TIMEFRAME_LABELS: { id: ChartTimeframe; label: string }[] = [
@@ -28,6 +30,23 @@ const TIMEFRAME_LABELS: { id: ChartTimeframe; label: string }[] = [
   { id: "1Y", label: "1A" },
 ];
 
+function formatSafeDate(ts?: string, isTime = false): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return String(ts);
+  if (isTime) {
+    return d.toLocaleTimeString("es-AR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  }
+  return d.toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+}
+
 export const FinancialTimeSeriesChart: React.FC<
   FinancialTimeSeriesChartProps
 > = ({
@@ -36,11 +55,20 @@ export const FinancialTimeSeriesChart: React.FC<
   timeframe,
   onTimeframeChange,
   quote,
+  cclRate,
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const nativeCurrency: ChartCurrencyMode = quote?.currency === "USD" ? "USD" : "ARS";
   const [displayCurrency, setDisplayCurrency] = useState<ChartCurrencyMode>(nativeCurrency);
+
+  // Fallback-immune CCL exchange rate
+  const safeCclRate =
+    typeof cclRate === "number" && Number.isFinite(cclRate) && cclRate > 0
+      ? cclRate
+      : Number(cclRate) > 0
+      ? Number(cclRate)
+      : CCL_REFERENCE_RATE;
 
   // Sync default display currency when user selects an instrument with a different native currency
   useEffect(() => {
@@ -59,25 +87,38 @@ export const FinancialTimeSeriesChart: React.FC<
   const volumeChartHeight = 55; // Volume area: Y: 265 to 320
   const chartWidth = viewWidth - paddingLeft - paddingRight;
 
-  // Currency conversion factor between native quote currency and selected chart currency (CCL Ref $1,180)
+  // Currency conversion factor between native quote currency and selected chart currency
   const fxFactor = useMemo(() => {
     if (displayCurrency === nativeCurrency) return 1.0;
     if (nativeCurrency === "ARS" && displayCurrency === "USD") {
-      return 1.0 / CCL_REFERENCE_RATE;
+      return 1.0 / safeCclRate;
     }
-    return CCL_REFERENCE_RATE;
-  }, [displayCurrency, nativeCurrency]);
+    return safeCclRate;
+  }, [displayCurrency, nativeCurrency, safeCclRate]);
 
+  // Sanitize and convert bars with absolute immunity against NaN and zero division
   const convertedBars = useMemo(() => {
-    if (!bars || bars.length === 0) return [];
-    if (fxFactor === 1.0) return bars;
-    return bars.map((b) => ({
-      ...b,
-      open: Number((b.open * fxFactor).toFixed(2)),
-      high: Number((b.high * fxFactor).toFixed(2)),
-      low: Number((b.low * fxFactor).toFixed(2)),
-      close: Number((b.close * fxFactor).toFixed(2)),
-    }));
+    if (!bars || !Array.isArray(bars) || bars.length === 0) return [];
+    return bars
+      .filter((b) => b && Number.isFinite(Number(b.close)) && Number(b.close) > 0)
+      .map((b) => {
+        const rawOpen = Number(b.open) * fxFactor;
+        const rawHigh = Number(b.high) * fxFactor;
+        const rawLow = Number(b.low) * fxFactor;
+        const rawClose = Number(b.close) * fxFactor;
+        const rawVol = Number(b.volume) || 0;
+        const ext = b as HistoricalBarExtended;
+
+        return {
+          timestamp: String(b.timestamp || new Date().toISOString()),
+          open: Number.isFinite(rawOpen) && rawOpen > 0 ? Number(rawOpen.toFixed(2)) : 0.01,
+          high: Number.isFinite(rawHigh) && rawHigh > 0 ? Number(rawHigh.toFixed(2)) : 0.01,
+          low: Number.isFinite(rawLow) && rawLow > 0 ? Number(rawLow.toFixed(2)) : 0.01,
+          close: Number.isFinite(rawClose) && rawClose > 0 ? Number(rawClose.toFixed(2)) : 0.01,
+          volume: Number.isFinite(rawVol) ? Math.max(0, rawVol) : 0,
+          is_market_open: typeof ext.is_market_open === "boolean" ? ext.is_market_open : true,
+        };
+      });
   }, [bars, fxFactor]);
 
   // Price calculations and strict zero-division protection
@@ -90,6 +131,7 @@ export const FinancialTimeSeriesChart: React.FC<
     areaD,
     yTicks,
     maxVolume,
+    transitionPoint,
   } = useMemo(() => {
     if (!convertedBars || convertedBars.length === 0) {
       return {
@@ -101,6 +143,7 @@ export const FinancialTimeSeriesChart: React.FC<
         areaD: "",
         yTicks: [],
         maxVolume: 1,
+        transitionPoint: null,
       };
     }
 
@@ -108,48 +151,47 @@ export const FinancialTimeSeriesChart: React.FC<
     let min = Math.min(...prices);
     let max = Math.max(...prices);
 
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      min = 1.0;
+      max = 10.0;
+    }
+
     // Defense against flat prices (zero division)
     if (min === max || max - min < 0.0001) {
       const padding = min > 0 ? min * 0.05 : 1.0;
-      min -= padding;
+      min = Math.max(0.01, min - padding);
       max += padding;
     } else {
       // Add 4% vertical margin
       const margin = (max - min) * 0.04;
-      min -= margin;
+      min = Math.max(0.01, min - margin);
       max += margin;
     }
 
-    const priceRange = max - min;
+    const priceRange = Math.max(0.0001, max - min);
     const n = convertedBars.length;
     const stepX = n > 1 ? chartWidth / (n - 1) : chartWidth;
 
     const computedPoints = convertedBars.map((b, idx) => {
-      const x = paddingLeft + idx * stepX;
-      const normalizedPrice = (b.close - min) / priceRange;
-      const y = paddingTop + priceChartHeight - normalizedPrice * priceChartHeight;
+      const x = Number((paddingLeft + idx * stepX).toFixed(1));
+      const normalizedPrice = Math.max(0, Math.min(1, (b.close - min) / priceRange));
+      const y = Number((paddingTop + priceChartHeight - normalizedPrice * priceChartHeight).toFixed(1));
       return { x, y, bar: b };
     });
 
-    const first = convertedBars[0].close;
-    const last = convertedBars[convertedBars.length - 1].close;
+    const first = computedPoints[0].bar.close;
+    const last = computedPoints[computedPoints.length - 1].bar.close;
     const pos = last >= first;
 
     // SVG Path assembly
     const path = computedPoints
-      .map((p, idx) =>
-        idx === 0
-          ? `M ${p.x.toFixed(1)} ${p.y.toFixed(1)}`
-          : `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`
-      )
+      .map((p, idx) => (idx === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`))
       .join(" ");
 
     // Area closed path
-    const area = `${path} L ${computedPoints[computedPoints.length - 1].x.toFixed(
-      1
-    )} ${(paddingTop + priceChartHeight).toFixed(1)} L ${computedPoints[0].x.toFixed(
-      1
-    )} ${(paddingTop + priceChartHeight).toFixed(1)} Z`;
+    const lastP = computedPoints[computedPoints.length - 1];
+    const firstP = computedPoints[0];
+    const area = `${path} L ${lastP.x} ${(paddingTop + priceChartHeight).toFixed(1)} L ${firstP.x} ${(paddingTop + priceChartHeight).toFixed(1)} Z`;
 
     // 4 Y-Axis price tick levels
     const ticks = [0, 0.33, 0.66, 1].map((pct) => {
@@ -160,10 +202,21 @@ export const FinancialTimeSeriesChart: React.FC<
 
     const maxVol = Math.max(...convertedBars.map((b) => b.volume), 1);
 
+    // Identify session transition point (11:00-17:00 open -> 17:00+ closed / after-hours)
+    let transPt: { x: number; y: number; idx: number } | null = null;
+    const transIdx = computedPoints.findIndex(
+      (p, idx) => idx > 0 && computedPoints[idx - 1].bar.is_market_open && !p.bar.is_market_open
+    );
+    if (transIdx !== -1) {
+      transPt = {
+        x: computedPoints[transIdx].x,
+        y: computedPoints[transIdx].y,
+        idx: transIdx,
+      };
+    }
+
     return {
       points: computedPoints,
-      minPrice: min,
-      maxPrice: max,
       firstPrice: first,
       lastPrice: last,
       isPositive: pos,
@@ -171,6 +224,7 @@ export const FinancialTimeSeriesChart: React.FC<
       areaD: area,
       yTicks: ticks,
       maxVolume: maxVol,
+      transitionPoint: transPt,
     };
   }, [convertedBars, chartWidth]);
 
@@ -178,6 +232,7 @@ export const FinancialTimeSeriesChart: React.FC<
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current || points.length === 0) return;
     const rect = svgRef.current.getBoundingClientRect();
+    if (!rect.width) return;
     const clientX = e.clientX - rect.left;
     const scaleX = viewWidth / rect.width;
     const svgX = clientX * scaleX;
@@ -208,6 +263,7 @@ export const FinancialTimeSeriesChart: React.FC<
 
   const periodChange = firstPrice > 0 ? (lastPrice - firstPrice) / firstPrice : 0;
   const periodMetrics = formatSignedPercent(periodChange);
+  const isIntradiary = timeframe === "1D";
 
   return (
     <div className="w-full rounded-2xl bg-slate-900 border border-slate-800 p-5 shadow-xl space-y-4">
@@ -228,7 +284,7 @@ export const FinancialTimeSeriesChart: React.FC<
             </span>
             {displayCurrency !== nativeCurrency && (
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                TC CCL Ref: $1.180,00 ARS/USD
+                TC CCL Ref: ${safeCclRate.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 2 })} ARS/USD
               </span>
             )}
           </div>
@@ -249,6 +305,18 @@ export const FinancialTimeSeriesChart: React.FC<
               </span>
             </div>
           )}
+
+          {/* Session Segment Indicators Legend */}
+          <div className="flex items-center gap-4 text-[10px] font-mono text-slate-400 pt-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+              <span>Rueda Oficial BYMA (11:00 - 17:00 ART)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+              <span>Mercado Cerrado / After-Hours (Tick Continuo 5s)</span>
+            </div>
+          </div>
         </div>
 
         {/* Right Controls: Currency Selector (ARS / USD CCL) + Timeframe Tabs */}
@@ -262,7 +330,7 @@ export const FinancialTimeSeriesChart: React.FC<
             <button
               type="button"
               onClick={() => setDisplayCurrency("ARS")}
-              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-all cursor-pointer ${
                 displayCurrency === "ARS"
                   ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm"
                   : "text-slate-400 hover:text-slate-200"
@@ -274,12 +342,12 @@ export const FinancialTimeSeriesChart: React.FC<
             <button
               type="button"
               onClick={() => setDisplayCurrency("USD")}
-              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-all cursor-pointer ${
                 displayCurrency === "USD"
                   ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm"
                   : "text-slate-400 hover:text-slate-200"
               }`}
-              title="Visualizar serie histórica en Dólar CCL ($1.180 ARS/USD)"
+              title={`Visualizar serie histórica en Dólar CCL ($${safeCclRate.toFixed(1)} ARS/USD)`}
             >
               USD (CCL)
             </button>
@@ -292,7 +360,7 @@ export const FinancialTimeSeriesChart: React.FC<
                 key={item.id}
                 type="button"
                 onClick={() => onTimeframeChange(item.id)}
-                className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all ${
+                className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all cursor-pointer ${
                   timeframe === item.id
                     ? "bg-sky-500/20 text-sky-400 border border-sky-500/30 shadow-sm"
                     : "text-slate-400 hover:text-slate-200"
@@ -309,7 +377,7 @@ export const FinancialTimeSeriesChart: React.FC<
       {convertedBars.length === 0 ? (
         <div className="h-64 flex flex-col items-center justify-center text-slate-400 text-xs font-mono space-y-2">
           <span>No existen registros de cotizaciones históricas para {activeTicker}.</span>
-          <span className="text-slate-400">Seleccione otra especie o verifique el rango.</span>
+          <span className="text-slate-500">Seleccione otra especie o verifique el rango.</span>
         </div>
       ) : (
         <div className="relative w-full overflow-hidden select-none">
@@ -358,6 +426,68 @@ export const FinancialTimeSeriesChart: React.FC<
                 </text>
               </g>
             ))}
+
+            {/* Visual Session Transition: Shaded Area & Marker for Closed / After-Hours */}
+            {transitionPoint && (
+              <g>
+                {/* Amber Shaded Zone for After-Hours / Closed Session */}
+                <rect
+                  x={transitionPoint.x}
+                  y={paddingTop}
+                  width={Math.max(0, viewWidth - paddingRight - transitionPoint.x)}
+                  height={priceChartHeight}
+                  fill="rgba(245, 158, 11, 0.08)"
+                />
+                {/* Dotted Vertical Transition Line at 17:00 */}
+                <line
+                  x1={transitionPoint.x}
+                  y1={paddingTop}
+                  x2={transitionPoint.x}
+                  y2={paddingTop + priceChartHeight}
+                  stroke="#f59e0b"
+                  strokeWidth="1.5"
+                  strokeDasharray="4 4"
+                />
+                {/* Curve Node Circle */}
+                <circle
+                  cx={transitionPoint.x}
+                  cy={transitionPoint.y}
+                  r="5"
+                  fill="#f59e0b"
+                  stroke="#0f172a"
+                  strokeWidth="2"
+                />
+                {/* Pill Label */}
+                <g
+                  transform={`translate(${Math.max(
+                    paddingLeft + 110,
+                    Math.min(viewWidth - paddingRight - 110, transitionPoint.x)
+                  )}, ${paddingTop + 14})`}
+                >
+                  <rect
+                    x="-105"
+                    y="-9"
+                    width="210"
+                    height="18"
+                    rx="9"
+                    fill="#0f172a"
+                    stroke="#f59e0b"
+                    strokeWidth="1.2"
+                  />
+                  <text
+                    x="0"
+                    y="3"
+                    fill="#fbbf24"
+                    fontSize="9"
+                    fontFamily="monospace"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                  >
+                    CIERRE 17:00 → AFTER-HOURS (5s)
+                  </text>
+                </g>
+              </g>
+            )}
 
             {/* Volume Histogram Separator Line */}
             <line
@@ -415,6 +545,28 @@ export const FinancialTimeSeriesChart: React.FC<
               strokeLinejoin="round"
             />
 
+            {/* Pulsing Live Dot at the latest real-time bar point */}
+            {points.length > 0 && (
+              <g>
+                <circle
+                  cx={points[points.length - 1].x}
+                  cy={points[points.length - 1].y}
+                  r="6"
+                  fill={isPositive ? "#10b981" : "#f43f5e"}
+                  opacity="0.45"
+                  className="animate-ping"
+                />
+                <circle
+                  cx={points[points.length - 1].x}
+                  cy={points[points.length - 1].y}
+                  r="3.5"
+                  fill={isPositive ? "#10b981" : "#f43f5e"}
+                  stroke="#ffffff"
+                  strokeWidth="1.5"
+                />
+              </g>
+            )}
+
             {/* Crosshair on Hover */}
             {activePoint && (
               <g>
@@ -462,10 +614,7 @@ export const FinancialTimeSeriesChart: React.FC<
                   fontSize="10"
                   fontFamily="monospace"
                 >
-                  {new Date(convertedBars[0].timestamp).toLocaleDateString("es-AR", {
-                    day: "2-digit",
-                    month: "2-digit",
-                  })}
+                  {formatSafeDate(convertedBars[0].timestamp, isIntradiary)}
                 </text>
                 <text
                   x={viewWidth - paddingRight}
@@ -475,12 +624,10 @@ export const FinancialTimeSeriesChart: React.FC<
                   fontFamily="monospace"
                   textAnchor="end"
                 >
-                  {new Date(
-                    convertedBars[convertedBars.length - 1].timestamp
-                  ).toLocaleDateString("es-AR", {
-                    day: "2-digit",
-                    month: "2-digit",
-                  })}
+                  {formatSafeDate(
+                    convertedBars[convertedBars.length - 1].timestamp,
+                    isIntradiary
+                  )}
                 </text>
               </>
             )}
@@ -493,9 +640,9 @@ export const FinancialTimeSeriesChart: React.FC<
               style={{
                 left: `${Math.min(
                   Math.max(activePoint.x - 80, 10),
-                  viewWidth - 205
+                  viewWidth - 225
                 )}px`,
-                top: `${Math.max(activePoint.y - 75, 10)}px`,
+                top: `${Math.max(activePoint.y - 88, 10)}px`,
               }}
             >
               <div className="text-[11px] text-slate-400 border-b border-slate-800 pb-1 mb-1">
@@ -504,6 +651,7 @@ export const FinancialTimeSeriesChart: React.FC<
                   month: "2-digit",
                   hour: "2-digit",
                   minute: "2-digit",
+                  second: isIntradiary ? "2-digit" : undefined,
                 })}
               </div>
               <div className="flex justify-between gap-4">
@@ -522,6 +670,16 @@ export const FinancialTimeSeriesChart: React.FC<
                 <span className="text-slate-400">Volumen:</span>
                 <span className="text-sky-400 tabular-nums">
                   {activeBar.volume.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between gap-4 pt-0.5 border-t border-slate-800/80">
+                <span className="text-slate-400">Sesión:</span>
+                <span
+                  className={`font-semibold tabular-nums ${
+                    activeBar.is_market_open ? "text-emerald-400" : "text-amber-400"
+                  }`}
+                >
+                  {activeBar.is_market_open ? "🟢 ABIERTA" : "🟠 AFTER-HOURS"}
                 </span>
               </div>
             </div>
