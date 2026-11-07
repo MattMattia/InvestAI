@@ -1,9 +1,6 @@
 import asyncio
 import unittest
 import uuid
-from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401
 from app.api.deps import get_db_session
@@ -12,6 +9,9 @@ from app.core.security import create_access_token, get_password_hash
 from app.main import app
 from app.models.user import UserModel
 from app.schemas.user import UserRole
+from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 
 class TestApiBacktestIntegration(unittest.TestCase):
@@ -126,7 +126,9 @@ class TestApiBacktestIntegration(unittest.TestCase):
 
         # 1. Configuración reflejada
         self.assertEqual(data["config"]["initial_capital"], 300_000.0)
-        self.assertEqual(data["config"]["tickers"], ["AAPL", "AL30", "GGAL"])  # Ordenados y normalizados
+        self.assertEqual(
+            data["config"]["tickers"], ["AAPL", "AL30", "GGAL"]
+        )  # Ordenados y normalizados
 
         # 2. Métricas consolidadas
         metrics = data["metrics"]
@@ -247,7 +249,9 @@ class TestApiBacktestIntegration(unittest.TestCase):
         self.assertEqual(data["error"]["code"], "VALIDATION_ERROR")
         self.assertIn("meta", data)
         self.assertIn("request_id", data["meta"])
-        self.assertTrue(any("unauthorized_extra_field" in str(d.get("field")) for d in data["error"]["details"]))
+        self.assertTrue(
+            any("unauthorized_extra_field" in str(d.get("field")) for d in data["error"]["details"])
+        )
 
 
 if __name__ == "__main__":

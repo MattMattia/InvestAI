@@ -1,4 +1,3 @@
-from typing import Tuple
 import numpy as np
 from scipy.optimize import minimize
 
@@ -19,7 +18,9 @@ def minimum_variance_portfolio(cov_matrix: np.ndarray) -> np.ndarray:
     if np.isnan(cov).any() or np.isinf(cov).any():
         raise ValueError("cov_matrix contiene valores NaN o Infinitos.")
     if cov.ndim != 2 or cov.shape[0] != cov.shape[1]:
-        raise ValueError(f"cov_matrix debe ser una matriz cuadrada (N, N). Forma recibida: {cov.shape}")
+        raise ValueError(
+            f"cov_matrix debe ser una matriz cuadrada (N, N). Forma recibida: {cov.shape}"
+        )
 
     n_assets = cov.shape[0]
     if n_assets == 0:
@@ -99,7 +100,9 @@ def risk_parity_portfolio(
     if np.isnan(cov).any() or np.isinf(cov).any():
         raise ValueError("cov_matrix contiene valores NaN o Infinitos.")
     if cov.ndim != 2 or cov.shape[0] != cov.shape[1]:
-        raise ValueError(f"cov_matrix debe ser una matriz cuadrada (N, N). Forma recibida: {cov.shape}")
+        raise ValueError(
+            f"cov_matrix debe ser una matriz cuadrada (N, N). Forma recibida: {cov.shape}"
+        )
 
     n_assets = cov.shape[0]
     if n_assets == 0:
@@ -150,7 +153,7 @@ def risk_parity_portfolio(
     y0 = 1.0 / np.sqrt(np.maximum(np.diag(sym_cov), 1e-8))
     y0 = y0 / np.sum(y0)
 
-    def objective_and_grad(y: np.ndarray) -> Tuple[float, np.ndarray]:
+    def objective_and_grad(y: np.ndarray) -> tuple[float, np.ndarray]:
         y_safe = np.maximum(y, 1e-12)
         val = 0.5 * float(y_safe.T @ sym_cov @ y_safe) - float(np.sum(np.log(y_safe)))
         grad = (sym_cov @ y_safe) - (1.0 / y_safe)

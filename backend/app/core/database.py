@@ -1,12 +1,14 @@
 import asyncio
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+
+from sqlalchemy import MetaData
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
+
 from app.core.config import settings
 
 is_sqlite = settings.ASYNC_DATABASE_URI.startswith("sqlite")
@@ -52,6 +54,7 @@ class Base(DeclarativeBase):
     """
     Base Declarative class for all SQLAlchemy 2.0 ORM models in InvestAI.
     """
+
     metadata = MetaData(naming_convention=POSTGRES_NAMING_CONVENTION)
 
 
@@ -65,10 +68,10 @@ async def init_db() -> None:
     Essential for local SQLite zero-config development.
     """
     global _db_initialized
-    import app.models  # ensure models are discovered
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         if is_sqlite:
+
             def _check_and_migrate_sqlite(sync_conn):
                 res = sync_conn.exec_driver_sql("PRAGMA table_info(portfolios)").fetchall()
                 col_names = [r[1] for r in res]
@@ -108,6 +111,7 @@ async def init_db() -> None:
                             sync_conn.exec_driver_sql(
                                 f"ALTER TABLE assets ADD COLUMN {col_name} {col_def}"
                             )
+
             await conn.run_sync(_check_and_migrate_sqlite)
     _db_initialized = True
 

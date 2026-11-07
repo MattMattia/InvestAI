@@ -1,11 +1,11 @@
 import datetime as dt
 import unittest
-import numpy as np
 
+import numpy as np
 from app.domain.services.market_simulation import generate_gbm_market_prices
 from app.domain.services.markov_regime import (
-    MarkovRegimeModel,
     MarketRegime,
+    MarkovRegimeModel,
     get_dynamic_rebalance_band,
 )
 from app.domain.services.numerical_stability import (
@@ -22,11 +22,13 @@ class TestNumericalStability(unittest.TestCase):
 
     def test_safe_cholesky_well_conditioned(self) -> None:
         # Standard positive-definite matrix
-        a = np.array([
-            [4.0, 1.2, 0.8],
-            [1.2, 3.0, 0.5],
-            [0.8, 0.5, 2.0],
-        ])
+        a = np.array(
+            [
+                [4.0, 1.2, 0.8],
+                [1.2, 3.0, 0.5],
+                [0.8, 0.5, 2.0],
+            ]
+        )
         l_mat = safe_cholesky(a)
 
         # 1. Lower triangular structure
@@ -44,12 +46,14 @@ class TestNumericalStability(unittest.TestCase):
         # Create collinear matrix with rank 2 for 4 assets
         base = np.random.randn(50, 2)
         # Duplicate columns / linear combinations
-        collinear_returns = np.column_stack([
-            base[:, 0],
-            base[:, 1],
-            base[:, 0] * 2.0,
-            base[:, 0] + base[:, 1],
-        ])
+        collinear_returns = np.column_stack(
+            [
+                base[:, 0],
+                base[:, 1],
+                base[:, 0] * 2.0,
+                base[:, 0] + base[:, 1],
+            ]
+        )
         singular_cov = np.cov(collinear_returns, rowvar=False)
 
         # Standard Cholesky must fail on singular matrix
@@ -108,10 +112,12 @@ class TestNumericalStability(unittest.TestCase):
 
     def test_nearest_positive_definite(self) -> None:
         # Indefinite matrix with negative eigenvalue
-        mat = np.array([
-            [1.0, 2.0],
-            [2.0, 1.0],
-        ])
+        mat = np.array(
+            [
+                [1.0, 2.0],
+                [2.0, 1.0],
+            ]
+        )
         min_eig_orig = min(np.linalg.eigvalsh(mat))
         self.assertLess(min_eig_orig, 0.0)
 
@@ -133,10 +139,12 @@ class TestMarkovRegime(unittest.TestCase):
     def setUp(self) -> None:
         np.random.seed(42)
         self.model = MarkovRegimeModel(
-            transition_matrix=np.array([
-                [0.90, 0.10],
-                [0.20, 0.80],
-            ]),
+            transition_matrix=np.array(
+                [
+                    [0.90, 0.10],
+                    [0.20, 0.80],
+                ]
+            ),
             annualized_vol_threshold=0.20,
         )
 
@@ -155,19 +163,29 @@ class TestMarkovRegime(unittest.TestCase):
 
     def test_predict_probabilities(self) -> None:
         # From LOW_VOLATILITY 1 step ahead: P(Low)=0.90, P(High)=0.10
-        pred_low = self.model.predict_next_regime_probabilities(MarketRegime.LOW_VOLATILITY, steps=1)
+        pred_low = self.model.predict_next_regime_probabilities(
+            MarketRegime.LOW_VOLATILITY, steps=1
+        )
         self.assertAlmostEqual(pred_low[MarketRegime.LOW_VOLATILITY.value], 0.90, places=3)
         self.assertAlmostEqual(pred_low[MarketRegime.HIGH_VOLATILITY.value], 0.10, places=3)
 
         # From HIGH_VOLATILITY 1 step ahead: P(Low)=0.20, P(High)=0.80
-        pred_high = self.model.predict_next_regime_probabilities(MarketRegime.HIGH_VOLATILITY, steps=1)
+        pred_high = self.model.predict_next_regime_probabilities(
+            MarketRegime.HIGH_VOLATILITY, steps=1
+        )
         self.assertAlmostEqual(pred_high[MarketRegime.LOW_VOLATILITY.value], 0.20, places=3)
         self.assertAlmostEqual(pred_high[MarketRegime.HIGH_VOLATILITY.value], 0.80, places=3)
 
         # Multi-step ahead prediction converges to stationary distribution
-        pred_long = self.model.predict_next_regime_probabilities(MarketRegime.HIGH_VOLATILITY, steps=50)
+        pred_long = self.model.predict_next_regime_probabilities(
+            MarketRegime.HIGH_VOLATILITY, steps=50
+        )
         stat = self.model.stationary_distribution()
-        self.assertAlmostEqual(pred_long[MarketRegime.LOW_VOLATILITY.value], stat[MarketRegime.LOW_VOLATILITY.value], places=2)
+        self.assertAlmostEqual(
+            pred_long[MarketRegime.LOW_VOLATILITY.value],
+            stat[MarketRegime.LOW_VOLATILITY.value],
+            places=2,
+        )
 
     def test_detect_regime_from_returns(self) -> None:
         # Low volatility series: daily std ~ 0.5% -> annual ~ 8% < 20%
@@ -186,7 +204,9 @@ class TestMarkovRegime(unittest.TestCase):
         crisis_block = np.random.normal(-0.001, 0.03, size=50)
         returns = np.concatenate([calm_block, crisis_block, calm_block])
 
-        fitted_model = MarkovRegimeModel.fit_from_returns(returns, rolling_window=10, annualized_vol_threshold=0.20)
+        fitted_model = MarkovRegimeModel.fit_from_returns(
+            returns, rolling_window=10, annualized_vol_threshold=0.20
+        )
         p = fitted_model.transition_matrix
 
         # Row stochastic

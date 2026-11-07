@@ -1,6 +1,5 @@
 import re
-from datetime import datetime, timezone
-from typing import Dict, Optional, Union
+from datetime import UTC, datetime
 
 from app.domain.models.fx import Currency, FXQuote
 
@@ -12,7 +11,7 @@ class FXService:
     and deterministic computation of implicit Contado con Liquidación (CCL) for CEDEARs.
     """
 
-    DEFAULT_FALLBACK_RATES: Dict[str, float] = {
+    DEFAULT_FALLBACK_RATES: dict[str, float] = {
         "USD/ARS": 1300.0,
         "USD_CCL/ARS": 1300.0,
         "USD_MEP/ARS": 1260.0,
@@ -20,10 +19,10 @@ class FXService:
         "USD_MEP/USD": 1.0,
     }
 
-    def __init__(self, initial_quotes: Optional[Dict[str, FXQuote]] = None) -> None:
-        self._quotes: Dict[str, FXQuote] = {}
+    def __init__(self, initial_quotes: dict[str, FXQuote] | None = None) -> None:
+        self._quotes: dict[str, FXQuote] = {}
         if initial_quotes:
-            for pair, quote in initial_quotes.items():
+            for quote in initial_quotes.values():
                 self.register_quote(quote)
 
     def register_quote(self, quote: FXQuote) -> None:
@@ -31,11 +30,11 @@ class FXService:
         normalized_pair = quote.pair.strip().upper()
         self._quotes[normalized_pair] = quote
 
-    def get_quote(self, pair: str) -> Optional[FXQuote]:
+    def get_quote(self, pair: str) -> FXQuote | None:
         """Retrieves a registered quote by canonical pair string (e.g. 'USD_CCL/ARS')."""
         return self._quotes.get(pair.strip().upper())
 
-    def get_rate(self, pair: str, fallback_rate: Optional[float] = None) -> float:
+    def get_rate(self, pair: str, fallback_rate: float | None = None) -> float:
         """
         Retrieves the rate for a given pair. If explicit fallback_rate is provided,
         uses it. Otherwise looks up registered quotes, and finally DEFAULT_FALLBACK_RATES.
@@ -52,16 +51,18 @@ class FXService:
         )
 
     @staticmethod
-    def parse_conversion_ratio(conversion_ratio: Union[float, int, str]) -> float:
+    def parse_conversion_ratio(conversion_ratio: float | int | str) -> float:
         """
         Parses and validates a CEDEAR conversion ratio.
         Accepts numeric values (e.g. 10.0, 2) or ratio notation strings (e.g. '10:1', '2:1', '1/2').
         Returns the effective numeric multiplier (number of CEDEARs per 1 underlying share).
         """
-        if isinstance(conversion_ratio, (int, float)):
+        if isinstance(conversion_ratio, int | float):
             ratio = float(conversion_ratio)
             if ratio <= 0:
-                raise ValueError("El ratio de conversión de CEDEAR debe ser estrictamente positivo (> 0).")
+                raise ValueError(
+                    "El ratio de conversión de CEDEAR debe ser estrictamente positivo (> 0)."
+                )
             return ratio
 
         if isinstance(conversion_ratio, str):
@@ -84,11 +85,11 @@ class FXService:
         self,
         cedear_price_ars: float,
         underlying_price_usd: float,
-        conversion_ratio: Union[float, int, str],
+        conversion_ratio: float | int | str,
     ) -> float:
         """
         Calculates the implicit CCL (Contado con Liquidación) exchange rate for a CEDEAR.
-        
+
         Formula:
             CCL_implicito = (precio_cedear_ars * conversion_ratio) / precio_subyacente_usd
 
@@ -101,7 +102,9 @@ class FXService:
         if cedear_price_ars <= 0:
             raise ValueError("El precio del CEDEAR en ARS debe ser estrictamente positivo (> 0).")
         if underlying_price_usd <= 0:
-            raise ValueError("El precio del activo subyacente en USD debe ser estrictamente positivo (> 0).")
+            raise ValueError(
+                "El precio del activo subyacente en USD debe ser estrictamente positivo (> 0)."
+            )
 
         ratio = self.parse_conversion_ratio(conversion_ratio)
         ccl = (cedear_price_ars * ratio) / underlying_price_usd
@@ -112,7 +115,7 @@ class FXService:
         ticker: str,
         cedear_price_ars: float,
         underlying_price_usd: float,
-        conversion_ratio: Union[float, int, str],
+        conversion_ratio: float | int | str,
         source: str = "IMPLICIT_CEDEAR",
     ) -> FXQuote:
         """
@@ -122,7 +125,7 @@ class FXService:
         quote = FXQuote(
             pair="USD_CCL/ARS",
             rate=rate,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             source=f"{source}:{ticker.upper()}",
         )
         self.register_quote(quote)
@@ -131,9 +134,9 @@ class FXService:
     def convert(
         self,
         amount: float,
-        from_currency: Union[Currency, str],
-        to_currency: Union[Currency, str],
-        fx_rate: Optional[float] = None,
+        from_currency: Currency | str,
+        to_currency: Currency | str,
+        fx_rate: float | None = None,
     ) -> float:
         """
         Canonically converts an amount from one currency to another.
@@ -146,13 +149,20 @@ class FXService:
             return round(amount, 4)
 
         # 1. Converting from USD variants to ARS
-        if from_curr in {Currency.USD, Currency.USD_CCL, Currency.USD_MEP} and to_curr == Currency.ARS:
+        if (
+            from_curr in {Currency.USD, Currency.USD_CCL, Currency.USD_MEP}
+            and to_curr == Currency.ARS
+        ):
             pair = f"{from_curr.value}/ARS"
             rate = self.get_rate(pair, fallback_rate=fx_rate)
             return round(amount * rate, 4)
 
         # 2. Converting from ARS to USD variants
-        if from_curr == Currency.ARS and to_curr in {Currency.USD, Currency.USD_CCL, Currency.USD_MEP}:
+        if from_curr == Currency.ARS and to_curr in {
+            Currency.USD,
+            Currency.USD_CCL,
+            Currency.USD_MEP,
+        }:
             pair = f"{to_curr.value}/ARS"
             rate = self.get_rate(pair, fallback_rate=fx_rate)
             if rate <= 0:
@@ -176,32 +186,38 @@ class FXService:
     def convert_to_ars(
         self,
         amount: float,
-        from_currency: Union[Currency, str],
-        fx_rate: Optional[float] = None,
+        from_currency: Currency | str,
+        fx_rate: float | None = None,
     ) -> float:
         """Convenience method to normalize an amount directly to ARS."""
-        return self.convert(amount, from_currency=from_currency, to_currency=Currency.ARS, fx_rate=fx_rate)
+        return self.convert(
+            amount, from_currency=from_currency, to_currency=Currency.ARS, fx_rate=fx_rate
+        )
 
     def convert_to_usd(
         self,
         amount: float,
-        from_currency: Union[Currency, str],
-        fx_rate: Optional[float] = None,
+        from_currency: Currency | str,
+        fx_rate: float | None = None,
     ) -> float:
         """Convenience method to normalize an amount directly to USD."""
-        return self.convert(amount, from_currency=from_currency, to_currency=Currency.USD, fx_rate=fx_rate)
+        return self.convert(
+            amount, from_currency=from_currency, to_currency=Currency.USD, fx_rate=fx_rate
+        )
 
     def convert_holding(
         self,
         quantity: float,
         price: float,
-        from_currency: Union[Currency, str],
-        to_currency: Union[Currency, str],
-        fx_rate: Optional[float] = None,
+        from_currency: Currency | str,
+        to_currency: Currency | str,
+        fx_rate: float | None = None,
     ) -> float:
         """
         Computes the market value of a holding (quantity * price) and converts it
         canonically to the target currency.
         """
         nominal_val = quantity * price
-        return self.convert(nominal_val, from_currency=from_currency, to_currency=to_currency, fx_rate=fx_rate)
+        return self.convert(
+            nominal_val, from_currency=from_currency, to_currency=to_currency, fx_rate=fx_rate
+        )

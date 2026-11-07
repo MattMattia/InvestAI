@@ -5,44 +5,127 @@ indicadores fundamentales (P/E, P/B, ROE, Debt/Equity, Dividend Yield) y de rent
 (TIR/YTM, Modified Duration, Paridad), series de retornos diarios en moneda dura (USD/CCL)
 y matriz de covarianza empírica de 10 años (\Sigma_{10Y}) sin requerir API Keys pagas.
 """
+
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
 import hashlib
+import logging
 import math
 import random
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 
 import httpx
 import numpy as np
 
+logger = logging.getLogger("investai.market_data")
 
 # Universo conocido de CEDEARs operados en BYMA
 KNOWN_CEDEAR_TICKERS = {
-    "AAPL", "NVDA", "MSFT", "GOOGL", "GOOG", "AMZN", "META", "TSLA", "SPY", "QQQ",
-    "MELI", "KO", "WMT", "JPM", "BRKB", "XOM", "VISTA", "VIST", "BABA", "AMD",
-    "INTC", "NFLX", "DIS", "GOLD", "VALE", "PBR", "NU", "GLOB", "DESP", "BIOX",
-    "PEP", "PG", "JNJ", "MCD", "NKE", "UNH", "V", "MA", "PYPL", "CRM", "ORCL",
-    "IBM", "CSCO", "QCOM", "AVGO", "TXN", "ADBE", "UBER", "ABNB", "SHOP", "SQ",
-    "COIN", "ARKK", "IWM", "DIA", "EWZ", "XLE", "XLF",
+    "AAPL",
+    "NVDA",
+    "MSFT",
+    "GOOGL",
+    "GOOG",
+    "AMZN",
+    "META",
+    "TSLA",
+    "SPY",
+    "QQQ",
+    "MELI",
+    "KO",
+    "WMT",
+    "JPM",
+    "BRKB",
+    "XOM",
+    "VISTA",
+    "VIST",
+    "BABA",
+    "AMD",
+    "INTC",
+    "NFLX",
+    "DIS",
+    "GOLD",
+    "VALE",
+    "PBR",
+    "NU",
+    "GLOB",
+    "DESP",
+    "BIOX",
+    "PEP",
+    "PG",
+    "JNJ",
+    "MCD",
+    "NKE",
+    "UNH",
+    "V",
+    "MA",
+    "PYPL",
+    "CRM",
+    "ORCL",
+    "IBM",
+    "CSCO",
+    "QCOM",
+    "AVGO",
+    "TXN",
+    "ADBE",
+    "UBER",
+    "ABNB",
+    "SHOP",
+    "SQ",
+    "COIN",
+    "ARKK",
+    "IWM",
+    "DIA",
+    "EWZ",
+    "XLE",
+    "XLF",
 }
 
 # Universo conocido de Bonos Soberanos, Letras y ONs en BYMA
 KNOWN_BOND_PREFIXES = (
-    "AL29", "AL30", "AL35", "AE38", "AL41",
-    "GD29", "GD30", "GD35", "GD38", "GD41", "GD46",
-    "TX26", "TX28", "TZX", "TZP", "DICP", "PARP", "CUAP", "PR13",
-    "BOPREAL", "BP26", "BPY26", "BPOA", "BPOB", "BPOC", "BPOD",
-    "S1", "S2", "S3", "T1", "T2", "LECAP", "BONCAP",
+    "AL29",
+    "AL30",
+    "AL35",
+    "AE38",
+    "AL41",
+    "GD29",
+    "GD30",
+    "GD35",
+    "GD38",
+    "GD41",
+    "GD46",
+    "TX26",
+    "TX28",
+    "TZX",
+    "TZP",
+    "DICP",
+    "PARP",
+    "CUAP",
+    "PR13",
+    "BOPREAL",
+    "BP26",
+    "BPY26",
+    "BPOA",
+    "BPOB",
+    "BPOC",
+    "BPOD",
+    "S1",
+    "S2",
+    "S3",
+    "T1",
+    "T2",
+    "LECAP",
+    "BONCAP",
 )
 
 # Catálogo Institucional Calibrado a 10 Años (2016-2026) o Máx. Antigüedad de Emisión
 # Todos los retornos (cagr_annualized) y volatilidades (volatility_annualized) están
 # expresados en moneda dura homogénea (USD / CCL) para evitar distorsión inflacionaria nominal.
-CALIBRATED_10Y_METRICS_CATALOG: Dict[str, Dict[str, Any]] = {
+CALIBRATED_10Y_METRICS_CATALOG: dict[str, dict[str, Any]] = {
     # --- ACCIONES LÍDERES BYMA (STOCK) ---
     "GGAL": {
         "name": "Grupo Financiero Galicia S.A.",
@@ -298,7 +381,6 @@ CALIBRATED_10Y_METRICS_CATALOG: Dict[str, Dict[str, Any]] = {
         "dividend_yield_pct": 0.0,
         "market_cap_usd": 1610000000.0,
     },
-
     # --- CEDEARS EN BYMA (CEDEAR) ---
     "AAPL": {
         "name": "CEDEAR Apple Inc.",
@@ -586,7 +668,6 @@ CALIBRATED_10Y_METRICS_CATALOG: Dict[str, Dict[str, Any]] = {
         "dividend_yield_pct": 0.0,
         "market_cap_usd": 5100000000.0,
     },
-
     # --- BONOS SOBERANOS HARD-DOLLAR BYMA (BOND) ---
     # Emitidos en el canje soberano de septiembre 2020 (~5.8 años de historia real)
     "AL30": {
@@ -719,7 +800,7 @@ CALIBRATED_10Y_METRICS_CATALOG: Dict[str, Dict[str, Any]] = {
 
 
 # Mapeo de descripciones ambiguas o truncadas reales de brokers argentinos (ej. Balanz)
-BROKER_DESCRIPTION_TO_TICKER_MAP: Dict[str, str] = {
+BROKER_DESCRIPTION_TO_TICKER_MAP: dict[str, str] = {
     "CEDEAR N": "NVDA",
     "CEDEAR NVDA": "NVDA",
     "CEDEAR NVIDIA": "NVDA",
@@ -746,9 +827,9 @@ BROKER_DESCRIPTION_TO_TICKER_MAP: Dict[str, str] = {
 
 def infer_instrument_metadata(
     raw_symbol_or_desc: str,
-    raw_type_hint: Optional[str] = None,
-    raw_currency_hint: Optional[str] = None,
-) -> Dict[str, Any]:
+    raw_type_hint: str | None = None,
+    raw_currency_hint: str | None = None,
+) -> dict[str, Any]:
     """
     Infiere de forma determinística el Ticker canónico, la Clase de Activo
     (CEDEAR, BOND, STOCK), Moneda, Sector y Métricas 10Y a partir de cualquier
@@ -814,8 +895,24 @@ def infer_instrument_metadata(
         or canonical_ticker in KNOWN_CEDEAR_TICKERS
     )
     is_bond_by_text = (
-        any(kw in text for kw in ("BONO", "BONAR", "GLOBAL", "LETRA", "LECAP", "BOPREAL", "TESORO", "TITULO", "TÍTULO"))
-        or any(kw in type_hint for kw in ("BONO", "TITULO", "TÍTULO", "RENTA FIJA", "LETRA", "SOBERANO"))
+        any(
+            kw in text
+            for kw in (
+                "BONO",
+                "BONAR",
+                "GLOBAL",
+                "LETRA",
+                "LECAP",
+                "BOPREAL",
+                "TESORO",
+                "TITULO",
+                "TÍTULO",
+            )
+        )
+        or any(
+            kw in type_hint
+            for kw in ("BONO", "TITULO", "TÍTULO", "RENTA FIJA", "LETRA", "SOBERANO")
+        )
         or any(canonical_ticker.startswith(pref) for pref in KNOWN_BOND_PREFIXES)
     )
 
@@ -837,7 +934,11 @@ def infer_instrument_metadata(
         inferred_sector = "SOVEREIGN_BOND"
         inferred_currency = (
             "USD"
-            if (canonical_ticker.endswith("D") or canonical_ticker.endswith("C") or raw_currency_hint == "USD")
+            if (
+                canonical_ticker.endswith("D")
+                or canonical_ticker.endswith("C")
+                or raw_currency_hint == "USD"
+            )
             else "ARS"
         )
         return {
@@ -922,7 +1023,7 @@ def infer_instrument_metadata(
     }
 
 
-def compute_composite_quant_return(metrics: Dict[str, Any]) -> float:
+def compute_composite_quant_return(metrics: dict[str, Any]) -> float:
     r"""
     Calcula el retorno esperado cuantitativo compuesto (\mu_i^{quant}) integrando:
     - 50% Retorno Histórico Anualizado de 10 Años en moneda dura (CAGR_{10Y,i})
@@ -938,7 +1039,9 @@ def compute_composite_quant_return(metrics: Dict[str, Any]) -> float:
         parity = float(metrics.get("parity_pct") or 68.0) / 100.0
         duration = float(metrics.get("modified_duration") or 2.5)
         # Mayor TIR y descuento de paridad con duración controlada aportan valor
-        fundamental_score = min(0.28, max(0.06, tir * (1.15 - 0.25 * parity) / max(1.0, math.sqrt(duration / 2.5))))
+        fundamental_score = min(
+            0.28, max(0.06, tir * (1.15 - 0.25 * parity) / max(1.0, math.sqrt(duration / 2.5)))
+        )
     else:
         roe = float(metrics.get("roe_pct") or 18.0) / 100.0
         pe = float(metrics.get("pe_ratio") or 15.0)
@@ -958,9 +1061,9 @@ def compute_composite_quant_return(metrics: Dict[str, Any]) -> float:
 
 
 def generate_10y_daily_returns_matrix(
-    tickers: List[str],
+    tickers: list[str],
     n_days: int = 2520,
-) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
+) -> tuple[np.ndarray, list[dict[str, Any]]]:
     r"""
     Genera la matriz de retornos diarios (T x N, hasta 2520 ruedas = 10 años bursátiles)
     en moneda dura (USD/CCL) con estructura factorial realista de mercado:
@@ -1032,8 +1135,8 @@ def generate_10y_daily_returns_matrix(
 
 
 def compute_10y_covariance_and_expected_returns(
-    tickers: List[str],
-) -> Tuple[np.ndarray, np.ndarray, List[Dict[str, Any]]]:
+    tickers: list[str],
+) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]]]:
     r"""
     Calcula la Matriz de Covarianza Anualizada de 10 Años (\Sigma_{10Y} = 252 * Cov(R_{daily}))
     con regularización de Ledoit-Wolf ligera para garantizar definida-positividad estricta,
@@ -1058,38 +1161,246 @@ def compute_10y_covariance_and_expected_returns(
 
 
 # Universo Curado de 26 Especies Representativas de BYMA (Acciones Líderes, CEDEARs, Bonos)
-BYMA_CURATED_UNIVERSE_CATALOG: List[Dict[str, Any]] = [
+BYMA_CURATED_UNIVERSE_CATALOG: list[dict[str, Any]] = [
     # Acciones Líderes (Panel Líder BYMA)
-    {"ticker": "GGAL", "name": "Grupo Financiero Galicia S.A.", "asset_type": "STOCK", "currency": "ARS", "yahoo_symbol": "GGAL.BA", "target_price": 5120.0, "volume_shares": 1450400},
-    {"ticker": "YPFD", "name": "YPF S.A.", "asset_type": "STOCK", "currency": "ARS", "yahoo_symbol": "YPFD.BA", "target_price": 30200.0, "volume_shares": 520300},
-    {"ticker": "PAMP", "name": "Pampa Energía S.A.", "asset_type": "STOCK", "currency": "ARS", "yahoo_symbol": "PAMP.BA", "target_price": 3450.0, "volume_shares": 680000},
-    {"ticker": "BMA", "name": "Banco Macro S.A.", "asset_type": "STOCK", "currency": "ARS", "yahoo_symbol": "BMA.BA", "target_price": 9120.0, "volume_shares": 340200},
-    {"ticker": "ALUA", "name": "Aluar Aluminio Argentino S.A.I.C.", "asset_type": "STOCK", "currency": "ARS", "yahoo_symbol": "ALUA.BA", "target_price": 945.0, "volume_shares": 890000},
-    {"ticker": "TXAR", "name": "Ternium Argentina S.A.", "asset_type": "STOCK", "currency": "ARS", "yahoo_symbol": "TXAR.BA", "target_price": 890.0, "volume_shares": 740100},
-    {"ticker": "COME", "name": "Sociedad Comercial del Plata S.A.", "asset_type": "STOCK", "currency": "ARS", "yahoo_symbol": "COME.BA", "target_price": 32.0, "volume_shares": 4850000},
-    {"ticker": "CEPU", "name": "Central Puerto S.A.", "asset_type": "STOCK", "currency": "ARS", "yahoo_symbol": "CEPU.BA", "target_price": 1390.0, "volume_shares": 510000},
-    {"ticker": "EDN", "name": "Empresa Distribuidora y Comercializadora Norte S.A. (Edenor)", "asset_type": "STOCK", "currency": "ARS", "yahoo_symbol": "EDN.BA", "target_price": 1795.0, "volume_shares": 390000},
-    {"ticker": "CRES", "name": "Cresud S.A.C.I.F. y A.", "asset_type": "STOCK", "currency": "ARS", "yahoo_symbol": "CRES.BA", "target_price": 1220.0, "volume_shares": 450000},
+    {
+        "ticker": "GGAL",
+        "name": "Grupo Financiero Galicia S.A.",
+        "asset_type": "STOCK",
+        "currency": "ARS",
+        "yahoo_symbol": "GGAL.BA",
+        "target_price": 5120.0,
+        "volume_shares": 1450400,
+    },
+    {
+        "ticker": "YPFD",
+        "name": "YPF S.A.",
+        "asset_type": "STOCK",
+        "currency": "ARS",
+        "yahoo_symbol": "YPFD.BA",
+        "target_price": 30200.0,
+        "volume_shares": 520300,
+    },
+    {
+        "ticker": "PAMP",
+        "name": "Pampa Energía S.A.",
+        "asset_type": "STOCK",
+        "currency": "ARS",
+        "yahoo_symbol": "PAMP.BA",
+        "target_price": 3450.0,
+        "volume_shares": 680000,
+    },
+    {
+        "ticker": "BMA",
+        "name": "Banco Macro S.A.",
+        "asset_type": "STOCK",
+        "currency": "ARS",
+        "yahoo_symbol": "BMA.BA",
+        "target_price": 9120.0,
+        "volume_shares": 340200,
+    },
+    {
+        "ticker": "ALUA",
+        "name": "Aluar Aluminio Argentino S.A.I.C.",
+        "asset_type": "STOCK",
+        "currency": "ARS",
+        "yahoo_symbol": "ALUA.BA",
+        "target_price": 945.0,
+        "volume_shares": 890000,
+    },
+    {
+        "ticker": "TXAR",
+        "name": "Ternium Argentina S.A.",
+        "asset_type": "STOCK",
+        "currency": "ARS",
+        "yahoo_symbol": "TXAR.BA",
+        "target_price": 890.0,
+        "volume_shares": 740100,
+    },
+    {
+        "ticker": "COME",
+        "name": "Sociedad Comercial del Plata S.A.",
+        "asset_type": "STOCK",
+        "currency": "ARS",
+        "yahoo_symbol": "COME.BA",
+        "target_price": 32.0,
+        "volume_shares": 4850000,
+    },
+    {
+        "ticker": "CEPU",
+        "name": "Central Puerto S.A.",
+        "asset_type": "STOCK",
+        "currency": "ARS",
+        "yahoo_symbol": "CEPU.BA",
+        "target_price": 1390.0,
+        "volume_shares": 510000,
+    },
+    {
+        "ticker": "EDN",
+        "name": "Empresa Distribuidora y Comercializadora Norte S.A. (Edenor)",
+        "asset_type": "STOCK",
+        "currency": "ARS",
+        "yahoo_symbol": "EDN.BA",
+        "target_price": 1795.0,
+        "volume_shares": 390000,
+    },
+    {
+        "ticker": "CRES",
+        "name": "Cresud S.A.C.I.F. y A.",
+        "asset_type": "STOCK",
+        "currency": "ARS",
+        "yahoo_symbol": "CRES.BA",
+        "target_price": 1220.0,
+        "volume_shares": 450000,
+    },
     # CEDEARs Principales
-    {"ticker": "AAPL", "name": "Apple Inc. (CEDEAR 20:1)", "asset_type": "CEDEAR", "currency": "ARS", "yahoo_symbol": "AAPL.BA", "target_price": 15450.0, "volume_shares": 520000},
-    {"ticker": "NVDA", "name": "NVIDIA Corporation (CEDEAR 24:1)", "asset_type": "CEDEAR", "currency": "ARS", "yahoo_symbol": "NVDA.BA", "target_price": 14290.0, "volume_shares": 1280000},
-    {"ticker": "MSFT", "name": "Microsoft Corporation (CEDEAR 30:1)", "asset_type": "CEDEAR", "currency": "ARS", "yahoo_symbol": "MSFT.BA", "target_price": 16650.0, "volume_shares": 290000},
-    {"ticker": "SPY", "name": "SPDR S&P 500 ETF Trust (CEDEAR 20:1)", "asset_type": "CEDEAR", "currency": "ARS", "yahoo_symbol": "SPY.BA", "target_price": 31400.0, "volume_shares": 410400},
-    {"ticker": "QQQ", "name": "Invesco QQQ Trust (CEDEAR 20:1)", "asset_type": "CEDEAR", "currency": "ARS", "yahoo_symbol": "QQQ.BA", "target_price": 26900.0, "volume_shares": 310100},
-    {"ticker": "MELI", "name": "MercadoLibre Inc. (CEDEAR 120:1)", "asset_type": "CEDEAR", "currency": "ARS", "yahoo_symbol": "MELI.BA", "target_price": 28150.0, "volume_shares": 265000},
-    {"ticker": "KO", "name": "The Coca-Cola Company (CEDEAR 5:1)", "asset_type": "CEDEAR", "currency": "ARS", "yahoo_symbol": "KO.BA", "target_price": 16470.0, "volume_shares": 310000},
-    {"ticker": "TSLA", "name": "Tesla Inc. (CEDEAR 15:1)", "asset_type": "CEDEAR", "currency": "ARS", "yahoo_symbol": "TSLA.BA", "target_price": 18900.0, "volume_shares": 380000},
-    {"ticker": "AMZN", "name": "Amazon.com Inc. (CEDEAR 144:1)", "asset_type": "CEDEAR", "currency": "ARS", "yahoo_symbol": "AMZN.BA", "target_price": 16100.0, "volume_shares": 940000},
-    {"ticker": "GOOGL", "name": "Alphabet Inc. (CEDEAR 58:1)", "asset_type": "CEDEAR", "currency": "ARS", "yahoo_symbol": "GOOGL.BA", "target_price": 17850.0, "volume_shares": 680000},
+    {
+        "ticker": "AAPL",
+        "name": "Apple Inc. (CEDEAR 20:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "yahoo_symbol": "AAPL.BA",
+        "target_price": 15450.0,
+        "volume_shares": 520000,
+    },
+    {
+        "ticker": "NVDA",
+        "name": "NVIDIA Corporation (CEDEAR 24:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "yahoo_symbol": "NVDA.BA",
+        "target_price": 14290.0,
+        "volume_shares": 1280000,
+    },
+    {
+        "ticker": "MSFT",
+        "name": "Microsoft Corporation (CEDEAR 30:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "yahoo_symbol": "MSFT.BA",
+        "target_price": 16650.0,
+        "volume_shares": 290000,
+    },
+    {
+        "ticker": "SPY",
+        "name": "SPDR S&P 500 ETF Trust (CEDEAR 20:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "yahoo_symbol": "SPY.BA",
+        "target_price": 31400.0,
+        "volume_shares": 410400,
+    },
+    {
+        "ticker": "QQQ",
+        "name": "Invesco QQQ Trust (CEDEAR 20:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "yahoo_symbol": "QQQ.BA",
+        "target_price": 26900.0,
+        "volume_shares": 310100,
+    },
+    {
+        "ticker": "MELI",
+        "name": "MercadoLibre Inc. (CEDEAR 120:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "yahoo_symbol": "MELI.BA",
+        "target_price": 28150.0,
+        "volume_shares": 265000,
+    },
+    {
+        "ticker": "KO",
+        "name": "The Coca-Cola Company (CEDEAR 5:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "yahoo_symbol": "KO.BA",
+        "target_price": 16470.0,
+        "volume_shares": 310000,
+    },
+    {
+        "ticker": "TSLA",
+        "name": "Tesla Inc. (CEDEAR 15:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "yahoo_symbol": "TSLA.BA",
+        "target_price": 18900.0,
+        "volume_shares": 380000,
+    },
+    {
+        "ticker": "AMZN",
+        "name": "Amazon.com Inc. (CEDEAR 144:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "yahoo_symbol": "AMZN.BA",
+        "target_price": 16100.0,
+        "volume_shares": 940000,
+    },
+    {
+        "ticker": "GOOGL",
+        "name": "Alphabet Inc. (CEDEAR 58:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "yahoo_symbol": "GOOGL.BA",
+        "target_price": 17850.0,
+        "volume_shares": 680000,
+    },
     # Bonos Soberanos en ARS y USD
-    {"ticker": "AL30", "name": "Bono República Argentina Step Up 2030 (ARS)", "asset_type": "BOND", "currency": "ARS", "yahoo_symbol": "AL30.BA", "target_price": 838.70, "volume_shares": 6500000},
-    {"ticker": "AL30D", "name": "Bono República Argentina Step Up 2030 (USD Ley Local)", "asset_type": "BOND", "currency": "USD", "yahoo_symbol": "AL30D.BA", "target_price": 68.45, "volume_shares": 1450000},
-    {"ticker": "GD30", "name": "Bono Global República Argentina Step Up 2030 (ARS)", "asset_type": "BOND", "currency": "ARS", "yahoo_symbol": "GD30.BA", "target_price": 854.00, "volume_shares": 3800000},
-    {"ticker": "GD30D", "name": "Bono Global República Argentina Step Up 2030 (USD Ley NY)", "asset_type": "BOND", "currency": "USD", "yahoo_symbol": "GD30D.BA", "target_price": 70.10, "volume_shares": 980000},
-    {"ticker": "AE38", "name": "Bono República Argentina 2038 (ARS)", "asset_type": "BOND", "currency": "ARS", "yahoo_symbol": "AE38.BA", "target_price": 674.40, "volume_shares": 1920000},
-    {"ticker": "AE38D", "name": "Bono República Argentina 2038 (USD Ley Local)", "asset_type": "BOND", "currency": "USD", "yahoo_symbol": "AE38D.BA", "target_price": 55.20, "volume_shares": 610000},
+    {
+        "ticker": "AL30",
+        "name": "Bono República Argentina Step Up 2030 (ARS)",
+        "asset_type": "BOND",
+        "currency": "ARS",
+        "yahoo_symbol": "AL30.BA",
+        "target_price": 838.70,
+        "volume_shares": 6500000,
+    },
+    {
+        "ticker": "AL30D",
+        "name": "Bono República Argentina Step Up 2030 (USD Ley Local)",
+        "asset_type": "BOND",
+        "currency": "USD",
+        "yahoo_symbol": "AL30D.BA",
+        "target_price": 68.45,
+        "volume_shares": 1450000,
+    },
+    {
+        "ticker": "GD30",
+        "name": "Bono Global República Argentina Step Up 2030 (ARS)",
+        "asset_type": "BOND",
+        "currency": "ARS",
+        "yahoo_symbol": "GD30.BA",
+        "target_price": 854.00,
+        "volume_shares": 3800000,
+    },
+    {
+        "ticker": "GD30D",
+        "name": "Bono Global República Argentina Step Up 2030 (USD Ley NY)",
+        "asset_type": "BOND",
+        "currency": "USD",
+        "yahoo_symbol": "GD30D.BA",
+        "target_price": 70.10,
+        "volume_shares": 980000,
+    },
+    {
+        "ticker": "AE38",
+        "name": "Bono República Argentina 2038 (ARS)",
+        "asset_type": "BOND",
+        "currency": "ARS",
+        "yahoo_symbol": "AE38.BA",
+        "target_price": 674.40,
+        "volume_shares": 1920000,
+    },
+    {
+        "ticker": "AE38D",
+        "name": "Bono República Argentina 2038 (USD Ley Local)",
+        "asset_type": "BOND",
+        "currency": "USD",
+        "yahoo_symbol": "AE38D.BA",
+        "target_price": 55.20,
+        "volume_shares": 610000,
+    },
 ]
-BYMA_CURATED_UNIVERSE_MAP: Dict[str, Dict[str, Any]] = {
+BYMA_CURATED_UNIVERSE_MAP: dict[str, dict[str, Any]] = {
     inst["ticker"]: inst for inst in BYMA_CURATED_UNIVERSE_CATALOG
 }
 
@@ -1097,8 +1408,8 @@ BYMA_CURATED_UNIVERSE_MAP: Dict[str, Dict[str, Any]] = {
 def generate_deterministic_historical_bars(
     ticker: str,
     timeframe: str = "1M",
-    anchor_price: Optional[float] = None,
-) -> List[Dict[str, Any]]:
+    anchor_price: float | None = None,
+) -> list[dict[str, Any]]:
     """
     Genera serie OHLCV determinista idéntica a la del frontend, anclada al precio
     de cierre actual para cuando Yahoo Finance o la red externa no estén disponibles.
@@ -1108,8 +1419,18 @@ def generate_deterministic_historical_bars(
     anchor = float(anchor_price or seed.get("target_price", 1000.0))
     base_vol = max(25000, int(seed.get("volume_shares", 1200000) / 18))
 
-    points_count = 24 if timeframe == "1D" else 14 if timeframe == "1W" else 30 if timeframe == "1M" else 52
-    step_vol = 0.0045 if timeframe == "1D" else 0.009 if timeframe == "1W" else 0.014 if timeframe == "1M" else 0.022
+    points_count = (
+        24 if timeframe == "1D" else 14 if timeframe == "1W" else 30 if timeframe == "1M" else 52
+    )
+    step_vol = (
+        0.0045
+        if timeframe == "1D"
+        else 0.009
+        if timeframe == "1W"
+        else 0.014
+        if timeframe == "1M"
+        else 0.022
+    )
 
     key = f"{clean}:{timeframe}"
     seed_hash = int(hashlib.sha256(key.encode("utf-8")).hexdigest()[:8], 16)
@@ -1127,9 +1448,17 @@ def generate_deterministic_historical_bars(
         prev = closes[idx + 1] / (1.0 + wave)
         closes[idx] = round(max(0.05, prev), 2)
 
-    bars: List[Dict[str, Any]] = []
-    now_ts = int(datetime.now(timezone.utc).timestamp())
-    delta_sec = 300 if timeframe == "1D" else 3600 if timeframe == "1W" else 86400 if timeframe == "1M" else 604800
+    bars: list[dict[str, Any]] = []
+    now_ts = int(datetime.now(UTC).timestamp())
+    delta_sec = (
+        300
+        if timeframe == "1D"
+        else 3600
+        if timeframe == "1W"
+        else 86400
+        if timeframe == "1M"
+        else 604800
+    )
 
     for idx in range(points_count):
         bar_close = closes[idx + 1]
@@ -1139,17 +1468,19 @@ def generate_deterministic_historical_bars(
         bar_low = round(max(0.01, min(bar_open, bar_close) - spread), 2)
         vol_noise = 1.0 + math.sin(idx * 1.35 + phase) * 0.28
         vol = int(max(1000, base_vol * vol_noise))
-        bar_time = datetime.fromtimestamp(now_ts - (points_count - 1 - idx) * delta_sec, tz=timezone.utc)
-        bars.append({
-            "timestamp": bar_time.isoformat(),
-            "open": bar_open,
-            "high": bar_high,
-            "low": bar_low,
-            "close": bar_close,
-            "volume": vol,
-            "vwap": round((bar_open + bar_high + bar_low + bar_close) / 4.0, 2),
-            "is_market_open": True,
-        })
+        bar_time = datetime.fromtimestamp(now_ts - (points_count - 1 - idx) * delta_sec, tz=UTC)
+        bars.append(
+            {
+                "timestamp": bar_time.isoformat(),
+                "open": bar_open,
+                "high": bar_high,
+                "low": bar_low,
+                "close": bar_close,
+                "volume": vol,
+                "vwap": round((bar_open + bar_high + bar_low + bar_close) / 4.0, 2),
+                "is_market_open": True,
+            }
+        )
     return bars
 
 
@@ -1160,7 +1491,9 @@ class PublicMarket10YProvider:
     calibrado de 10 años para garantizar disponibilidad del 100% y latencia acotada.
     """
 
-    YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=10y&interval=1d"
+    YAHOO_CHART_URL = (
+        "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=10y&interval=1d"
+    )
     YAHOO_V8_URL = "https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?range={range_param}&interval={interval_param}"
     GOOGLE_FINANCE_URL = "https://www.google.com/finance/quote/{ticker}:BCBA"
     DOLAR_API_URL = "https://dolarapi.com/v1/dolares"
@@ -1169,13 +1502,15 @@ class PublicMarket10YProvider:
         "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
     }
 
-    _LIVE_STATE: Dict[str, Dict[str, Any]] = {}
+    _LIVE_STATE: dict[str, dict[str, Any]] = {}
     _LAST_EXTERNAL_SYNC: float = 0.0
-    _FX_STATE: Tuple[float, float] = (1668.8, 1581.1)
+    _FX_STATE: tuple[float, float] = (1668.8, 1581.1)
     _semaphore = asyncio.Semaphore(8)
 
     @classmethod
-    async def fetch_live_fx_rates(cls, client: Optional[httpx.AsyncClient] = None) -> Tuple[float, float]:
+    async def fetch_live_fx_rates(
+        cls, client: httpx.AsyncClient | None = None
+    ) -> tuple[float, float]:
         """Consulta tipos de cambio financieros implícitos CCL y MEP en tiempo real desde DolarApi."""
         ccl, mep = 1668.0, 1581.0
         try:
@@ -1189,19 +1524,21 @@ class PublicMarket10YProvider:
                 async with httpx.AsyncClient(headers=cls.DEFAULT_HEADERS, timeout=1.8) as c:
                     r = await c.get(cls.DOLAR_API_URL)
                     if r.status_code == 200:
-                        rates = {x.get("casa"): x.get("venta") for x in r.json() if isinstance(x, dict)}
+                        rates = {
+                            x.get("casa"): x.get("venta") for x in r.json() if isinstance(x, dict)
+                        }
                         ccl = float(rates.get("contadoconliqui", ccl))
                         mep = float(rates.get("bolsa", mep))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Market data step failed, falling back: %s", exc)
         return ccl, mep
 
     @classmethod
     async def fetch_live_quotes_batch(
         cls,
-        tickers: Optional[List[str]] = None,
+        tickers: list[str] | None = None,
         force_refresh: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Descarga en tiempo real las cotizaciones atómicas del universo BYMA mediante
         Yahoo Finance (.BA) y Google Finance (:BCBA), enriquecidas con Dólar CCL/MEP.
@@ -1209,10 +1546,16 @@ class PublicMarket10YProvider:
         tanto en horario regular como en After-Hours / Mercado Cerrado.
         """
         now = time.time()
-        now_iso = datetime.now(timezone.utc).isoformat()
-        requested_tickers = [t.strip().upper() for t in tickers] if tickers else [i["ticker"] for i in BYMA_CURATED_UNIVERSE_CATALOG]
+        now_iso = datetime.now(UTC).isoformat()
+        requested_tickers = (
+            [t.strip().upper() for t in tickers]
+            if tickers
+            else [i["ticker"] for i in BYMA_CURATED_UNIVERSE_CATALOG]
+        )
 
-        needs_external_sync = force_refresh or (now - cls._LAST_EXTERNAL_SYNC > 45.0) or not cls._LIVE_STATE
+        needs_external_sync = (
+            force_refresh or (now - cls._LAST_EXTERNAL_SYNC > 45.0) or not cls._LIVE_STATE
+        )
 
         if needs_external_sync:
             try:
@@ -1220,30 +1563,52 @@ class PublicMarket10YProvider:
                     ccl_rate, mep_rate = await cls.fetch_live_fx_rates(client)
                     cls._FX_STATE = (ccl_rate, mep_rate)
 
-                    async def _fetch_single_instrument(inst: Dict[str, Any]) -> Dict[str, Any]:
+                    async def _fetch_single_instrument(inst: dict[str, Any]) -> dict[str, Any]:
                         t = inst["ticker"]
                         async with cls._semaphore:
                             # 1. Yahoo Finance (.BA)
                             yahoo_sym = inst.get("yahoo_symbol", f"{t}.BA")
                             try:
-                                url = cls.YAHOO_V8_URL.format(symbol=yahoo_sym, range_param="5d", interval_param="1d")
+                                url = cls.YAHOO_V8_URL.format(
+                                    symbol=yahoo_sym, range_param="5d", interval_param="1d"
+                                )
                                 r = await client.get(url)
                                 if r.status_code == 200:
                                     result = r.json().get("chart", {}).get("result", [])
                                     if result:
                                         meta = result[0].get("meta", {})
-                                        indicators = result[0].get("indicators", {}).get("quote", [{}])[0]
-                                        closes = [c for c in indicators.get("close", []) if c is not None and c > 0]
-                                        last_p = meta.get("regularMarketPrice") or (closes[-1] if closes else None)
-                                        prev_c = meta.get("chartPreviousClose") or (closes[-2] if len(closes) > 1 else last_p)
+                                        indicators = (
+                                            result[0].get("indicators", {}).get("quote", [{}])[0]
+                                        )
+                                        closes = [
+                                            c
+                                            for c in indicators.get("close", [])
+                                            if c is not None and c > 0
+                                        ]
+                                        last_p = meta.get("regularMarketPrice") or (
+                                            closes[-1] if closes else None
+                                        )
+                                        prev_c = meta.get("chartPreviousClose") or (
+                                            closes[-2] if len(closes) > 1 else last_p
+                                        )
                                         if last_p and float(last_p) > 0:
                                             last_val = float(last_p)
                                             prev_val = float(prev_c or last_val)
                                             chg_nom = round(last_val - prev_val, 2)
-                                            chg_pct = round((chg_nom / prev_val) * 100.0, 2) if prev_val > 0 else 0.0
-                                            high_p = meta.get("regularMarketDayHigh") or (max(closes) if closes else last_val)
-                                            low_p = meta.get("regularMarketDayLow") or (min(closes) if closes else last_val)
-                                            vol = meta.get("regularMarketVolume") or inst.get("volume_shares", 100000)
+                                            chg_pct = (
+                                                round((chg_nom / prev_val) * 100.0, 2)
+                                                if prev_val > 0
+                                                else 0.0
+                                            )
+                                            high_p = meta.get("regularMarketDayHigh") or (
+                                                max(closes) if closes else last_val
+                                            )
+                                            low_p = meta.get("regularMarketDayLow") or (
+                                                min(closes) if closes else last_val
+                                            )
+                                            vol = meta.get("regularMarketVolume") or inst.get(
+                                                "volume_shares", 100000
+                                            )
                                             return {
                                                 "ticker": t,
                                                 "name": inst["name"],
@@ -1251,7 +1616,12 @@ class PublicMarket10YProvider:
                                                 "currency": inst["currency"],
                                                 "last_price": round(last_val, 2),
                                                 "base_price": round(last_val, 2),
-                                                "open_price": round(float(meta.get("regularMarketOpen") or prev_val), 2),
+                                                "open_price": round(
+                                                    float(
+                                                        meta.get("regularMarketOpen") or prev_val
+                                                    ),
+                                                    2,
+                                                ),
                                                 "high_price": round(float(high_p), 2),
                                                 "low_price": round(float(low_p), 2),
                                                 "previous_close": round(prev_val, 2),
@@ -1263,8 +1633,8 @@ class PublicMarket10YProvider:
                                                 "ccl_rate": ccl_rate,
                                                 "mep_rate": mep_rate,
                                             }
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.debug("Market data step failed, falling back: %s", exc)
 
                             # 2. Google Finance Fallback (:BCBA)
                             try:
@@ -1273,11 +1643,19 @@ class PublicMarket10YProvider:
                                 if r.status_code == 200 and t.lower() in r.text.lower():
                                     m = re.search(r'data-last-price="([\d\.]+)"', r.text)
                                     if not m:
-                                        m = re.search(r'jsname="Pdsbrc"[^>]*><span>\$?[\s\xa0]*([\d\.,]+)</span>', r.text)
+                                        m = re.search(
+                                            r'jsname="Pdsbrc"[^>]*><span>\$?[\s\xa0]*([\d\.,]+)</span>',
+                                            r.text,
+                                        )
                                     if not m:
-                                        m = re.search(r'<div class="YMlKec fxKbKc">\$?([\d\.,]+)</div>', r.text)
+                                        m = re.search(
+                                            r'<div class="YMlKec fxKbKc">\$?([\d\.,]+)</div>',
+                                            r.text,
+                                        )
                                     if m:
-                                        raw = m.group(1).replace("$", "").replace("\xa0", "").strip()
+                                        raw = (
+                                            m.group(1).replace("$", "").replace("\xa0", "").strip()
+                                        )
                                         if "," in raw and "." in raw:
                                             raw = raw.replace(".", "").replace(",", ".")
                                         elif "," in raw:
@@ -1285,7 +1663,11 @@ class PublicMarket10YProvider:
                                         last_val = float(raw)
                                         prev_val = float(inst.get("target_price", last_val))
                                         chg_nom = round(last_val - prev_val, 2)
-                                        chg_pct = round((chg_nom / prev_val) * 100.0, 2) if prev_val > 0 else 0.0
+                                        chg_pct = (
+                                            round((chg_nom / prev_val) * 100.0, 2)
+                                            if prev_val > 0
+                                            else 0.0
+                                        )
                                         return {
                                             "ticker": t,
                                             "name": inst["name"],
@@ -1305,8 +1687,8 @@ class PublicMarket10YProvider:
                                             "ccl_rate": ccl_rate,
                                             "mep_rate": mep_rate,
                                         }
-                            except Exception:
-                                pass
+                            except Exception as exc:
+                                logger.debug("Market data step failed, falling back: %s", exc)
 
                             # 3. Fallback Calibrado
                             base_price = float(inst.get("target_price", 1000.0))
@@ -1330,13 +1712,28 @@ class PublicMarket10YProvider:
                                 "mep_rate": mep_rate,
                             }
 
-                    targets = [BYMA_CURATED_UNIVERSE_MAP.get(t, {"ticker": t, "name": t, "asset_type": "STOCK", "currency": "ARS", "target_price": 1000.0, "volume_shares": 100000}) for t in [i["ticker"] for i in BYMA_CURATED_UNIVERSE_CATALOG]]
-                    fetched_quotes = await asyncio.gather(*(_fetch_single_instrument(tgt) for tgt in targets))
+                    targets = [
+                        BYMA_CURATED_UNIVERSE_MAP.get(
+                            t,
+                            {
+                                "ticker": t,
+                                "name": t,
+                                "asset_type": "STOCK",
+                                "currency": "ARS",
+                                "target_price": 1000.0,
+                                "volume_shares": 100000,
+                            },
+                        )
+                        for t in [i["ticker"] for i in BYMA_CURATED_UNIVERSE_CATALOG]
+                    ]
+                    fetched_quotes = await asyncio.gather(
+                        *(_fetch_single_instrument(tgt) for tgt in targets)
+                    )
                     for q in fetched_quotes:
                         cls._LIVE_STATE[q["ticker"]] = q
                     cls._LAST_EXTERNAL_SYNC = now
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Market data step failed, falling back: %s", exc)
 
         # Inicialización de respaldo si el estado continúa vacío
         if not cls._LIVE_STATE:
@@ -1364,18 +1761,18 @@ class PublicMarket10YProvider:
                 }
 
         # MICRO-TICK ESTOCÁSTICO CONTINUO 24/7 EN CADA LLAMADA (5s)
-        for t, q in cls._LIVE_STATE.items():
+        for q in cls._LIVE_STATE.values():
             base_p = float(q.get("base_price") or q.get("last_price", 1000.0))
             curr_p = float(q.get("last_price", base_p))
             # Variación suave entre -0.18% y +0.18% con reversión hacia base_price
             mean_reversion = -0.12 * ((curr_p - base_p) / base_p) if base_p > 0 else 0.0
-            noise = random.uniform(-0.0018, 0.0018)
+            noise = random.uniform(-0.0018, 0.0018)  # noqa: S311  # simulated tick, non-cryptographic
             pct_step = noise + mean_reversion
             new_price = round(max(0.01, curr_p * (1.0 + pct_step)), 2)
             prev_c = float(q.get("previous_close") or base_p)
             chg_nom = round(new_price - prev_c, 2)
             chg_pct = round((chg_nom / prev_c) * 100.0, 2) if prev_c > 0 else 0.0
-            vol_add = random.randint(150, 2500)
+            vol_add = random.randint(150, 2500)  # noqa: S311  # simulated volume, non-cryptographic
 
             q["last_price"] = new_price
             q["high_price"] = round(max(float(q.get("high_price", new_price)), new_price), 2)
@@ -1403,7 +1800,7 @@ class PublicMarket10YProvider:
         cls,
         ticker: str,
         timeframe: str = "1M",
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Descarga barras OHLCV históricas reales y ancla estrictamente la última barra
         al precio vivo actual (last_price) de _LIVE_STATE para perfecta sincronía.
@@ -1427,13 +1824,35 @@ class PublicMarket10YProvider:
 
         # Generación intradiaria para '1D'
         if timeframe.upper() == "1D":
-            bars: List[Dict[str, Any]] = []
+            bars: list[dict[str, Any]] = []
             open_ref = float(live_quote.get("previous_close") or curr_price)
             # Rueda oficial (11:00 a 17:00 ART) - 25 intervalos de 15m
             step_times = [
-                "11:00", "11:15", "11:30", "11:45", "12:00", "12:15", "12:30", "12:45",
-                "13:00", "13:15", "13:30", "13:45", "14:00", "14:15", "14:30", "14:45",
-                "15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30", "16:45", "17:00"
+                "11:00",
+                "11:15",
+                "11:30",
+                "11:45",
+                "12:00",
+                "12:15",
+                "12:30",
+                "12:45",
+                "13:00",
+                "13:15",
+                "13:30",
+                "13:45",
+                "14:00",
+                "14:15",
+                "14:30",
+                "14:45",
+                "15:00",
+                "15:15",
+                "15:30",
+                "15:45",
+                "16:00",
+                "16:15",
+                "16:30",
+                "16:45",
+                "17:00",
             ]
             # After-hours (17:30 a 21:30 + Ahora) - 6 intervalos
             after_times = ["17:30", "18:30", "19:30", "20:30", "21:30", "Ahora (Vivo 5s)"]
@@ -1456,23 +1875,29 @@ class PublicMarket10YProvider:
                 o_val = closes[i - 1] if i > 0 else open_ref
                 h_val = round(max(o_val, c_val) * 1.002, 2)
                 l_val = round(min(o_val, c_val) * 0.998, 2)
-                v_val = random.randint(15000, 45000) if is_open else random.randint(800, 3500)
+                v_val = (  # simulated volume, non-cryptographic
+                    random.randint(15000, 45000)  # noqa: S311
+                    if is_open
+                    else random.randint(800, 3500)  # noqa: S311
+                )
                 if ":" in label:
                     hh, mm = label.split(":")
                     ts_iso = f"{today_date_str}T{hh}:{mm}:00-03:00"
                 else:
                     ts_iso = now_art.isoformat()
 
-                bars.append({
-                    "timestamp": ts_iso,
-                    "open": o_val,
-                    "high": h_val,
-                    "low": l_val,
-                    "close": c_val,
-                    "volume": v_val,
-                    "vwap": round((o_val + h_val + l_val + c_val) / 4.0, 2),
-                    "is_market_open": is_open,
-                })
+                bars.append(
+                    {
+                        "timestamp": ts_iso,
+                        "open": o_val,
+                        "high": h_val,
+                        "low": l_val,
+                        "close": c_val,
+                        "volume": v_val,
+                        "vwap": round((o_val + h_val + l_val + c_val) / 4.0, 2),
+                        "is_market_open": is_open,
+                    }
+                )
             bars[-1]["close"] = curr_price
             bars[-1]["is_market_open"] = is_now_open
             return bars
@@ -1487,7 +1912,9 @@ class PublicMarket10YProvider:
 
         try:
             async with httpx.AsyncClient(headers=cls.DEFAULT_HEADERS, timeout=2.5) as client:
-                url = cls.YAHOO_V8_URL.format(symbol=yahoo_sym, range_param=range_param, interval_param=interval_param)
+                url = cls.YAHOO_V8_URL.format(
+                    symbol=yahoo_sym, range_param=range_param, interval_param=interval_param
+                )
                 r = await client.get(url)
                 if r.status_code == 200:
                     payload = r.json()
@@ -1502,37 +1929,43 @@ class PublicMarket10YProvider:
                         closes = quote_obj.get("close", [])
                         volumes = quote_obj.get("volume", [])
 
-                        raw_bars: List[Dict[str, Any]] = []
+                        raw_bars: list[dict[str, Any]] = []
                         for i in range(len(timestamps)):
                             c = closes[i] if i < len(closes) else None
                             if c is None or c <= 0:
                                 continue
                             o = opens[i] if i < len(opens) and opens[i] is not None else c
                             h = highs[i] if i < len(highs) and highs[i] is not None else max(o, c)
-                            l = lows[i] if i < len(lows) and lows[i] is not None else min(o, c)
+                            low_v = lows[i] if i < len(lows) and lows[i] is not None else min(o, c)
                             v = volumes[i] if i < len(volumes) and volumes[i] is not None else 10000
-                            dt = datetime.fromtimestamp(timestamps[i], tz=timezone.utc)
-                            raw_bars.append({
-                                "timestamp": dt.isoformat(),
-                                "open": round(float(o), 2),
-                                "high": round(float(h), 2),
-                                "low": round(float(l), 2),
-                                "close": round(float(c), 2),
-                                "volume": int(v),
-                                "vwap": round((float(o) + float(h) + float(l) + float(c)) / 4.0, 2),
-                                "is_market_open": True,
-                            })
+                            dt = datetime.fromtimestamp(timestamps[i], tz=UTC)
+                            raw_bars.append(
+                                {
+                                    "timestamp": dt.isoformat(),
+                                    "open": round(float(o), 2),
+                                    "high": round(float(h), 2),
+                                    "low": round(float(low_v), 2),
+                                    "close": round(float(c), 2),
+                                    "volume": int(v),
+                                    "vwap": round(
+                                        (float(o) + float(h) + float(low_v) + float(c)) / 4.0, 2
+                                    ),
+                                    "is_market_open": True,
+                                }
+                            )
                         if len(raw_bars) >= 5:
                             raw_bars[-1]["close"] = curr_price
                             raw_bars[-1]["high"] = round(max(raw_bars[-1]["high"], curr_price), 2)
                             raw_bars[-1]["low"] = round(min(raw_bars[-1]["low"], curr_price), 2)
                             raw_bars[-1]["is_market_open"] = is_now_open
                             return raw_bars
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Market data step failed, falling back: %s", exc)
 
         # Fallback determinista
-        det_bars = generate_deterministic_historical_bars(clean, timeframe=timeframe, anchor_price=curr_price)
+        det_bars = generate_deterministic_historical_bars(
+            clean, timeframe=timeframe, anchor_price=curr_price
+        )
         if det_bars:
             det_bars[-1]["close"] = curr_price
             det_bars[-1]["is_market_open"] = is_now_open
@@ -1543,7 +1976,7 @@ class PublicMarket10YProvider:
         cls,
         ticker: str,
         attempt_network: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Retorna el diccionario completo de métricas históricas de 10 años (o máxima
         antigüedad desde emisión) e indicadores fundamentales/renta fija.
@@ -1553,7 +1986,7 @@ class PublicMarket10YProvider:
         meta = dict(infer_instrument_metadata(ticker))
         meta["composite_quant_return"] = compute_composite_quant_return(meta)
         meta["data_source"] = "BYMA_CALIBRATED_10Y_ENGINE"
-        meta["updated_at"] = datetime.now(timezone.utc).isoformat()
+        meta["updated_at"] = datetime.now(UTC).isoformat()
 
         if attempt_network:
             yahoo_sym = meta.get("yahoo_symbol", ticker)
@@ -1568,17 +2001,24 @@ class PublicMarket10YProvider:
                         result = (payload.get("chart") or {}).get("result") or []
                         if result:
                             timestamps = result[0].get("timestamp") or []
-                            indicators = ((result[0].get("indicators") or {}).get("quote") or [{}])[0]
-                            closes = [c for c in (indicators.get("close") or []) if c is not None and c > 0]
+                            indicators = ((result[0].get("indicators") or {}).get("quote") or [{}])[
+                                0
+                            ]
+                            closes = [
+                                c
+                                for c in (indicators.get("close") or [])
+                                if c is not None and c > 0
+                            ]
                             if len(closes) >= 60:
                                 meta["data_points_count"] = len(closes)
-                                meta["history_years_available"] = round(min(10.0, len(closes) / 252.0), 1)
+                                meta["history_years_available"] = round(
+                                    min(10.0, len(closes) / 252.0), 1
+                                )
                                 if timestamps:
-                                    start_dt = datetime.fromtimestamp(timestamps[0], tz=timezone.utc)
+                                    start_dt = datetime.fromtimestamp(timestamps[0], tz=UTC)
                                     meta["history_start_date"] = start_dt.strftime("%Y-%m-%d")
                                 meta["data_source"] = "YAHOO_FINANCE_V8_LIVE_10Y"
-            except Exception:
-                # Fallback silencioso al motor calibrado de 10 años
-                pass
+            except Exception as exc:
+                logger.debug("Market data step failed, falling back: %s", exc)
 
         return meta

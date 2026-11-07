@@ -1,5 +1,6 @@
 import math
 import unittest
+
 import numpy as np
 from app.domain.models.metrics import (
     QuantitativeRiskSummary,
@@ -42,10 +43,12 @@ class TestQuantitativeMetrics(unittest.TestCase):
 
     def test_portfolio_volatility_matrix(self):
         weights = [0.6, 0.4]
-        cov = np.array([
-            [0.0004, 0.0001],
-            [0.0001, 0.0009],
-        ])
+        cov = np.array(
+            [
+                [0.0004, 0.0001],
+                [0.0001, 0.0009],
+            ]
+        )
         expected_var = 0.000336
         expected_vol = math.sqrt(expected_var) * math.sqrt(252)
         vol = portfolio_volatility(weights, cov, trading_days=252)
@@ -53,10 +56,12 @@ class TestQuantitativeMetrics(unittest.TestCase):
 
     def test_portfolio_volatility_dimension_mismatch(self):
         weights = [0.5, 0.3, 0.2]
-        cov = np.array([
-            [0.04, 0.01],
-            [0.01, 0.04],
-        ])
+        cov = np.array(
+            [
+                [0.04, 0.01],
+                [0.01, 0.04],
+            ]
+        )
         self.assertEqual(portfolio_volatility(weights, cov), 0.0)
         self.assertEqual(portfolio_volatility([], np.array([[]])), 0.0)
 

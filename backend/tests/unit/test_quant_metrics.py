@@ -8,9 +8,7 @@ from __future__ import annotations
 import concurrent.futures
 import unittest
 
-from prometheus_client import CollectorRegistry
 import pytest
-
 from app.core.metrics import (
     InvestAIMetrics,
     record_cache_hit,
@@ -18,6 +16,7 @@ from app.core.metrics import (
     record_solver_fallback,
     record_solver_run,
 )
+from prometheus_client import CollectorRegistry
 
 
 @pytest.mark.unit
@@ -340,4 +339,3 @@ class TestQuantMetrics(unittest.TestCase):
             {"cache_tier": "memory"},
         )
         self.assertEqual(misses_val, expected_count)
-

@@ -2,10 +2,11 @@
 Servicio de persistencia, sincronización incremental y caché de datos de mercado (Módulo 6 - Fase 3).
 Orquesta la ingesta delta de series históricas OHLCV con deduplicación y caché en memoria para cotizaciones.
 """
-from datetime import date, datetime, timezone
-from decimal import Decimal
-from typing import List, Optional, Set
+
 import uuid
+from datetime import UTC, date, datetime
+from decimal import Decimal
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +26,7 @@ class MarketHistoryService:
         self,
         connector: BaseMarketConnector,
         session: AsyncSession,
-        cache: Optional[InMemoryQuoteCache] = None,
+        cache: InMemoryQuoteCache | None = None,
     ):
         """
         Inicializa el servicio de historial de mercado.
@@ -46,7 +47,7 @@ class MarketHistoryService:
         start_date: date,
         end_date: date,
         timeframe: Timeframe = Timeframe.D1,
-    ) -> List[MarketBarDTO]:
+    ) -> list[MarketBarDTO]:
         """
         Consulta barras históricas en la base de datos local y, si el rango solicitado
         no está cubierto, consulta al conector externo, deduplica e inserta las barras faltantes.
@@ -70,8 +71,8 @@ class MarketHistoryService:
                 f"La fecha inicial ({start_date}) debe ser menor o igual a la fecha final ({end_date})."
             )
 
-        start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-        end_dt = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
+        start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=UTC)
+        end_dt = datetime.combine(end_date, datetime.max.time(), tzinfo=UTC)
 
         # 1. Consulta inicial en la base de datos local
         stmt = (
@@ -111,12 +112,10 @@ class MarketHistoryService:
 
             def _normalize_ts(dt_val: datetime) -> datetime:
                 if dt_val.tzinfo is None:
-                    return dt_val.replace(tzinfo=timezone.utc)
-                return dt_val.astimezone(timezone.utc)
+                    return dt_val.replace(tzinfo=UTC)
+                return dt_val.astimezone(UTC)
 
-            existing_ts_set: Set[datetime] = {
-                _normalize_ts(m.timestamp) for m in existing_models
-            }
+            existing_ts_set: set[datetime] = {_normalize_ts(m.timestamp) for m in existing_models}
 
             new_models = []
             for bar in fetched_bars:
@@ -147,13 +146,13 @@ class MarketHistoryService:
             existing_models = list(result.scalars().all())
 
         # 4. Mapeo defensivo a MarketBarDTO garantizando zona horaria UTC
-        bars_dto: List[MarketBarDTO] = []
+        bars_dto: list[MarketBarDTO] = []
         for m in existing_models:
             ts = m.timestamp
             if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
+                ts = ts.replace(tzinfo=UTC)
             else:
-                ts = ts.astimezone(timezone.utc)
+                ts = ts.astimezone(UTC)
 
             bars_dto.append(
                 MarketBarDTO(
@@ -185,4 +184,3 @@ class MarketHistoryService:
             await self.cache.set(norm_ticker, quote)
 
         return quote
-

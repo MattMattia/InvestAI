@@ -7,13 +7,14 @@ validated records (`CleanHoldingRecord`) extracted from broker statements,
 generating deterministic inventory adjustment events under `SNAPSHOT` or `MERGE`
 reconciliation modes.
 """
+
 from __future__ import annotations
 
-from collections.abc import Sequence
-from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from enum import Enum
 import math
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from enum import Enum
 from typing import Any
 from uuid import UUID
 
@@ -153,9 +154,7 @@ def _coerce_finite_decimal(value: Any, field_name: str) -> Decimal:
         except InvalidOperation as exc:
             raise ValueError(f"Invalid Decimal string for '{field_name}'") from exc
     else:
-        raise ValueError(
-            f"Unsupported type '{type(value).__name__}' for '{field_name}'"
-        )
+        raise ValueError(f"Unsupported type '{type(value).__name__}' for '{field_name}'")
 
     if not dec.is_finite():
         raise ValueError(f"Non-finite Decimal is not permitted for '{field_name}'")
@@ -204,9 +203,7 @@ class HoldingReconciliationEvent(BaseSchema):
 
         if self.action == ReconciliationAction.ADDED:
             if self.previous_quantity != Decimal("0") or self.new_quantity <= Decimal("0"):
-                raise ValueError(
-                    "ADDED event requires previous_quantity == 0 and new_quantity > 0"
-                )
+                raise ValueError("ADDED event requires previous_quantity == 0 and new_quantity > 0")
         elif self.action == ReconciliationAction.REMOVED:
             if self.previous_quantity <= Decimal("0") or self.new_quantity != Decimal("0"):
                 raise ValueError(
@@ -214,9 +211,7 @@ class HoldingReconciliationEvent(BaseSchema):
                 )
         elif self.action == ReconciliationAction.UNCHANGED:
             if self.quantity_delta != Decimal("0"):
-                raise ValueError(
-                    "UNCHANGED event requires quantity_delta == 0"
-                )
+                raise ValueError("UNCHANGED event requires quantity_delta == 0")
 
         return self
 
@@ -239,10 +234,7 @@ class ReconciliationReport(BaseSchema):
     @model_validator(mode="after")
     def _enforce_event_count_consistency(self) -> ReconciliationReport:
         total_counted = (
-            self.added_count
-            + self.updated_count
-            + self.removed_count
-            + self.unchanged_count
+            self.added_count + self.updated_count + self.removed_count + self.unchanged_count
         )
         if total_counted != len(self.events):
             raise ValueError(
@@ -283,8 +275,7 @@ class PortfolioReconciliationService:
         """Infer a canonical asset_type string for newly registered tickers."""
         t = ticker.strip().upper()
         if t in _KNOWN_SOVEREIGN_TICKERS or (
-            t.startswith(("AL", "GD", "AE", "TX", "TV", "TO", "T2"))
-            and len(t) in (4, 5)
+            t.startswith(("AL", "GD", "AE", "TX", "TV", "TO", "T2")) and len(t) in (4, 5)
         ):
             return "BOND_SOVEREIGN"
         if t.startswith(("YMC", "IRC", "TLC", "MTC")):
@@ -319,10 +310,7 @@ class PortfolioReconciliationService:
                 or normalized_ticker
             )
             raw_type_hint = str(
-                raw_fields.get("Tipo")
-                or raw_fields.get("tipo")
-                or raw_fields.get("Clase")
-                or ""
+                raw_fields.get("Tipo") or raw_fields.get("tipo") or raw_fields.get("Clase") or ""
             )
         meta = infer_instrument_metadata(
             raw_desc or normalized_ticker,
@@ -390,13 +378,9 @@ class PortfolioReconciliationService:
         for ticker, group in grouped.items():
             if len(group) == 1:
                 single = group[0]
-                q_qty = single.quantity.quantize(
-                    RECONCILIATION_QUANTIZE, rounding=ROUND_HALF_UP
-                )
+                q_qty = single.quantity.quantize(RECONCILIATION_QUANTIZE, rounding=ROUND_HALF_UP)
                 q_price = (
-                    single.avg_price.quantize(
-                        RECONCILIATION_QUANTIZE, rounding=ROUND_HALF_UP
-                    )
+                    single.avg_price.quantize(RECONCILIATION_QUANTIZE, rounding=ROUND_HALF_UP)
                     if single.avg_price is not None
                     else None
                 )
@@ -440,19 +424,13 @@ class PortfolioReconciliationService:
                 priced_qty = sum((r.quantity for r in priced_lots), Decimal("0"))
                 if priced_qty > Decimal("0"):
                     total_cost = sum(
-                        (
-                            r.quantity * r.avg_price
-                            for r in priced_lots
-                            if r.avg_price is not None
-                        ),
+                        (r.quantity * r.avg_price for r in priced_lots if r.avg_price is not None),
                         Decimal("0"),
                     )
                     q_weighted = (total_cost / priced_qty).quantize(
                         RECONCILIATION_QUANTIZE, rounding=ROUND_HALF_UP
                     )
-                    weighted_avg_price = (
-                        q_weighted if q_weighted > Decimal("0") else None
-                    )
+                    weighted_avg_price = q_weighted if q_weighted > Decimal("0") else None
 
             warnings.append(
                 f"Consolidated {len(group)} lots for ticker '{ticker}' "
@@ -500,19 +478,13 @@ class PortfolioReconciliationService:
         stmt = (
             select(PortfolioModel)
             .where(PortfolioModel.id == str(portfolio_id))
-            .options(
-                selectinload(PortfolioModel.holdings).selectinload(HoldingModel.asset)
-            )
+            .options(selectinload(PortfolioModel.holdings).selectinload(HoldingModel.asset))
         )
         result = await db.execute(stmt)
         portfolio = result.scalar_one_or_none()
 
-        if portfolio is None or (
-            user_id is not None and str(portfolio.user_id) != str(user_id)
-        ):
-            raise ReconciliationPortfolioNotFoundError(
-                f"Portfolio '{portfolio_id}' not found"
-            )
+        if portfolio is None or (user_id is not None and str(portfolio.user_id) != str(user_id)):
+            raise ReconciliationPortfolioNotFoundError(f"Portfolio '{portfolio_id}' not found")
 
         # 3. Consolidate incoming CleanHoldingRecord items
         consolidated_records, warnings = self.consolidate_clean_records(clean_records)
@@ -583,9 +555,7 @@ class PortfolioReconciliationService:
                 # Case B: Existing position (UPDATED or UNCHANGED)
                 existing_holding = existing_by_ticker[ticker]
                 prev_qty = self._extract_db_decimal(existing_holding.quantity)
-                raw_prev_price = self._extract_db_decimal(
-                    existing_holding.average_buy_price
-                )
+                raw_prev_price = self._extract_db_decimal(existing_holding.average_buy_price)
                 prev_avg_price: Decimal | None = (
                     raw_prev_price if raw_prev_price > Decimal("0") else None
                 )
@@ -602,17 +572,14 @@ class PortfolioReconciliationService:
                     else:
                         effective_new_avg_price = None
 
-                qty_changed = (
-                    abs(record.quantity - prev_qty) >= RECONCILIATION_QUANTIZE
-                )
+                qty_changed = abs(record.quantity - prev_qty) >= RECONCILIATION_QUANTIZE
                 if effective_new_avg_price is None and prev_avg_price is None:
                     price_changed = False
                 elif effective_new_avg_price is None or prev_avg_price is None:
                     price_changed = True
                 else:
                     price_changed = (
-                        abs(effective_new_avg_price - prev_avg_price)
-                        >= RECONCILIATION_QUANTIZE
+                        abs(effective_new_avg_price - prev_avg_price) >= RECONCILIATION_QUANTIZE
                     )
 
                 if qty_changed or price_changed:
@@ -667,16 +634,12 @@ class PortfolioReconciliationService:
             existing_holding = existing_by_ticker[ticker]
             if mode == ReconciliationMode.SNAPSHOT:
                 prev_qty = self._extract_db_decimal(existing_holding.quantity)
-                raw_prev_price = self._extract_db_decimal(
-                    existing_holding.average_buy_price
-                )
-                prev_avg_price = (
-                    raw_prev_price if raw_prev_price > Decimal("0") else None
-                )
+                raw_prev_price = self._extract_db_decimal(existing_holding.average_buy_price)
+                prev_avg_price = raw_prev_price if raw_prev_price > Decimal("0") else None
                 holding_currency = "ARS"
-                if (
-                    existing_holding.asset is not None
-                    and existing_holding.asset.currency in ("ARS", "USD")
+                if existing_holding.asset is not None and existing_holding.asset.currency in (
+                    "ARS",
+                    "USD",
                 ):
                     holding_currency = existing_holding.asset.currency
 
@@ -700,21 +663,13 @@ class PortfolioReconciliationService:
                 # ReconciliationMode.MERGE: keep existing holding intact in DB
                 pass
 
-        portfolio.updated_at = datetime.now(timezone.utc)
+        portfolio.updated_at = datetime.now(UTC)
         await db.flush()
 
-        added_count = sum(
-            1 for e in events if e.action == ReconciliationAction.ADDED
-        )
-        updated_count = sum(
-            1 for e in events if e.action == ReconciliationAction.UPDATED
-        )
-        removed_count = sum(
-            1 for e in events if e.action == ReconciliationAction.REMOVED
-        )
-        unchanged_count = sum(
-            1 for e in events if e.action == ReconciliationAction.UNCHANGED
-        )
+        added_count = sum(1 for e in events if e.action == ReconciliationAction.ADDED)
+        updated_count = sum(1 for e in events if e.action == ReconciliationAction.UPDATED)
+        removed_count = sum(1 for e in events if e.action == ReconciliationAction.REMOVED)
+        unchanged_count = sum(1 for e in events if e.action == ReconciliationAction.UNCHANGED)
 
         return ReconciliationReport(
             portfolio_id=str(portfolio.id),
@@ -727,4 +682,3 @@ class PortfolioReconciliationService:
             total_holdings_after=len(portfolio.holdings),
             warnings=warnings,
         )
-

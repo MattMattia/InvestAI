@@ -2,15 +2,16 @@
 Abstract parsing interface, domain exceptions, and raw holding contracts
 for broker report ingestion (Module 6.1 - Phase 1).
 """
+
 from __future__ import annotations
 
+import re
+import unicodedata
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from decimal import Decimal
 from pathlib import PurePath
-import re
 from typing import Any
-import unicodedata
 
 from pydantic import Field, field_validator, model_validator
 
@@ -196,9 +197,7 @@ def normalize_header_name(header: Any) -> str:
         return ""
     raw_text = str(header).replace("\x00", "").replace("\xa0", " ")
     decomposed = unicodedata.normalize("NFKD", raw_text)
-    stripped_accents = "".join(
-        ch for ch in decomposed if not unicodedata.combining(ch)
-    )
+    stripped_accents = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
     lowered = stripped_accents.lower()
     collapsed_acronyms = _DOTTED_ACRONYM_RE.sub("", lowered)
     separated = _HEADER_SEPARATOR_RE.sub(" ", collapsed_acronyms)
@@ -213,10 +212,7 @@ def resolve_header_mapping(headers: Sequence[Any]) -> dict[str, int]:
     from app.domain.services.ingestion.schema_detector import SchemaDetector
 
     result = SchemaDetector().detect_schema(headers)
-    return {
-        field.value: col_mapping.column_index
-        for field, col_mapping in result.mappings.items()
-    }
+    return {field.value: col_mapping.column_index for field, col_mapping in result.mappings.items()}
 
 
 def is_ignored_summary_ticker(raw_ticker: Any) -> bool:
@@ -353,7 +349,7 @@ class RawHoldingRecord(BaseSchema):
             if not cleaned:
                 raise ValueError("raw_quantity cannot be an empty string")
             return cleaned
-        if isinstance(value, (Decimal, int, float)):
+        if isinstance(value, Decimal | int | float):
             return value
         raise ValueError(f"Unsupported type for raw_quantity: {type(value).__name__}")
 
@@ -368,7 +364,7 @@ class RawHoldingRecord(BaseSchema):
             _assert_no_null_bytes(value, "raw_avg_price")
             cleaned = _sanitize_numeric_cell_string(value)
             return cleaned if cleaned else None
-        if isinstance(value, (Decimal, int, float)):
+        if isinstance(value, Decimal | int | float):
             return value
         raise ValueError(f"Unsupported type for raw_avg_price: {type(value).__name__}")
 
@@ -404,9 +400,7 @@ class BaseReportParser(ABC):
     """
 
     @abstractmethod
-    async def parse_report(
-        self, file_stream: bytes, filename: str
-    ) -> list[RawHoldingRecord]:
+    async def parse_report(self, file_stream: bytes, filename: str) -> list[RawHoldingRecord]:
         """
         Parse a raw binary report stream into a list of `RawHoldingRecord` items.
         """
@@ -421,7 +415,7 @@ class BaseReportParser(ABC):
             raise CorruptedReportError("Null bytes are not permitted in filename")
         if not filename.strip():
             raise UnsupportedReportFormatError("Filename cannot be empty")
-        if not isinstance(file_stream, (bytes, bytearray)):
+        if not isinstance(file_stream, bytes | bytearray):
             raise TypeError("file_stream must be bytes or bytearray")
         if len(file_stream) == 0:
             raise EmptyReportError("Uploaded report stream is empty")
@@ -456,4 +450,3 @@ def get_report_parser(filename: str) -> BaseReportParser:
         f"Unsupported report format '{ext or '<no extension>'}'. "
         "Only '.csv' and '.xlsx' files are supported."
     )
-

@@ -3,18 +3,19 @@ Concrete Excel (.xlsx) report parsing strategy for local broker statements (Modu
 Implements pre-parse Zip-Bomb, XXE/DOCTYPE, and VBA macro shields, non-blocking
 read-only workbook streaming, and multi-sheet table discovery.
 """
+
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
-from decimal import Decimal
 import io
 import itertools
 import math
-from pathlib import PurePath
-from typing import Any
 import zipfile
 import zlib
+from collections.abc import Sequence
+from decimal import Decimal
+from pathlib import PurePath
+from typing import Any
 
 import openpyxl
 from pydantic import ValidationError
@@ -52,7 +53,7 @@ def _clean_cell_value(val: Any) -> Any:
         if not math.isfinite(val):
             return None
         return Decimal(str(val))
-    if isinstance(val, (int, Decimal)):
+    if isinstance(val, int | Decimal):
         return val
     return str(val).replace("\xa0", " ").strip()
 
@@ -75,15 +76,11 @@ class ExcelReportParser(BaseReportParser):
     def __init__(self, schema_detector: SchemaDetector | None = None) -> None:
         self._schema_detector: SchemaDetector = schema_detector or SchemaDetector()
 
-    async def parse_report(
-        self, file_stream: bytes, filename: str
-    ) -> list[RawHoldingRecord]:
+    async def parse_report(self, file_stream: bytes, filename: str) -> list[RawHoldingRecord]:
         """Parse an XLSX binary stream in a worker thread to avoid blocking the event loop."""
         return await asyncio.to_thread(self._parse_sync, file_stream, filename)
 
-    def _parse_sync(
-        self, file_stream: bytes, filename: str
-    ) -> list[RawHoldingRecord]:
+    def _parse_sync(self, file_stream: bytes, filename: str) -> list[RawHoldingRecord]:
         self.validate_stream(file_stream, filename)
 
         ext = PurePath(filename.strip()).suffix.lower()
@@ -104,18 +101,14 @@ class ExcelReportParser(BaseReportParser):
         except ReportParsingError:
             raise
         except (KeyError, ValueError, IndexError, TypeError, Exception) as exc:
-            raise CorruptedReportError(
-                f"Failed to open XLSX workbook: {exc}"
-            ) from exc
+            raise CorruptedReportError(f"Failed to open XLSX workbook: {exc}") from exc
 
         try:
             return self._extract_from_workbook(workbook)
         except ReportParsingError:
             raise
         except (KeyError, ValueError, IndexError, TypeError, Exception) as exc:
-            raise CorruptedReportError(
-                f"Failed while reading XLSX workbook rows: {exc}"
-            ) from exc
+            raise CorruptedReportError(f"Failed while reading XLSX workbook rows: {exc}") from exc
         finally:
             workbook.close()
 
@@ -174,9 +167,7 @@ class ExcelReportParser(BaseReportParser):
         except ReportParsingError:
             raise
         except (zipfile.BadZipFile, OSError, EOFError, zlib.error) as exc:
-            raise CorruptedReportError(
-                f"Invalid or corrupted XLSX archive: {exc}"
-            ) from exc
+            raise CorruptedReportError(f"Invalid or corrupted XLSX archive: {exc}") from exc
 
     def _extract_from_workbook(self, workbook: Any) -> list[RawHoldingRecord]:
         has_any_content = False
@@ -191,9 +182,7 @@ class ExcelReportParser(BaseReportParser):
             for raw_row in row_iter:
                 row_seq: Sequence[Any] = raw_row if raw_row is not None else ()
                 buffered_rows.append(row_seq)
-                if not row_seq or all(
-                    _is_empty_cell(_clean_cell_value(c)) for c in row_seq
-                ):
+                if not row_seq or all(_is_empty_cell(_clean_cell_value(c)) for c in row_seq):
                     continue
 
                 has_any_content = True
@@ -206,9 +195,7 @@ class ExcelReportParser(BaseReportParser):
                 header_idx = best_schema.header_row_index
                 header_row_number = header_idx + 1
                 raw_header_row = buffered_rows[header_idx]
-                header_cells = [
-                    str(c).strip() if c is not None else "" for c in raw_header_row
-                ]
+                header_cells = [str(c).strip() if c is not None else "" for c in raw_header_row]
                 column_map = {
                     field.value: col_map.column_index
                     for field, col_map in best_schema.mappings.items()
@@ -308,9 +295,6 @@ class ExcelReportParser(BaseReportParser):
             records.append(record)
 
         if not records:
-            raise EmptyReportError(
-                "XLSX worksheet contains headers but no valid holding rows"
-            )
+            raise EmptyReportError("XLSX worksheet contains headers but no valid holding rows")
 
         return records
-

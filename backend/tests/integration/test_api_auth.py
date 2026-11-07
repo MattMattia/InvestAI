@@ -5,18 +5,14 @@ Valida registro con bloqueo de Mass Assignment, login con mitigación de Timing 
 rotación criptográfica de Refresh Tokens, prevención de Token Confusion y perfil de sesión activa (/me)
 bajo el contrato Universal Envelope (APIResponse / APIErrorResponse).
 """
-from datetime import timedelta
+
 import unittest
 import unittest.mock
 import uuid
-
+from datetime import timedelta
 
 import httpx
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
-
-import app.models  # Registra todos los modelos declarativos SQLAlchemy
 from app.api.deps import get_db_session
 from app.core.config import settings
 from app.core.database import Base
@@ -31,6 +27,8 @@ from app.main import app as fastapi_app
 from app.models.user import UserModel
 from app.schemas.token import TokenType
 from app.schemas.user import UserRole
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 
 @pytest.mark.integration
@@ -470,9 +468,7 @@ class TestApiAuthIntegration(unittest.IsolatedAsyncioTestCase):
         (mitigación de password spraying).
         """
         fast_dummy_hash = get_password_hash("fast_dummy_secret", rounds=4)
-        with unittest.mock.patch(
-            "app.api.v1.endpoints.auth._DUMMY_PASSWORD_HASH", fast_dummy_hash
-        ):
+        with unittest.mock.patch("app.api.v1.endpoints.auth._DUMMY_PASSWORD_HASH", fast_dummy_hash):
             for i in range(settings.AUTH_RATE_LIMIT_LOGIN_IP_MAX):
                 res_attempt = await self.client.post(
                     "/api/v1/auth/login",
@@ -504,7 +500,6 @@ class TestApiAuthIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(body["success"])
         self.assertEqual(body["error"]["code"], "RATE_LIMIT_EXCEEDED")
         self.assertIn("Too many login attempts from this IP", body["error"]["message"])
-
 
     async def test_register_rate_limiting_triggers_429(self) -> None:
         """
@@ -594,11 +589,11 @@ class TestApiAuthIntegration(unittest.IsolatedAsyncioTestCase):
         from sqlalchemy.exc import IntegrityError
 
         async def _conflict_commit(*args, **kwargs):
-            raise IntegrityError("INSERT INTO users", params={}, orig=Exception("UNIQUE constraint failed"))
+            raise IntegrityError(
+                "INSERT INTO users", params={}, orig=Exception("UNIQUE constraint failed")
+            )
 
-        with unittest.mock.patch.object(
-            AsyncSession, "commit", side_effect=_conflict_commit
-        ):
+        with unittest.mock.patch.object(AsyncSession, "commit", side_effect=_conflict_commit):
             res = await self.client.post(
                 "/api/v1/auth/register",
                 json={
@@ -616,6 +611,3 @@ class TestApiAuthIntegration(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-

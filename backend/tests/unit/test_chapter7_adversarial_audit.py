@@ -6,17 +6,16 @@ Adversarial & Cross-Module Audit Test Suite for Chapter 7 (Modules 7.1, 7.2 & 7.
 - Deterministic Algebraic Invariant Fuzzing & Anti-DoS / Injection Hardening
 (`backend/tests/unit/test_chapter7_adversarial_audit.py`).
 """
+
 from __future__ import annotations
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal, localcontext
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal, localcontext
 
-from pydantic import ValidationError
 import pytest
-
 from app.domain.services.ingestion.base_parser import RawHoldingRecord
 from app.domain.services.ingestion.data_cleaning_pipeline import (
     CleanHoldingRecord,
@@ -28,7 +27,6 @@ from app.domain.services.portfolio_valuation_service import (
     InvalidCashFlowPeriodError,
     InvalidFXRateError,
     InvalidValuationInputError,
-    MissingMarketPriceError,
     PortfolioMarkToMarketReport,
     PortfolioValuationService,
     PositionValuationInput,
@@ -52,20 +50,15 @@ from app.domain.services.technical_indicators import (
 )
 from app.domain.services.tolerance_band_rebalancer import (
     AssetTargetBandSpec,
-    BandBreachDirection,
     BandType,
-    InsufficientLiquidityForRebalanceError,
-    InvalidTargetAllocationError,
     InvalidToleranceBandConfigError,
-    MissingRebalancePriceError,
-    RebalanceFSMExecutionBatch,
-    RebalanceMode,
     RebalancePositionInput,
     TaxLotSelectionPolicy,
     ToleranceBandRebalancerConfig,
     ToleranceBandRebalancerService,
 )
 from app.schemas.market_data import MarketBarDTO
+from pydantic import ValidationError
 
 
 @pytest.mark.unit
@@ -73,7 +66,7 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
     """55 forensic adversarial and cross-module integration tests certifying Chapter 7."""
 
     def setUp(self) -> None:
-        self.as_of = datetime(2026, 10, 31, 18, 0, tzinfo=timezone.utc)
+        self.as_of = datetime(2026, 10, 31, 18, 0, tzinfo=UTC)
         self.ind_svc = TechnicalIndicatorsService()
         self.sig_svc = SignalGeneratorService()
         self.val_svc = PortfolioValuationService()
@@ -86,7 +79,7 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         step: Decimal = Decimal("2"),
         half_range: Decimal = Decimal("3"),
     ) -> list[MarketBarDTO]:
-        base = datetime(2026, 9, 1, 15, 0, tzinfo=timezone.utc)
+        base = datetime(2026, 9, 1, 15, 0, tzinfo=UTC)
         bars: list[MarketBarDTO] = []
         for idx in range(count):
             c = start_price + Decimal(idx) * step
@@ -102,7 +95,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
             )
         return bars
 
-    def test_audit_ch7_01_cross_chapter_e2e_raw_ingestion_to_valuation_to_rebalance_fsm(self) -> None:
+    def test_audit_ch7_01_cross_chapter_e2e_raw_ingestion_to_valuation_to_rebalance_fsm(
+        self,
+    ) -> None:
         """Verify full E2E pipeline from Chapter 6 RawHoldingRecord cleaning through Modules 7.1, 7.2, and 7.3."""
         pipeline = DataCleaningPipeline()
         raw_records = [
@@ -153,7 +148,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         self.assertEqual(batch.portfolio_id, "pf-ch6-ch7-e2e")
         self.assertGreaterEqual(batch.total_orders, 1)
 
-    def test_audit_ch7_02_cross_chapter_caja_de_valores_zero_cost_preserves_none_realized_pnl_e2e(self) -> None:
+    def test_audit_ch7_02_cross_chapter_caja_de_valores_zero_cost_preserves_none_realized_pnl_e2e(
+        self,
+    ) -> None:
         """Verify Caja de Valores null avg_price flows through 6.2 -> 7.2 -> 7.3 with None realized PnL on SELL."""
         clean_holdings = [
             CleanHoldingRecord(
@@ -186,7 +183,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         self.assertIsNone(al30_sell.estimated_realized_pnl)
         self.assertEqual(reb.total_estimated_realized_pnl, Decimal("0.0000"))
 
-    def test_audit_ch7_03_outer_decimal_context_prec_6_isolation_on_technical_indicators(self) -> None:
+    def test_audit_ch7_03_outer_decimal_context_prec_6_isolation_on_technical_indicators(
+        self,
+    ) -> None:
         """Verify TechnicalIndicatorsService and BollingerBandsPoint validator succeed when outer Decimal prec=6."""
         bars = self._build_bars(25, Decimal("12345.6789"), Decimal("12.3456"), Decimal("45.6789"))
         with localcontext() as outer_ctx:
@@ -206,7 +205,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
             if sig.order_intent is not None:
                 self.assertEqual(sig.order_intent.target_status, "PENDING")
 
-    def test_audit_ch7_05_outer_decimal_context_prec_6_isolation_on_portfolio_valuation(self) -> None:
+    def test_audit_ch7_05_outer_decimal_context_prec_6_isolation_on_portfolio_valuation(
+        self,
+    ) -> None:
         """Verify PortfolioValuationService MTM, TWR, Dietz, and IRR succeed when outer Decimal prec=6."""
         pos = [
             PositionValuationInput(
@@ -228,7 +229,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
             )
             self.assertEqual(rep.positions[0].weight_in_positions, Decimal("1.0000"))
 
-    def test_audit_ch7_06_outer_decimal_context_prec_6_isolation_on_tolerance_band_rebalancer(self) -> None:
+    def test_audit_ch7_06_outer_decimal_context_prec_6_isolation_on_tolerance_band_rebalancer(
+        self,
+    ) -> None:
         """Verify ToleranceBandRebalancerService and DTO validators succeed when outer Decimal prec=6."""
         positions = [
             RebalancePositionInput(
@@ -310,8 +313,12 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
                 snap = self.ind_svc.compute_snapshot(bars, ticker="YPFD")
                 reb = self.reb_svc.evaluate_and_rebalance(
                     positions=[
-                        RebalancePositionInput(ticker="YPFD", quantity=Decimal("90"), market_price=snap.close),
-                        RebalancePositionInput(ticker="PAMP", quantity=Decimal("10"), market_price=Decimal("100")),
+                        RebalancePositionInput(
+                            ticker="YPFD", quantity=Decimal("90"), market_price=snap.close
+                        ),
+                        RebalancePositionInput(
+                            ticker="PAMP", quantity=Decimal("10"), market_price=Decimal("100")
+                        ),
                     ],
                     target_specs=[
                         AssetTargetBandSpec(ticker="YPFD", target_weight=Decimal("0.5000")),
@@ -328,7 +335,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         outcomes = asyncio.run(run_all())
         self.assertEqual(len(set(outcomes)), 1)
 
-    def test_audit_ch7_09_macro_crisis_400_pct_fx_devaluation_shock_and_defensive_usd_rebalance(self) -> None:
+    def test_audit_ch7_09_macro_crisis_400_pct_fx_devaluation_shock_and_defensive_usd_rebalance(
+        self,
+    ) -> None:
         """Simulate a 400% FX devaluation shock (1000 -> 5000 ARS/USD) and defensive rebalance into USD assets."""
         # GGAL (ARS) doubles nominally (1000 -> 2000 ARS), but FX jumps 5x (1000 -> 5000) -> USD value drops from $1 to $0.40
         # SPY (USD) rises from $500 to $550
@@ -370,17 +379,28 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
 
     def test_audit_ch7_10_macro_crisis_hifo_tax_loss_harvesting_vs_fifo_tax_gain(self) -> None:
         """Verify HIFO harvests a capital loss while FIFO realizes a capital gain on the exact same trade."""
-        t1 = datetime(2025, 1, 1, tzinfo=timezone.utc)
-        t2 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        t1 = datetime(2025, 1, 1, tzinfo=UTC)
+        t2 = datetime(2026, 1, 1, tzinfo=UTC)
         lots = [
             RebalancePositionInput(
-                ticker="GGAL", quantity=Decimal("40"), market_price=Decimal("100"), avg_cost_price=Decimal("40"), acquired_at=t1
+                ticker="GGAL",
+                quantity=Decimal("40"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("40"),
+                acquired_at=t1,
             ),
             RebalancePositionInput(
-                ticker="GGAL", quantity=Decimal("40"), market_price=Decimal("100"), avg_cost_price=Decimal("160"), acquired_at=t2
+                ticker="GGAL",
+                quantity=Decimal("40"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("160"),
+                acquired_at=t2,
             ),
             RebalancePositionInput(
-                ticker="YPFD", quantity=Decimal("20"), market_price=Decimal("100"), avg_cost_price=Decimal("100")
+                ticker="YPFD",
+                quantity=Decimal("20"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("100"),
             ),
         ]
         targets = [
@@ -393,8 +413,12 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         hifo_svc = ToleranceBandRebalancerService(
             ToleranceBandRebalancerConfig(tax_lot_policy=TaxLotSelectionPolicy.HIFO)
         )
-        rep_fifo = fifo_svc.evaluate_and_rebalance(positions=lots, target_specs=targets, as_of=self.as_of)
-        rep_hifo = hifo_svc.evaluate_and_rebalance(positions=lots, target_specs=targets, as_of=self.as_of)
+        rep_fifo = fifo_svc.evaluate_and_rebalance(
+            positions=lots, target_specs=targets, as_of=self.as_of
+        )
+        rep_hifo = hifo_svc.evaluate_and_rebalance(
+            positions=lots, target_specs=targets, as_of=self.as_of
+        )
         self.assertGreater(rep_fifo.total_estimated_realized_pnl, Decimal("0.0000"))
         self.assertLess(rep_hifo.total_estimated_realized_pnl, Decimal("0.0000"))
 
@@ -423,7 +447,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         self.assertLess(sig.order_intent.suggested_stop_loss, Decimal("100.0000"))
         self.assertGreater(sig.order_intent.suggested_take_profit, Decimal("100.0000"))
 
-    def test_audit_ch7_12_flat_doji_bars_sell_signal_atr_zero_produces_valid_sell_brackets(self) -> None:
+    def test_audit_ch7_12_flat_doji_bars_sell_signal_atr_zero_produces_valid_sell_brackets(
+        self,
+    ) -> None:
         """Verify Round 1 audit fix on SELL signal when atr_14 == 0.0000."""
         snap = TechnicalIndicatorsSnapshot(
             ticker="DOJI",
@@ -447,7 +473,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         self.assertGreater(sig.order_intent.suggested_stop_loss, Decimal("100.0000"))
         self.assertLess(sig.order_intent.suggested_take_profit, Decimal("100.0000"))
 
-    def test_audit_ch7_13_deterministic_fuzzing_weight_simplex_across_prime_asset_counts(self) -> None:
+    def test_audit_ch7_13_deterministic_fuzzing_weight_simplex_across_prime_asset_counts(
+        self,
+    ) -> None:
         """Fuzz MTM and Rebalancer across prime portfolio sizes (2, 3, 5, 7, 11, 13, 19) verifying exact 1.0000 sum."""
         for n in (2, 3, 5, 7, 11, 13, 19):
             mtm_pos = [
@@ -466,7 +494,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
             self.assertEqual(sum(p.weight_in_positions for p in mtm.positions), Decimal("1.0000"))
             self.assertEqual(sum(p.weight_in_net_worth for p in mtm.positions), Decimal("1.0000"))
 
-    def test_audit_ch7_14_deterministic_fuzzing_rebalancer_post_trade_weights_sum_to_one(self) -> None:
+    def test_audit_ch7_14_deterministic_fuzzing_rebalancer_post_trade_weights_sum_to_one(
+        self,
+    ) -> None:
         """Fuzz ToleranceBandRebalancerService across 5 skewed portfolios verifying post_trade_weight sum == 1.0000."""
         for mult in range(1, 6):
             positions = [
@@ -490,7 +520,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
             )
             self.assertEqual(sum(e.post_trade_weight for e in rep.evaluations), Decimal("1.0000"))
 
-    def test_audit_ch7_15_deterministic_fuzzing_karnosky_singer_identity_across_10_fx_shocks(self) -> None:
+    def test_audit_ch7_15_deterministic_fuzzing_karnosky_singer_identity_across_10_fx_shocks(
+        self,
+    ) -> None:
         """Verify Karnosky-Singer additive closure across 10 distinct FX rate multipliers."""
         for fx_Int in (500, 750, 999, 1000, 1001, 1234, 1500, 2500, 5000, 10000):
             rep = self.val_svc.value_portfolio_mark_to_market(
@@ -567,10 +599,16 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
                 extra_hack="x",  # type: ignore[call-arg]
             )
 
-    def test_audit_ch7_19_sql_and_xss_injection_in_tickers_rejected_across_all_services(self) -> None:
+    def test_audit_ch7_19_sql_and_xss_injection_in_tickers_rejected_across_all_services(
+        self,
+    ) -> None:
         """Verify SQLi and XSS payloads in tickers are rejected across 7.1, 7.2, and 7.3."""
         bars = self._build_bars(20)
-        for bad_ticker in ("GGAL'; DROP TABLE orders;--", "<script>alert(1)</script>", "../../etc/passwd"):
+        for bad_ticker in (
+            "GGAL'; DROP TABLE orders;--",
+            "<script>alert(1)</script>",
+            "../../etc/passwd",
+        ):
             with self.assertRaises((InvalidIndicatorParameterError, ValidationError)):
                 self.ind_svc.compute_snapshot(bars, ticker=bad_ticker)
             with self.assertRaises(ValidationError):
@@ -596,7 +634,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 RebalancePositionInput(ticker="GGAL", quantity=bad_dec, market_price=Decimal("100"))
 
-    def test_audit_ch7_21_signal_generator_sell_intent_with_hold_action_rejected_by_validator(self) -> None:
+    def test_audit_ch7_21_signal_generator_sell_intent_with_hold_action_rejected_by_validator(
+        self,
+    ) -> None:
         """Verify TradingSignalReport rejects HOLD action when order_intent is not None."""
         bars = self._build_bars(25)
         sig = self.sig_svc.generate_signal(bars, ticker="GGAL")
@@ -622,7 +662,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
                 indicators=sig.indicators,
             )
 
-    def test_audit_ch7_22_order_fsm_intent_rejects_inverted_buy_stop_loss_above_reference_price(self) -> None:
+    def test_audit_ch7_22_order_fsm_intent_rejects_inverted_buy_stop_loss_above_reference_price(
+        self,
+    ) -> None:
         """Verify OrderFSMIntent rejects a BUY intent where suggested_stop_loss >= reference_price."""
         with self.assertRaises(ValidationError):
             OrderFSMIntent(
@@ -635,7 +677,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
                 signal_conviction=Decimal("0.5000"),
             )
 
-    def test_audit_ch7_23_order_fsm_intent_rejects_inverted_sell_stop_loss_below_reference_price(self) -> None:
+    def test_audit_ch7_23_order_fsm_intent_rejects_inverted_sell_stop_loss_below_reference_price(
+        self,
+    ) -> None:
         """Verify OrderFSMIntent rejects a SELL intent where suggested_stop_loss <= reference_price."""
         with self.assertRaises(ValidationError):
             OrderFSMIntent(
@@ -681,7 +725,7 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
 
     def test_audit_ch7_26_valuation_curve_with_monthly_withdrawals_and_deposits(self) -> None:
         """Verify evaluate_valuation_curve handles alternating monthly deposits and withdrawals."""
-        base_dt = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        base_dt = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
         snaps = [
             HistoricalValuationSnapshot(
                 as_of=base_dt,
@@ -714,7 +758,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         self.assertEqual(len(curve.points), 4)
         self.assertGreater(curve.performance_ars.twr, Decimal("0.0000"))
 
-    def test_audit_ch7_27_indicator_driven_dynamic_rebalance_high_atr_prevents_premature_trade(self) -> None:
+    def test_audit_ch7_27_indicator_driven_dynamic_rebalance_high_atr_prevents_premature_trade(
+        self,
+    ) -> None:
         """Verify high ATR widens a dynamic tolerance band enough to suppress rebalancing on a volatile asset."""
         ind_map = {
             "GGAL": TechnicalIndicatorsSnapshot(
@@ -739,13 +785,21 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
             raw_specs, ind_map, baseline_atr_pct=Decimal("0.0200")
         )
         positions = [
-            RebalancePositionInput(ticker="GGAL", quantity=Decimal("56"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="AAPL", quantity=Decimal("44"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="GGAL", quantity=Decimal("56"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="AAPL", quantity=Decimal("44"), market_price=Decimal("100")
+            ),
         ]
-        rep = svc.evaluate_and_rebalance(positions=positions, target_specs=cal_specs, as_of=self.as_of)
+        rep = svc.evaluate_and_rebalance(
+            positions=positions, target_specs=cal_specs, as_of=self.as_of
+        )
         self.assertFalse(rep.needs_rebalancing)
 
-    def test_audit_ch7_28_indicator_driven_dynamic_rebalance_low_atr_tightens_band_and_triggers_trade(self) -> None:
+    def test_audit_ch7_28_indicator_driven_dynamic_rebalance_low_atr_tightens_band_and_triggers_trade(
+        self,
+    ) -> None:
         """Verify low ATR tightens a dynamic tolerance band and triggers rebalancing on a 6% weight drift."""
         ind_map = {
             "AAPL": TechnicalIndicatorsSnapshot(
@@ -769,10 +823,16 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
             raw_specs, ind_map, baseline_atr_pct=Decimal("0.0200")
         )
         positions = [
-            RebalancePositionInput(ticker="AAPL", quantity=Decimal("56"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="MSFT", quantity=Decimal("44"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAPL", quantity=Decimal("56"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="MSFT", quantity=Decimal("44"), market_price=Decimal("100")
+            ),
         ]
-        rep = svc.evaluate_and_rebalance(positions=positions, target_specs=cal_specs, as_of=self.as_of)
+        rep = svc.evaluate_and_rebalance(
+            positions=positions, target_specs=cal_specs, as_of=self.as_of
+        )
         self.assertTrue(rep.needs_rebalancing)
         self.assertEqual(rep.breached_tickers, ["AAPL", "MSFT"])
 
@@ -784,7 +844,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         self.assertEqual(sma[-1], Decimal("42.1250"))
         self.assertEqual(ema[-1], Decimal("42.1250"))
 
-    def test_audit_ch7_30_rsi_boundary_100_on_strictly_rising_and_0_on_strictly_falling_series(self) -> None:
+    def test_audit_ch7_30_rsi_boundary_100_on_strictly_rising_and_0_on_strictly_falling_series(
+        self,
+    ) -> None:
         """Verify Wilder RSI hits 100.0000 on monotonic gains and 0.0000 on monotonic losses."""
         up = [Decimal(str(100 + i)) for i in range(20)]
         down = [Decimal(str(200 - i)) for i in range(20)]
@@ -796,7 +858,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         flat = [Decimal("100")] * 20
         self.assertEqual(self.ind_svc.calculate_wilder_rsi(flat, period=14)[-1], Decimal("50.0000"))
 
-    def test_audit_ch7_32_bollinger_percent_b_neutral_half_when_bands_collapse_on_constant_series(self) -> None:
+    def test_audit_ch7_32_bollinger_percent_b_neutral_half_when_bands_collapse_on_constant_series(
+        self,
+    ) -> None:
         """Verify BollingerBandsPoint sets percent_b=0.5000 and bandwidth=0.0000 when upper == lower."""
         flat = [Decimal("100")] * 25
         bb = self.ind_svc.calculate_bollinger_bands(flat, period=20)[-1]
@@ -806,7 +870,7 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
 
     def test_audit_ch7_33_atr_gap_up_and_gap_down_true_range_dominance(self) -> None:
         """Verify ATR uses |high - prev_close| and |low - prev_close| when overnight gaps exceed intraday range."""
-        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        base = datetime(2026, 1, 1, tzinfo=UTC)
         bars = [
             MarketBarDTO(
                 timestamp=base + timedelta(days=i),
@@ -822,7 +886,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         assert atr is not None
         self.assertGreater(atr, Decimal("45.0000"))
 
-    def test_audit_ch7_34_signal_generator_all_indicators_unavailable_emits_hold_with_zero_score(self) -> None:
+    def test_audit_ch7_34_signal_generator_all_indicators_unavailable_emits_hold_with_zero_score(
+        self,
+    ) -> None:
         """Verify 2 bars (where SMA20, EMA26, RSI14, BB20, ATR14 are all None) emits HOLD with 0.0000 score."""
         bars = self._build_bars(2)
         sig = self.sig_svc.generate_signal(bars, ticker="NEWIPO")
@@ -831,7 +897,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         self.assertEqual(len(sig.components), 0)
         self.assertIsNone(sig.order_intent)
 
-    def test_audit_ch7_35_signal_generator_partial_indicators_reweights_active_components(self) -> None:
+    def test_audit_ch7_35_signal_generator_partial_indicators_reweights_active_components(
+        self,
+    ) -> None:
         """Verify 15 bars activates RSI(14) while SMA(20), EMA(12/26), and BB(20) remain unavailable."""
         bars = self._build_bars(15, Decimal("100"), Decimal("2"), Decimal("1"))
         sig = self.sig_svc.generate_signal(bars, ticker="PARTIAL")
@@ -867,7 +935,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         self.assertEqual(p.cost_basis_usd, Decimal("200.0000"))
         self.assertEqual(p.fx_return_component, Decimal("0.0000"))
 
-    def test_audit_ch7_37_rebalancer_conflicting_market_prices_across_same_ticker_lots_rejected(self) -> None:
+    def test_audit_ch7_37_rebalancer_conflicting_market_prices_across_same_ticker_lots_rejected(
+        self,
+    ) -> None:
         """Verify RebalancePositionInput lots for the same ticker with conflicting market prices are rejected."""
         lots = [
             RebalancePositionInput(
@@ -890,11 +960,17 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
                 as_of=self.as_of,
             )
 
-    def test_audit_ch7_38_rebalancer_sell_order_never_exceeds_current_holding_quantity(self) -> None:
+    def test_audit_ch7_38_rebalancer_sell_order_never_exceeds_current_holding_quantity(
+        self,
+    ) -> None:
         """Verify SELL order quantity never exceeds current_quantity even under extreme weight targets."""
         positions = [
-            RebalancePositionInput(ticker="UNLISTED", quantity=Decimal("12.3456"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="CORE", quantity=Decimal("87.6544"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="UNLISTED", quantity=Decimal("12.3456"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="CORE", quantity=Decimal("87.6544"), market_price=Decimal("100")
+            ),
         ]
         targets = [AssetTargetBandSpec(ticker="CORE", target_weight=Decimal("1.0000"))]
         rep = self.reb_svc.evaluate_and_rebalance(
@@ -903,7 +979,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         sell_ord = next(o for o in rep.orders if o.ticker == "UNLISTED")
         self.assertLessEqual(sell_ord.quantity, Decimal("12.3456"))
 
-    def test_audit_ch7_39_rebalancer_cash_conservation_identity_under_high_commission_and_integer_lots(self) -> None:
+    def test_audit_ch7_39_rebalancer_cash_conservation_identity_under_high_commission_and_integer_lots(
+        self,
+    ) -> None:
         """Verify initial_cash + total_sell_gross - total_buy_gross - total_estimated_commissions == projected_ending_cash."""
         svc = ToleranceBandRebalancerService(
             ToleranceBandRebalancerConfig(
@@ -913,7 +991,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
             )
         )
         positions = [
-            RebalancePositionInput(ticker="A1", quantity=Decimal("90"), market_price=Decimal("107")),
+            RebalancePositionInput(
+                ticker="A1", quantity=Decimal("90"), market_price=Decimal("107")
+            ),
             RebalancePositionInput(ticker="A2", quantity=Decimal("10"), market_price=Decimal("83")),
             RebalancePositionInput(ticker="A3", quantity=Decimal("5"), market_price=Decimal("61")),
         ]
@@ -926,15 +1006,24 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
             positions=positions, target_specs=targets, initial_cash=Decimal("250"), as_of=self.as_of
         )
         self.assertEqual(
-            rep.initial_cash + rep.total_sell_gross - rep.total_buy_gross - rep.total_estimated_commissions,
+            rep.initial_cash
+            + rep.total_sell_gross
+            - rep.total_buy_gross
+            - rep.total_estimated_commissions,
             rep.projected_ending_cash,
         )
 
-    def test_audit_ch7_40_rebalancer_fsm_ticket_payload_fields_align_with_order_contract(self) -> None:
+    def test_audit_ch7_40_rebalancer_fsm_ticket_payload_fields_align_with_order_contract(
+        self,
+    ) -> None:
         """Verify every ticket in RebalanceFSMExecutionBatch contains complete order_payload fields."""
         positions = [
-            RebalancePositionInput(ticker="GGAL", quantity=Decimal("80"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="YPFD", quantity=Decimal("20"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="GGAL", quantity=Decimal("80"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="YPFD", quantity=Decimal("20"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("0.5000")),
@@ -971,7 +1060,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         sig = tight_svc.generate_signal(bars, ticker="SENS")
         self.assertIn(sig.action, (SignalAction.BUY, SignalAction.HOLD, SignalAction.SELL))
 
-    def test_audit_ch7_42_technical_indicators_sample_bollinger_ddof_1_wider_than_population_ddof_0(self) -> None:
+    def test_audit_ch7_42_technical_indicators_sample_bollinger_ddof_1_wider_than_population_ddof_0(
+        self,
+    ) -> None:
         """Verify sample Bollinger Bands (ddof=1) produce wider bands than population (ddof=0) on non-flat data."""
         series = [Decimal(str(100 + (i % 5) * 3)) for i in range(25)]
         bb_pop = self.ind_svc.calculate_bollinger_bands(series, period=20, ddof=0)[-1]
@@ -1036,7 +1127,7 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
 
     def test_audit_ch7_48_rebalancer_duplicate_lot_tie_breaking_by_lot_id_determinism(self) -> None:
         """Verify FIFO, LIFO, and HIFO break ties deterministically using lot_id when acquired_at and cost match."""
-        t_same = datetime(2026, 3, 1, tzinfo=timezone.utc)
+        t_same = datetime(2026, 3, 1, tzinfo=UTC)
         lots = [
             RebalancePositionInput(
                 ticker="AAA",
@@ -1065,7 +1156,11 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
             AssetTargetBandSpec(ticker="BBB", target_weight=Decimal("0.5000")),
         ]
-        for pol in (TaxLotSelectionPolicy.FIFO, TaxLotSelectionPolicy.LIFO, TaxLotSelectionPolicy.HIFO):
+        for pol in (
+            TaxLotSelectionPolicy.FIFO,
+            TaxLotSelectionPolicy.LIFO,
+            TaxLotSelectionPolicy.HIFO,
+        ):
             svc = ToleranceBandRebalancerService(ToleranceBandRebalancerConfig(tax_lot_policy=pol))
             rep = svc.evaluate_and_rebalance(positions=lots, target_specs=targets, as_of=self.as_of)
             self.assertEqual(rep.total_estimated_realized_pnl, Decimal("600.0000"))
@@ -1098,12 +1193,16 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         msft_buy = next(o for o in rep.orders if o.ticker == "MSFT")
         self.assertEqual(msft_buy.quantity, Decimal("2.0000"))
 
-    def test_audit_ch7_50_signal_generator_evaluate_from_snapshot_rejects_non_snapshot_input(self) -> None:
+    def test_audit_ch7_50_signal_generator_evaluate_from_snapshot_rejects_non_snapshot_input(
+        self,
+    ) -> None:
         """Verify evaluate_from_snapshot rejects non-TechnicalIndicatorsSnapshot input with InvalidSignalParametersError."""
         with self.assertRaises(InvalidSignalParametersError):
             self.sig_svc.evaluate_from_snapshot("not-a-snapshot")  # type: ignore[arg-type]
 
-    def test_audit_ch7_51_signal_generator_config_rejects_inverted_bollinger_percent_b_thresholds(self) -> None:
+    def test_audit_ch7_51_signal_generator_config_rejects_inverted_bollinger_percent_b_thresholds(
+        self,
+    ) -> None:
         """Verify SignalGeneratorConfig rejects bollinger_lower_percent_b >= bollinger_upper_percent_b."""
         with self.assertRaises(ValidationError):
             SignalGeneratorConfig(
@@ -1119,7 +1218,9 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
                 rsi_overbought=Decimal("30.0000"),
             )
 
-    def test_audit_ch7_53_technical_indicators_insufficient_data_for_custom_period_raises_error(self) -> None:
+    def test_audit_ch7_53_technical_indicators_insufficient_data_for_custom_period_raises_error(
+        self,
+    ) -> None:
         """Verify calculate_sma, calculate_ema, calculate_wilder_rsi, and calculate_atr reject period < 1 or empty series."""
         with self.assertRaises(InsufficientMarketDataError):
             self.ind_svc.calculate_sma([], period=5)
@@ -1130,21 +1231,31 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         with self.assertRaises(InsufficientMarketDataError):
             self.ind_svc.calculate_atr([], period=14)
 
-    def test_audit_ch7_54_portfolio_valuation_rejects_non_snapshot_in_evaluate_valuation_curve(self) -> None:
+    def test_audit_ch7_54_portfolio_valuation_rejects_non_snapshot_in_evaluate_valuation_curve(
+        self,
+    ) -> None:
         """Verify evaluate_valuation_curve rejects non-HistoricalValuationSnapshot elements."""
-        t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        t0 = datetime(2026, 1, 1, tzinfo=UTC)
         snap = HistoricalValuationSnapshot(
             as_of=t0, net_worth_ars=Decimal("1000"), fx_rate_ars_per_usd=Decimal("1000")
         )
         with self.assertRaises(InvalidValuationInputError):
             self.val_svc.evaluate_valuation_curve([snap, "bad-snap"])  # type: ignore[list-item]
 
-    def test_audit_ch7_55_full_chapter7_multi_cycle_rebalance_convergence_to_zero_turnover(self) -> None:
+    def test_audit_ch7_55_full_chapter7_multi_cycle_rebalance_convergence_to_zero_turnover(
+        self,
+    ) -> None:
         """Verify applying the rebalance post-trade quantities and ending cash into a second evaluation yields needs_rebalancing=False."""
         positions = [
-            RebalancePositionInput(ticker="GGAL", quantity=Decimal("80"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="YPFD", quantity=Decimal("10"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="AAPL", quantity=Decimal("10"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="GGAL", quantity=Decimal("80"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="YPFD", quantity=Decimal("10"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="AAPL", quantity=Decimal("10"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("0.4000")),
@@ -1174,4 +1285,3 @@ class TestChapter7AdversarialAudit(unittest.TestCase):
         self.assertFalse(rep2.needs_rebalancing)
         self.assertEqual(rep2.orders, [])
         self.assertEqual(rep2.portfolio_turnover, Decimal("0.0000"))
-

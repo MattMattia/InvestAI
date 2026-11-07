@@ -1,9 +1,9 @@
-from typing import List, Optional, Union
 import uuid
+
 from fastapi import HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.domain.models.asset import Asset, AssetType, Currency, Sector
 from app.domain.models.portfolio import Holding, InvestorProfile, Portfolio
@@ -17,7 +17,7 @@ from app.schemas.user import UserRole
 
 async def get_user_portfolio_or_404(
     portfolio_id: str,
-    user_or_id: Union[UserModel, uuid.UUID, str],
+    user_or_id: UserModel | uuid.UUID | str,
     db: AsyncSession,
     is_admin: bool = False,
 ) -> PortfolioModel:
@@ -31,9 +31,7 @@ async def get_user_portfolio_or_404(
     if isinstance(user_or_id, UserModel):
         uid_str = str(user_or_id.id)
         role_val = (
-            user_or_id.role.value
-            if isinstance(user_or_id.role, UserRole)
-            else str(user_or_id.role)
+            user_or_id.role.value if isinstance(user_or_id.role, UserRole) else str(user_or_id.role)
         )
         is_admin = is_admin or (role_val == UserRole.ADMIN.value)
     else:
@@ -42,9 +40,7 @@ async def get_user_portfolio_or_404(
     stmt = (
         select(PortfolioModel)
         .where(PortfolioModel.id == str(portfolio_id))
-        .options(
-            selectinload(PortfolioModel.holdings).selectinload(HoldingModel.asset)
-        )
+        .options(selectinload(PortfolioModel.holdings).selectinload(HoldingModel.asset))
     )
     result = await db.execute(stmt)
     portfolio = result.scalar_one_or_none()
@@ -67,9 +63,9 @@ async def get_user_portfolio_or_404(
 async def ensure_asset(
     db: AsyncSession,
     ticker: str,
-    asset_type: Optional[str] = None,
+    asset_type: str | None = None,
     currency: str = "ARS",
-    name: Optional[str] = None,
+    name: str | None = None,
     sector: str = "OTHER",
     market: str = "BYMA",
 ) -> AssetModel:
@@ -98,7 +94,7 @@ async def ensure_asset(
 def orm_to_domain_portfolio(
     p_model: PortfolioModel,
     fx_ccl: float = 1300.0,
-    investor_profile: Optional[InvestorProfile] = None,
+    investor_profile: InvestorProfile | None = None,
 ) -> Portfolio:
     """Converts a persisted PortfolioModel into a pure domain Portfolio entity."""
     if investor_profile is None:
@@ -108,7 +104,7 @@ def orm_to_domain_portfolio(
         except Exception:
             investor_profile = InvestorProfile.MODERATE
 
-    domain_holdings: List[Holding] = []
+    domain_holdings: list[Holding] = []
 
     for h in p_model.holdings:
         asset_model = h.asset
@@ -166,8 +162,8 @@ def build_portfolio_response(
     total_holdings_ars = 0.0
     total_holdings_usd = 0.0
 
-    holding_dtos: List[HoldingResponse] = []
-    holding_values_ars: List[float] = []
+    holding_dtos: list[HoldingResponse] = []
+    holding_values_ars: list[float] = []
 
     for h in p_model.holdings:
         is_usd = (h.asset.currency == "USD") if h.asset else False
@@ -216,8 +212,14 @@ def build_portfolio_response(
             )
         )
 
-    total_portfolio_ars = total_holdings_ars + p_model.cash_balance_ars + (p_model.cash_balance_usd * fx_ccl)
-    total_portfolio_usd = total_holdings_usd + p_model.cash_balance_usd + (p_model.cash_balance_ars / fx_ccl if fx_ccl > 0 else 0.0)
+    total_portfolio_ars = (
+        total_holdings_ars + p_model.cash_balance_ars + (p_model.cash_balance_usd * fx_ccl)
+    )
+    total_portfolio_usd = (
+        total_holdings_usd
+        + p_model.cash_balance_usd
+        + (p_model.cash_balance_ars / fx_ccl if fx_ccl > 0 else 0.0)
+    )
 
     for i, h_dto in enumerate(holding_dtos):
         if total_portfolio_ars > 0:

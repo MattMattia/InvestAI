@@ -61,4 +61,3 @@ __all__ = [
     "create_token_pair",
     "decode_token",
 ]
-

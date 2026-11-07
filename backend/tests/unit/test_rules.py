@@ -1,4 +1,5 @@
 import unittest
+
 from app.domain.models.asset import Asset, AssetType, Currency, Sector
 from app.domain.models.portfolio import Holding, InvestorProfile, Portfolio
 from app.domain.models.valuation import ValuationMetrics
@@ -16,9 +17,15 @@ from app.domain.rules.valuation import ValuationAnomalyRule
 class TestRiskRules(unittest.TestCase):
     def setUp(self):
         # Sample Assets
-        self.aapl = Asset("AAPL", "Apple Inc.", AssetType.CEDEAR, Currency.ARS, Sector.TECHNOLOGY, "US", 10.0)
-        self.msft = Asset("MSFT", "Microsoft", AssetType.CEDEAR, Currency.ARS, Sector.TECHNOLOGY, "US", 10.0)
-        self.al30 = Asset("AL30", "Bono AL30", AssetType.BOND_SOVEREIGN, Currency.ARS, Sector.GOVERNMENT, "AR")
+        self.aapl = Asset(
+            "AAPL", "Apple Inc.", AssetType.CEDEAR, Currency.ARS, Sector.TECHNOLOGY, "US", 10.0
+        )
+        self.msft = Asset(
+            "MSFT", "Microsoft", AssetType.CEDEAR, Currency.ARS, Sector.TECHNOLOGY, "US", 10.0
+        )
+        self.al30 = Asset(
+            "AL30", "Bono AL30", AssetType.BOND_SOVEREIGN, Currency.ARS, Sector.GOVERNMENT, "AR"
+        )
         self.ypf = Asset("YPFD", "YPF S.A.", AssetType.EQUITY, Currency.ARS, Sector.ENERGY, "AR")
 
     # =========================================================================
@@ -44,11 +51,19 @@ class TestRiskRules(unittest.TestCase):
         # Total = 10000. AAPL = 2000 (20%), MSFT = 4000 (40%), AL30 = 4000 (40%). Limit = 15%.
         # AAPL (20%) is > 15% but < 15%*1.3 (19.5%) -> wait, 20% > 19.5% -> Critical.
         # Let's adjust: limit = 20%. AAPL = 22% (Warning), MSFT = 40% (Critical).
-        h_aapl = Holding(self.aapl, quantity=22, average_buy_price=100.0, current_price=100.0) # 2200 (22%)
-        h_msft = Holding(self.msft, quantity=40, average_buy_price=100.0, current_price=100.0) # 4000 (40%)
-        h_al30 = Holding(self.al30, quantity=38, average_buy_price=100.0, current_price=100.0) # 3800 (38%)
+        h_aapl = Holding(
+            self.aapl, quantity=22, average_buy_price=100.0, current_price=100.0
+        )  # 2200 (22%)
+        h_msft = Holding(
+            self.msft, quantity=40, average_buy_price=100.0, current_price=100.0
+        )  # 4000 (40%)
+        h_al30 = Holding(
+            self.al30, quantity=38, average_buy_price=100.0, current_price=100.0
+        )  # 3800 (38%)
 
-        portfolio = Portfolio("p2", "Concentrated", InvestorProfile.MODERATE, [h_aapl, h_msft, h_al30])
+        portfolio = Portfolio(
+            "p2", "Concentrated", InvestorProfile.MODERATE, [h_aapl, h_msft, h_al30]
+        )
         rule = MaxAssetConcentrationRule(default_max_pct=20.0)
 
         results = rule.evaluate(portfolio)
@@ -71,7 +86,9 @@ class TestRiskRules(unittest.TestCase):
         h_msft = Holding(self.msft, quantity=35, average_buy_price=100.0, current_price=100.0)
         h_al30 = Holding(self.al30, quantity=30, average_buy_price=100.0, current_price=100.0)
 
-        portfolio = Portfolio("p3", "Sector Port", InvestorProfile.MODERATE, [h_aapl, h_msft, h_al30])
+        portfolio = Portfolio(
+            "p3", "Sector Port", InvestorProfile.MODERATE, [h_aapl, h_msft, h_al30]
+        )
         rule = MaxSectorConcentrationRule(default_max_pct=35.0)
 
         results = rule.evaluate(portfolio)
@@ -145,7 +162,9 @@ class TestRiskRules(unittest.TestCase):
         )
 
         rule = ValuationAnomalyRule(max_peg=2.0)
-        results = rule.evaluate(portfolio, context={"valuations": {"AAPL": val_aapl, "YPFD": val_ypf}})
+        results = rule.evaluate(
+            portfolio, context={"valuations": {"AAPL": val_aapl, "YPFD": val_ypf}}
+        )
 
         res_map = {r.details["ticker"]: r for r in results}
 
@@ -190,17 +209,25 @@ class TestRiskRules(unittest.TestCase):
     # 6. Full RiskEngine Orchestration with all Rules
     # =========================================================================
     def test_risk_engine_full_suite(self):
-        h_aapl = Holding(self.aapl, quantity=80, average_buy_price=100.0, current_price=100.0) # 80% Tech
-        h_al30 = Holding(self.al30, quantity=20, average_buy_price=100.0, current_price=100.0) # 20% Gov / FI
+        h_aapl = Holding(
+            self.aapl, quantity=80, average_buy_price=100.0, current_price=100.0
+        )  # 80% Tech
+        h_al30 = Holding(
+            self.al30, quantity=20, average_buy_price=100.0, current_price=100.0
+        )  # 20% Gov / FI
 
-        portfolio = Portfolio("p9", "Full Engine Port", InvestorProfile.CONSERVATIVE, [h_aapl, h_al30])
+        portfolio = Portfolio(
+            "p9", "Full Engine Port", InvestorProfile.CONSERVATIVE, [h_aapl, h_al30]
+        )
 
-        engine = RiskEngine([
-            MaxAssetConcentrationRule(),
-            MaxSectorConcentrationRule(),
-            MinFixedIncomeAllocationRule(),
-            ImplicitFXDivergenceRule(),
-        ])
+        engine = RiskEngine(
+            [
+                MaxAssetConcentrationRule(),
+                MaxSectorConcentrationRule(),
+                MinFixedIncomeAllocationRule(),
+                ImplicitFXDivergenceRule(),
+            ]
+        )
 
         report = engine.evaluate(
             portfolio,
@@ -212,7 +239,9 @@ class TestRiskRules(unittest.TestCase):
 
         self.assertEqual(report.compliance_status, ComplianceStatus.NON_COMPLIANT)
         self.assertGreater(report.critical_alerts_count, 0)
-        self.assertEqual(report.total_rules_evaluated, 7)  # 2 assets + 2 sectors + 1 FI floor + 2 FX tickers = 7
+        self.assertEqual(
+            report.total_rules_evaluated, 7
+        )  # 2 assets + 2 sectors + 1 FI floor + 2 FX tickers = 7
         self.assertIsNotNone(report.evaluated_at)
 
 

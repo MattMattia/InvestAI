@@ -4,13 +4,13 @@ Verifica generación, firma, verificación de claims RFC 7519, expiración, dete
 mitigación de Algorithm Confusion, tolerancia de reloj (leeway), validación de tipos de token (access y refresh),
 factoría atómica create_token_pair, contratos RefreshTokenRequest y prevención de Token Confusion.
 """
-from datetime import datetime, timedelta, timezone
+
 import unittest
 import uuid
+from datetime import UTC, datetime, timedelta
+
 import jwt
 import pytest
-from pydantic import ValidationError
-
 from app.core.config import settings
 from app.core.security import (
     ExpiredTokenError,
@@ -29,6 +29,7 @@ from app.schemas.token import (
     TokenType,
 )
 from app.schemas.user import UserRole
+from pydantic import ValidationError
 
 
 @pytest.mark.unit
@@ -56,8 +57,8 @@ class TestSecurityJWT(unittest.TestCase):
         self.assertEqual(payload.type, TokenType.ACCESS)
         self.assertEqual(payload.email, email)
         self.assertTrue(len(payload.jti) > 10)
-        self.assertEqual(payload.exp.tzinfo, timezone.utc)
-        self.assertEqual(payload.iat.tzinfo, timezone.utc)
+        self.assertEqual(payload.exp.tzinfo, UTC)
+        self.assertEqual(payload.iat.tzinfo, UTC)
         self.assertTrue(payload.exp > payload.iat)
 
     def test_create_and_decode_refresh_token_success(self):
@@ -228,7 +229,7 @@ class TestSecurityJWT(unittest.TestCase):
 
     def test_wrong_secret_key_raises_invalid_token_error(self):
         """Valida que decodificar un token firmado con una clave secreta ajena arroje InvalidTokenError."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         foreign_payload = {
             "sub": "attacker_user",
             "role": "ADMIN",
@@ -248,7 +249,7 @@ class TestSecurityJWT(unittest.TestCase):
 
     def test_algorithm_confusion_mitigation_none_rejected(self):
         """Valida que un token con encabezado alg='none' sea rechazado defensivamente por PyJWT."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payload = {
             "sub": "fake_admin",
             "role": "ADMIN",
@@ -267,7 +268,7 @@ class TestSecurityJWT(unittest.TestCase):
 
     def test_clock_leeway_tolerance(self):
         """Valida que pequeñas asimetrías de reloj (leeway de 10s) en nbf/iat no fallen."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         future_skew_payload = {
             "sub": "skewed_user",
             "role": "VIEWER",
@@ -288,7 +289,7 @@ class TestSecurityJWT(unittest.TestCase):
 
     def test_token_type_validation(self):
         """Valida que la decodificación respete expected_type."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         refresh_payload = {
             "sub": "user_id_123",
             "role": "TRADER",
@@ -341,7 +342,7 @@ class TestSecurityJWT(unittest.TestCase):
 
     def test_token_payload_and_response_schemas_immutability(self):
         """Valida inmutabilidad (frozen), rechazo de campos extras y serialización de contratos de token con y sin refresh."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payload = TokenPayload(
             sub="user_abc",
             role=UserRole.ADMIN,
@@ -397,7 +398,7 @@ class TestSecurityJWT(unittest.TestCase):
         Valida que un token firmado con tipos de claims corruptos (ej. role inválido,
         sub vacío o timestamps fuera de rango C time_t) arroje InvalidTokenError y nunca 500.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Caso 1: Rol inexistente en el enum UserRole
         bad_role_payload = {
             "sub": "user_123",
@@ -435,4 +436,3 @@ class TestSecurityJWT(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

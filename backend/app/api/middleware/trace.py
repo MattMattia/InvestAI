@@ -3,10 +3,12 @@ Middleware de trazabilidad y correlación de solicitudes (OBS-01).
 Inyecta identificadores de correlación (X-Request-ID) y medición de latencia (X-Execution-Time-Ms).
 Mantiene un ContextVar accesible en cualquier capa de la aplicación sin acoplamiento.
 """
-from contextvars import ContextVar
+
 import time
-from typing import Callable
 import uuid
+from collections.abc import Callable
+from contextvars import ContextVar
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -45,4 +47,3 @@ class RequestTraceMiddleware(BaseHTTPMiddleware):
             return response
         finally:
             request_id_ctx.reset(token)
-

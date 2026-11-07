@@ -3,14 +3,13 @@ Unit test suite for Module 6.2 (Phases 2 & 3): Accounting Integrity Service,
 EPS <= 0 Indeterminate Labeling, Dual-Currency Fundamental Valuation, and
 Stress Testing on Negative Net Worth, Operating-Loss Startups, and Delisted Assets.
 """
+
 from __future__ import annotations
 
-from decimal import Decimal
 import unittest
+from decimal import Decimal
 
-from pydantic import ValidationError
 import pytest
-
 from app.domain.services.accounting_integrity import (
     AccountingIntegrityService,
     AccountingRiskFlag,
@@ -20,6 +19,7 @@ from app.domain.services.accounting_integrity import (
 )
 from app.domain.services.ingestion.base_parser import RawHoldingRecord
 from app.domain.services.ingestion.data_cleaning_pipeline import DataCleaningPipeline
+from pydantic import ValidationError
 
 
 @pytest.mark.unit
@@ -230,9 +230,7 @@ class TestAccountingIntegrity(unittest.TestCase):
         self.assertEqual(rep.pb_ratio.status, RatioStatus.INDETERMINATE)
         self.assertEqual(rep.peg_ratio.status, RatioStatus.INDETERMINATE)
         self.assertEqual(rep.dividend_yield.status, RatioStatus.INDETERMINATE)
-        self.assertIn(
-            AccountingRiskFlag.DELISTED_OR_INVALID_PRICE, rep.risk_flags
-        )
+        self.assertIn(AccountingRiskFlag.DELISTED_OR_INVALID_PRICE, rep.risk_flags)
 
         with self.assertRaises(ValidationError):
             FundamentalInputs(ticker="GGAL", price=True)  # type: ignore[arg-type]
@@ -406,9 +404,7 @@ class TestAccountingIntegrity(unittest.TestCase):
             self.assertIsNone(rep.peg_ratio.value)
             self.assertEqual(rep.dividend_yield.status, RatioStatus.INDETERMINATE)
             self.assertIsNone(rep.dividend_yield.value)
-            self.assertIn(
-                AccountingRiskFlag.DELISTED_OR_INVALID_PRICE, rep.risk_flags
-            )
+            self.assertIn(AccountingRiskFlag.DELISTED_OR_INVALID_PRICE, rep.risk_flags)
             # Accounting ROE remains valid (100,000 / 500,000 = 0.2000)
             self.assertEqual(rep.roe.status, RatioStatus.VALID)
             self.assertEqual(rep.roe.value, Decimal("0.2000"))
@@ -622,12 +618,10 @@ class TestAccountingIntegrity(unittest.TestCase):
 
         # YPFD is healthy and must be excluded from anomaly_summary
         self.assertNotIn("YPFD", anomaly_summary)
-        self.assertEqual( set(anomaly_summary.keys()), {"COME", "GLOB"})
+        self.assertEqual(set(anomaly_summary.keys()), {"COME", "GLOB"})
         self.assertEqual(
             anomaly_summary["COME"],
             [AccountingRiskFlag.ZERO_EARNINGS],
         )
         self.assertIn(AccountingRiskFlag.NEGATIVE_EARNINGS, anomaly_summary["GLOB"])
         self.assertIn(AccountingRiskFlag.NEGATIVE_BOOK_VALUE, anomaly_summary["GLOB"])
-
-

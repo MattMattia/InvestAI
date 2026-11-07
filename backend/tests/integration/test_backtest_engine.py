@@ -1,8 +1,7 @@
 import datetime as dt
 import unittest
-from typing import Dict, List, Tuple
-import numpy as np
 
+import numpy as np
 from app.domain.models.order import OrderState
 from app.domain.services.backtest_engine import BacktestEngine
 from app.schemas.backtest import (
@@ -16,26 +15,26 @@ from app.schemas.backtest import (
 def _generate_synthetic_market_data(
     start_date: dt.date,
     n_days: int = 252,
-) -> Tuple[List[dt.date], Dict[str, Dict[dt.date, float]]]:
+) -> tuple[list[dt.date], dict[str, dict[dt.date, float]]]:
     """Genera series históricas sintéticas deterministas para pruebas de integración."""
     np.random.seed(42)
-    dates: List[dt.date] = []
+    dates: list[dt.date] = []
     curr = start_date
     while len(dates) < n_days:
         if curr.weekday() < 5:
             dates.append(curr)
         curr += dt.timedelta(days=1)
 
-    p_aapl = 150.0   # CEDEAR
+    p_aapl = 150.0  # CEDEAR
     p_ggal = 2500.0  # Renta variable local
-    p_al30 = 55.0    # Bono soberano
+    p_al30 = 55.0  # Bono soberano
 
-    prices: Dict[str, Dict[dt.date, float]] = {"AAPL": {}, "GGAL": {}, "AL30": {}}
+    prices: dict[str, dict[dt.date, float]] = {"AAPL": {}, "GGAL": {}, "AL30": {}}
 
     for d in dates:
-        p_aapl *= (1.0 + float(np.random.normal(0.0006, 0.012)))
-        p_ggal *= (1.0 + float(np.random.normal(0.0008, 0.022)))
-        p_al30 *= (1.0 + float(np.random.normal(0.0003, 0.006)))
+        p_aapl *= 1.0 + float(np.random.normal(0.0006, 0.012))
+        p_ggal *= 1.0 + float(np.random.normal(0.0008, 0.022))
+        p_al30 *= 1.0 + float(np.random.normal(0.0003, 0.006))
 
         prices["AAPL"][d] = round(p_aapl, 2)
         prices["GGAL"][d] = round(p_ggal, 2)
@@ -116,8 +115,8 @@ class TestBacktestEngineIntegration(unittest.TestCase):
             friction_config=BacktestFrictionConfig(
                 alyc_commission_rate=0.01,  # 1%
                 min_commission_fee=50.0,
-                market_fee_rate=0.002,     # 0.20%
-                slippage_rate=0.003,       # 0.30%
+                market_fee_rate=0.002,  # 0.20%
+                slippage_rate=0.003,  # 0.30%
             ),
         )
 

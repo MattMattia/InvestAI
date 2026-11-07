@@ -3,8 +3,10 @@ Módulo central de inyección de dependencias para la API de InvestAI.
 Garantiza gestión de sesiones asíncronas de base de datos, extracción y validación
 estricta de tokens OAuth2 Bearer, resolución de identidad de usuario y control de acceso RBAC.
 """
-from typing import Annotated, AsyncGenerator, Sequence
+
 import uuid
+from collections.abc import AsyncGenerator, Sequence
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -72,13 +74,13 @@ async def get_current_token_payload(
                     'Bearer error="invalid_token", error_description="The token has expired"'
                 )
             },
-        )
+        ) from None
     except InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
-        )
+        ) from None
 
 
 async def get_current_user(
@@ -131,9 +133,7 @@ class RoleChecker:
     """
 
     def __init__(self, allowed_roles: Sequence[UserRole] | set[UserRole]) -> None:
-        self.allowed_roles = {
-            r.value if isinstance(r, UserRole) else str(r) for r in allowed_roles
-        }
+        self.allowed_roles = {r.value if isinstance(r, UserRole) else str(r) for r in allowed_roles}
 
     async def __call__(
         self,
@@ -272,4 +272,3 @@ __all__ = [
     "check_register_rate_limit",
     "get_market_service",
 ]
-

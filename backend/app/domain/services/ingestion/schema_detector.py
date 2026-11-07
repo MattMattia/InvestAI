@@ -2,12 +2,13 @@
 Automatic schema detection and fuzzy column header normalization for local
 broker statements (Module 6.1 - Phase 2).
 """
+
 from __future__ import annotations
 
-from collections.abc import Sequence
 import difflib
-from enum import Enum
 import re
+from collections.abc import Sequence
+from enum import Enum
 from typing import Any
 
 from pydantic import Field
@@ -52,9 +53,7 @@ class DetectedSchemaResult(BaseSchema):
     """Immutable result of running schema detection on a candidate header row."""
 
     header_row_index: int = Field(ge=0)
-    mappings: dict[CanonicalReportField, DetectedColumnMapping] = Field(
-        default_factory=dict
-    )
+    mappings: dict[CanonicalReportField, DetectedColumnMapping] = Field(default_factory=dict)
     unmapped_headers: list[str] = Field(default_factory=list)
 
     def has_required_fields(self) -> bool:
@@ -271,9 +270,7 @@ class SchemaDetector:
             raw_str = "" if cell is None else str(cell).strip()
             truncated_raw = raw_str[:MAX_HEADER_LENGTH]
             raw_headers.append(truncated_raw)
-            normalized_headers.append(
-                normalize_header_name(truncated_raw)[:MAX_HEADER_LENGTH]
-            )
+            normalized_headers.append(normalize_header_name(truncated_raw)[:MAX_HEADER_LENGTH])
 
         candidates: list[tuple[float, int, int, CanonicalReportField]] = []
         field_order = list(CanonicalReportField)
@@ -381,10 +378,7 @@ class SchemaDetector:
             return 1.0
 
         # 2. Exact fallback synonym match for AVG_PRICE
-        if (
-            field == CanonicalReportField.AVG_PRICE
-            and header in _AVG_PRICE_FALLBACK_SYNONYMS
-        ):
+        if field == CanonicalReportField.AVG_PRICE and header in _AVG_PRICE_FALLBACK_SYNONYMS:
             return _AVG_PRICE_FALLBACK_SCORE
 
         # Prevent unrelated administrative/accounting columns from fuzzy-matching
@@ -416,8 +410,7 @@ class SchemaDetector:
                 continue
 
             is_fallback_syn = (
-                field == CanonicalReportField.AVG_PRICE
-                and syn in _AVG_PRICE_FALLBACK_SYNONYMS
+                field == CanonicalReportField.AVG_PRICE and syn in _AVG_PRICE_FALLBACK_SYNONYMS
             )
             max_allowed = _AVG_PRICE_FALLBACK_SCORE if is_fallback_syn else 1.0
 
@@ -437,9 +430,7 @@ class SchemaDetector:
             # Guard: if multi-word synonym shares a generic suffix like "de liquidacion",
             # require first token similarity >= 0.65 so unrelated prefixes don't false-match.
             if len(syn_tokens) > 1 and len(header_tokens) > 1:
-                head_ratio = difflib.SequenceMatcher(
-                    None, header_tokens[0], syn_tokens[0]
-                ).ratio()
+                head_ratio = difflib.SequenceMatcher(None, header_tokens[0], syn_tokens[0]).ratio()
                 if head_ratio < 0.65 and syn_tokens[0] not in header_token_set:
                     continue
 
@@ -449,4 +440,3 @@ class SchemaDetector:
                 best_score = capped_ratio
 
         return best_score
-

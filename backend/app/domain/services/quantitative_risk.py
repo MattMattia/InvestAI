@@ -1,5 +1,5 @@
 from statistics import NormalDist
-from typing import Union
+
 import numpy as np
 
 
@@ -22,11 +22,15 @@ def ledoit_wolf_covariance(returns: np.ndarray) -> np.ndarray:
     if np.isnan(arr).any() or np.isinf(arr).any():
         raise ValueError("La matriz de retornos contiene valores NaN o Infinitos.")
     if arr.ndim != 2:
-        raise ValueError(f"returns debe ser una matriz 2D de dimensiones (T, N). Dimensiones dadas: {arr.ndim}")
+        raise ValueError(
+            f"returns debe ser una matriz 2D de dimensiones (T, N). Dimensiones dadas: {arr.ndim}"
+        )
 
     t_obs, n_assets = arr.shape
     if t_obs < 2:
-        raise ValueError(f"Se requieren al menos 2 periodos temporales (T >= 2). T recibido: {t_obs}")
+        raise ValueError(
+            f"Se requieren al menos 2 periodos temporales (T >= 2). T recibido: {t_obs}"
+        )
     if n_assets == 0:
         raise ValueError("La matriz de retornos no contiene activos (N = 0).")
     if n_assets == 1:
@@ -46,7 +50,7 @@ def ledoit_wolf_covariance(returns: np.ndarray) -> np.ndarray:
 
     # 4. Squared Frobenius norm between S and F: d^2 = ||S - F||_F^2
     diff_sf = s - f
-    d2 = float(np.sum(diff_sf ** 2))
+    d2 = float(np.sum(diff_sf**2))
     if d2 < 1e-15:
         # S is already proportional to identity
         return s
@@ -61,7 +65,7 @@ def ledoit_wolf_covariance(returns: np.ndarray) -> np.ndarray:
         zt = np.outer(xt, xt)
         sum_b_bar += float(np.sum((zt - s) ** 2))
 
-    b_bar2 = sum_b_bar / (t_obs ** 2)
+    b_bar2 = sum_b_bar / (t_obs**2)
 
     # 6. Optimal shrinkage intensity delta* in [0, 1]
     b2 = min(b_bar2, d2)
@@ -81,7 +85,7 @@ def ledoit_wolf_covariance(returns: np.ndarray) -> np.ndarray:
     return shrunk_cov
 
 
-def calculate_skewness(returns: Union[np.ndarray, list]) -> float:
+def calculate_skewness(returns: np.ndarray | list) -> float:
     """
     Computes sample skewness (third standardized central moment) for a return series:
         Skewness = E[(R - mu)^3] / sigma^3
@@ -98,11 +102,11 @@ def calculate_skewness(returns: Union[np.ndarray, list]) -> float:
         return 0.0
 
     m3 = float(np.mean((arr - mean) ** 3))
-    skew = m3 / (variance ** 1.5)
+    skew = m3 / (variance**1.5)
     return round(float(skew), 4)
 
 
-def calculate_kurtosis(returns: Union[np.ndarray, list]) -> float:
+def calculate_kurtosis(returns: np.ndarray | list) -> float:
     """
     Computes excess kurtosis (fourth standardized central moment minus 3.0):
         Excess Kurtosis = (E[(R - mu)^4] / sigma^4) - 3.0
@@ -121,12 +125,12 @@ def calculate_kurtosis(returns: Union[np.ndarray, list]) -> float:
         return 0.0
 
     m4 = float(np.mean((arr - mean) ** 4))
-    kurt = (m4 / (variance ** 2)) - 3.0
+    kurt = (m4 / (variance**2)) - 3.0
     return round(float(kurt), 4)
 
 
 def calculate_var(
-    returns: Union[np.ndarray, list],
+    returns: np.ndarray | list,
     alpha: float = 0.95,
     method: str = "historical",
 ) -> float:
@@ -163,11 +167,13 @@ def calculate_var(
         return round(float(var), 6)
 
     else:
-        raise ValueError(f"Método de VaR no soportado: '{method}'. Opciones: 'historical', 'parametric'.")
+        raise ValueError(
+            f"Método de VaR no soportado: '{method}'. Opciones: 'historical', 'parametric'."
+        )
 
 
 def calculate_cvar(
-    returns: Union[np.ndarray, list],
+    returns: np.ndarray | list,
     alpha: float = 0.95,
 ) -> float:
     """

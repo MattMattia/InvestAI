@@ -1,5 +1,6 @@
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domain.services.ingestion.data_cleaning_pipeline import InvalidHoldingRecord
@@ -14,12 +15,16 @@ class RawHoldingRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", str_strip_whitespace=True)
 
     ticker: str = Field(..., description="Símbolo o ticker bursátil del activo")
-    quantity: float = Field(..., description="Cantidad nominal de títulos en cartera (estrictamente positiva)")
+    quantity: float = Field(
+        ..., description="Cantidad nominal de títulos en cartera (estrictamente positiva)"
+    )
     purchase_price: float = Field(default=0.0, description="Precio promedio de compra ponderado")
     current_price: float = Field(default=0.0, description="Precio o cotización de mercado actual")
     currency: str = Field(default="ARS", description="Moneda de denominación (ARS o USD)")
-    market: Optional[str] = Field(default=None, description="Plaza de negociación (ej. BCBA, BYMA, NYSE, NASDAQ)")
-    asset_type: Optional[str] = Field(default=None, description="Tipo de instrumento financiero")
+    market: str | None = Field(
+        default=None, description="Plaza de negociación (ej. BCBA, BYMA, NYSE, NASDAQ)"
+    )
+    asset_type: str | None = Field(default=None, description="Tipo de instrumento financiero")
 
     @field_validator("ticker", mode="before")
     @classmethod
@@ -59,15 +64,21 @@ class IngestionBatchPayload(BaseModel):
 
     user_id: str = Field(..., description="Identificador del usuario propietario")
     portfolio_name: str = Field(..., description="Nombre del portafolio destino")
-    records: List[RawHoldingRecord] = Field(..., description="Lista de registros de tenencia saneados")
-    implicit_fx_rate: Optional[float] = Field(default=None, description="Tipo de cambio implícito CCL/MEP de referencia")
+    records: list[RawHoldingRecord] = Field(
+        ..., description="Lista de registros de tenencia saneados"
+    )
+    implicit_fx_rate: float | None = Field(
+        default=None, description="Tipo de cambio implícito CCL/MEP de referencia"
+    )
 
     @field_validator("implicit_fx_rate")
     @classmethod
-    def validate_fx_rate(cls, v: Optional[float]) -> Optional[float]:
+    def validate_fx_rate(cls, v: float | None) -> float | None:
         if v is not None:
             if not math.isfinite(v) or v <= 0:
-                raise ValueError("El tipo de cambio implícito debe ser un valor estrictamente positivo.")
+                raise ValueError(
+                    "El tipo de cambio implícito debe ser un valor estrictamente positivo."
+                )
         return v
 
 
@@ -80,7 +91,7 @@ class IngestionUploadResponse(BaseModel):
     discarded_records_count: int
     is_successful: bool
     has_partial_errors: bool
-    errors: List[Dict[str, Any]] = Field(default_factory=list)
+    errors: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class IngestionReportSummary(BaseSchema):
@@ -113,4 +124,3 @@ class IngestionReportSummary(BaseSchema):
                 f"len(invalid_records) ({len(self.invalid_records)})"
             )
         return self
-

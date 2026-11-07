@@ -4,21 +4,19 @@ Unit test suite for Module 7.1 (Phases 1, 2 & 3):
 - Trading Signal Generation Engine (`backend/app/domain/services/signal_generator.py`)
 - Analytical Benchmark Reference Series & Scale Boundary Stress Tests
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 import unittest
-
-from pydantic import ValidationError
-import pytest
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import app.domain.services as domain_services_pkg
+import pytest
 from app.domain.services.signal_generator import (
     InvalidSignalParametersError,
     OrderFSMIntent,
     SignalAction,
-    SignalComponentEvaluation,
     SignalGeneratorConfig,
     SignalGeneratorService,
     SignalRuleType,
@@ -35,6 +33,7 @@ from app.domain.services.technical_indicators import (
     _quantize,
 )
 from app.schemas.market_data import MarketBarDTO
+from pydantic import ValidationError
 
 
 def _make_bar(
@@ -46,7 +45,7 @@ def _make_bar(
     volume: str | Decimal = "1000",
 ) -> MarketBarDTO:
     """Create a canonical UTC MarketBarDTO at a deterministic daily offset."""
-    base_ts = datetime(2026, 1, 1, 18, 0, tzinfo=timezone.utc)
+    base_ts = datetime(2026, 1, 1, 18, 0, tzinfo=UTC)
     return MarketBarDTO(
         timestamp=base_ts + timedelta(days=day_offset),
         open=Decimal(str(open_p)),
@@ -99,15 +98,12 @@ class TestTechnicalIndicators(unittest.TestCase):
         # prices = [100, 105, 110, 115, 130]
         # seed = (100+105+110+115)/4 = 107.5000
         # next = (130 - 107.5)*0.4 + 107.5 = 9.0 + 107.5 = 116.5000
-        ema_4 = self.service.calculate_ema(
-            [100, 105, 110, 115, 130], period=4
-        )
+        ema_4 = self.service.calculate_ema([100, 105, 110, 115, 130], period=4)
         self.assertEqual(ema_4, [Decimal("107.5000"), Decimal("116.5000")])
 
         # Unsorted MarketBarDTO sequence produces identical results to sorted
         bars_sorted = [
-            _make_bar(idx, p, p + Decimal("5"), p - Decimal("5"), p)
-            for idx, p in enumerate(prices)
+            _make_bar(idx, p, p + Decimal("5"), p - Decimal("5"), p) for idx, p in enumerate(prices)
         ]
         bars_shuffled = [
             bars_sorted[3],
@@ -171,9 +167,7 @@ class TestTechnicalIndicators(unittest.TestCase):
         3. Extreme volatility shock where lower_band becomes negative without failing validation.
         """
         # 1. Flat market
-        flat_bars = [
-            _make_bar(i, "100", "100", "100", "100") for i in range(5)
-        ]
+        flat_bars = [_make_bar(i, "100", "100", "100", "100") for i in range(5)]
         bb_flat = self.service.calculate_bollinger_bands(
             flat_bars, period=5, num_std_dev=Decimal("2"), ddof=0
         )
@@ -329,16 +323,14 @@ class TestTechnicalIndicators(unittest.TestCase):
 
         with self.assertRaises(InvalidIndicatorParameterError):
             self.service.calculate_bollinger_bands(
-                [Decimal("100")] * 5, period=5, num_std_dev=True  # type: ignore[arg-type]
+                [Decimal("100")] * 5,
+                period=5,
+                num_std_dev=True,  # type: ignore[arg-type]
             )
         with self.assertRaises(InvalidIndicatorParameterError):
-            self.service.calculate_bollinger_bands(
-                [Decimal("100")] * 5, period=5, ddof=2
-            )
+            self.service.calculate_bollinger_bands([Decimal("100")] * 5, period=5, ddof=2)
         with self.assertRaises(InvalidIndicatorParameterError):
-            self.service.calculate_bollinger_bands(
-                [Decimal("100")], period=1, ddof=1
-            )
+            self.service.calculate_bollinger_bands([Decimal("100")], period=1, ddof=1)
 
         # 3. Invalid prices in scalar series (bool, <= 0, NaN, Inf, > MAX_VALID_BAR_PRICE)
         for bad_val in (
@@ -362,7 +354,7 @@ class TestTechnicalIndicators(unittest.TestCase):
 
         # 5. Corrupted MarketBarDTO bypassing Pydantic via model_construct (high < close)
         corrupted_bar = MarketBarDTO.model_construct(
-            timestamp=datetime(2026, 1, 2, 18, 0, tzinfo=timezone.utc),
+            timestamp=datetime(2026, 1, 2, 18, 0, tzinfo=UTC),
             open=Decimal("100"),
             high=Decimal("90"),
             low=Decimal("80"),
@@ -384,13 +376,15 @@ class TestTechnicalIndicators(unittest.TestCase):
         with self.assertRaises(ValidationError):
             TechnicalIndicatorsSnapshot(
                 ticker="GGAL\x00",
-                as_of=datetime(2026, 1, 2, 18, 0, tzinfo=timezone.utc),
+                as_of=datetime(2026, 1, 2, 18, 0, tzinfo=UTC),
                 close=Decimal("100"),
             )
 
-    def test_signal_generator_bullish_crossover_and_oversold_emits_buy_with_fsm_intent(self) -> None:
+    def test_signal_generator_bullish_crossover_and_oversold_emits_buy_with_fsm_intent(
+        self,
+    ) -> None:
         """Verify bullish EMA(12)/EMA(26) crossover + oversold RSI(14) emits BUY with valid OrderFSMIntent."""
-        as_of_ts = datetime(2026, 3, 15, 18, 0, tzinfo=timezone.utc)
+        as_of_ts = datetime(2026, 3, 15, 18, 0, tzinfo=UTC)
         snapshot = TechnicalIndicatorsSnapshot(
             ticker="GGAL",
             as_of=as_of_ts,
@@ -460,9 +454,11 @@ class TestTechnicalIndicators(unittest.TestCase):
             },
         )
 
-    def test_signal_generator_bearish_crossover_and_overbought_emits_sell_with_fsm_intent(self) -> None:
+    def test_signal_generator_bearish_crossover_and_overbought_emits_sell_with_fsm_intent(
+        self,
+    ) -> None:
         """Verify bearish EMA(12)/EMA(26) crossover + overbought RSI(14) emits SELL with directional OrderFSMIntent."""
-        as_of_ts = datetime(2026, 3, 16, 18, 0, tzinfo=timezone.utc)
+        as_of_ts = datetime(2026, 3, 16, 18, 0, tzinfo=UTC)
         snapshot = TechnicalIndicatorsSnapshot(
             ticker="YPFD",
             as_of=as_of_ts,
@@ -513,7 +509,7 @@ class TestTechnicalIndicators(unittest.TestCase):
 
     def test_signal_generator_volatility_breakout_vs_mean_reversion_bollinger(self) -> None:
         """Verify Bollinger mean-reversion vs bandwidth-expansion breakout evaluation."""
-        as_of_ts = datetime(2026, 3, 17, 18, 0, tzinfo=timezone.utc)
+        as_of_ts = datetime(2026, 3, 17, 18, 0, tzinfo=UTC)
         generator = SignalGeneratorService()
 
         # 1. Mean-reversion when %B >= 0.95 WITHOUT bandwidth expansion
@@ -583,7 +579,7 @@ class TestTechnicalIndicators(unittest.TestCase):
         # 1. Neutral lateral regime
         neutral_snapshot = TechnicalIndicatorsSnapshot(
             ticker="ALUA",
-            as_of=datetime(2026, 3, 18, 18, 0, tzinfo=timezone.utc),
+            as_of=datetime(2026, 3, 18, 18, 0, tzinfo=UTC),
             close=Decimal("100.0000"),
             ema_12=Decimal("100.0000"),
             prev_ema_12=Decimal("100.0000"),
@@ -613,10 +609,7 @@ class TestTechnicalIndicators(unittest.TestCase):
         self.assertIsNone(neutral_report.take_profit_price)
 
         # 2. End-to-end generate_signal with a short 5-bar sequence (no indicators available yet)
-        short_bars = [
-            _make_bar(idx, "100", "110", "99", str(100 + idx))
-            for idx in range(5)
-        ]
+        short_bars = [_make_bar(idx, "100", "110", "99", str(100 + idx)) for idx in range(5)]
         short_report = generator.generate_signal(short_bars, ticker="TXAR")
         self.assertEqual(short_report.ticker, "TXAR")
         self.assertEqual(short_report.action, SignalAction.HOLD)
@@ -692,7 +685,7 @@ class TestTechnicalIndicators(unittest.TestCase):
             valid_intent.to_order_payload(True)  # type: ignore[arg-type]
 
         # 6. TradingSignalReport enforces HOLD <-> order_intent=None and BUY/SELL <-> matching order_intent
-        as_of_ts = datetime(2026, 3, 18, 18, 0, tzinfo=timezone.utc)
+        as_of_ts = datetime(2026, 3, 18, 18, 0, tzinfo=UTC)
         dummy_snapshot = TechnicalIndicatorsSnapshot(
             ticker="GGAL",
             as_of=as_of_ts,
@@ -969,8 +962,8 @@ class TestTechnicalIndicators(unittest.TestCase):
         continuation bar t+1 (EMA score = ±0.4000, SMA score = ±0.6000).
         """
         generator = SignalGeneratorService()
-        as_of_t = datetime(2026, 4, 1, 18, 0, tzinfo=timezone.utc)
-        as_of_t1 = datetime(2026, 4, 2, 18, 0, tzinfo=timezone.utc)
+        as_of_t = datetime(2026, 4, 1, 18, 0, tzinfo=UTC)
+        as_of_t1 = datetime(2026, 4, 2, 18, 0, tzinfo=UTC)
 
         # 1. Bullish Golden Cross at bar t -> Continuation at bar t+1
         golden_cross_t = TechnicalIndicatorsSnapshot(
@@ -1090,7 +1083,7 @@ class TestTechnicalIndicators(unittest.TestCase):
         self.assertIsNotNone(upper_rep.indicators.bollinger_20_2)
 
         # 3. Lower scale boundary: microscopic price close == Decimal("0.0001")
-        micro_as_of = datetime(2026, 5, 1, 18, 0, tzinfo=timezone.utc)
+        micro_as_of = datetime(2026, 5, 1, 18, 0, tzinfo=UTC)
         micro_buy_snapshot = TechnicalIndicatorsSnapshot(
             ticker="PENNY",
             as_of=micro_as_of,
@@ -1141,7 +1134,9 @@ class TestTechnicalIndicators(unittest.TestCase):
             sma_1,
             [Decimal("10.1235"), Decimal("20.5556"), Decimal("30.0000")],
         )
-        bars = [_make_bar(i, p, p + Decimal("1"), p - Decimal("1"), p) for i, p in enumerate(prices)]
+        bars = [
+            _make_bar(i, p, p + Decimal("1"), p - Decimal("1"), p) for i, p in enumerate(prices)
+        ]
         self.assertEqual(self.service.calculate_sma(bars, period=1), sma_1)
 
     def test_audit_ti_02_sma_period_2_pairwise_averages(self) -> None:
@@ -1175,7 +1170,14 @@ class TestTechnicalIndicators(unittest.TestCase):
 
     def test_audit_ti_05_sma_monotonic_decreasing_series(self) -> None:
         """Verify SMA(4) strictly decreases when input prices are strictly decreasing."""
-        prices = [Decimal("100"), Decimal("90"), Decimal("80"), Decimal("70"), Decimal("60"), Decimal("50")]
+        prices = [
+            Decimal("100"),
+            Decimal("90"),
+            Decimal("80"),
+            Decimal("70"),
+            Decimal("60"),
+            Decimal("50"),
+        ]
         sma_4 = self.service.calculate_sma(prices, period=4)
         self.assertEqual(
             sma_4,
@@ -1565,7 +1567,7 @@ class TestTechnicalIndicators(unittest.TestCase):
     def test_audit_ti_37_signal_ema_crossover_isolated_bullish_and_bearish_cross(self) -> None:
         """Verify isolated EMA_CROSSOVER rule emits +1.0000 on fresh bullish cross and -1.0000 on fresh bearish cross."""
         gen = SignalGeneratorService()
-        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc)
+        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=UTC)
         bull_snap = TechnicalIndicatorsSnapshot(
             ticker="GGAL",
             as_of=as_of,
@@ -1598,7 +1600,7 @@ class TestTechnicalIndicators(unittest.TestCase):
         gen = SignalGeneratorService()
         snap = TechnicalIndicatorsSnapshot(
             ticker="GGAL",
-            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc),
+            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=UTC),
             close=Decimal("100"),
             ema_12=Decimal("100"),
             ema_26=Decimal("100"),
@@ -1610,7 +1612,7 @@ class TestTechnicalIndicators(unittest.TestCase):
     def test_audit_ti_39_signal_sma_trend_price_vs_sma20_only_fallback(self) -> None:
         """Verify SMA_TREND falls back to close vs SMA(20) (score = ±0.3500) when SMA(50) is None."""
         gen = SignalGeneratorService()
-        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc)
+        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=UTC)
         up_snap = TechnicalIndicatorsSnapshot(
             ticker="GGAL",
             as_of=as_of,
@@ -1636,7 +1638,7 @@ class TestTechnicalIndicators(unittest.TestCase):
         gen = SignalGeneratorService()
         snap = TechnicalIndicatorsSnapshot(
             ticker="GGAL",
-            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc),
+            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=UTC),
             close=Decimal("101"),
             sma_20=Decimal("105"),
             prev_sma_20=Decimal("104"),
@@ -1650,7 +1652,7 @@ class TestTechnicalIndicators(unittest.TestCase):
     def test_audit_ti_41_signal_rsi_regime_exact_boundary_equality_30_and_70(self) -> None:
         """Verify RSI_REGIME triggers BUY at exact rsi_14 == 30.0000 and SELL at exact rsi_14 == 70.0000."""
         gen = SignalGeneratorService()
-        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc)
+        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=UTC)
         rep_30 = gen.evaluate_from_snapshot(
             TechnicalIndicatorsSnapshot(
                 ticker="GGAL", as_of=as_of, close=Decimal("100"), rsi_14=Decimal("30.0000")
@@ -1672,7 +1674,7 @@ class TestTechnicalIndicators(unittest.TestCase):
         gen = SignalGeneratorService()
         snap = TechnicalIndicatorsSnapshot(
             ticker="YPFD",
-            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc),
+            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=UTC),
             close=Decimal("88.0000"),
             ema_12=Decimal("92.0000"),
             ema_26=Decimal("96.0000"),
@@ -1702,7 +1704,7 @@ class TestTechnicalIndicators(unittest.TestCase):
         gen = SignalGeneratorService()
         snap = TechnicalIndicatorsSnapshot(
             ticker="PAMP",
-            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc),
+            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=UTC),
             close=Decimal("112.0000"),
             bollinger_20_2=BollingerBandsPoint(
                 upper_band=Decimal("110.0000"),
@@ -1730,7 +1732,7 @@ class TestTechnicalIndicators(unittest.TestCase):
         # Weighted score = (1.0 * 0.25 - 0.85 * 0.20) / (0.25 + 0.20) = 0.08 / 0.45 = 0.1778
         snap = TechnicalIndicatorsSnapshot(
             ticker="GGAL",
-            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc),
+            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=UTC),
             close=Decimal("100.0000"),
             rsi_14=Decimal("25.0000"),
             bollinger_20_2=BollingerBandsPoint(
@@ -1747,7 +1749,7 @@ class TestTechnicalIndicators(unittest.TestCase):
 
     def test_audit_ti_45_signal_exact_min_conviction_threshold_boundary_buy_sell_hold(self) -> None:
         """Verify composite_score == min_conviction_threshold triggers BUY/SELL while 0.0001 below triggers HOLD."""
-        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc)
+        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=UTC)
         # EMA continuation score is +0.4000
         snap_40 = TechnicalIndicatorsSnapshot(
             ticker="GGAL",
@@ -1771,7 +1773,7 @@ class TestTechnicalIndicators(unittest.TestCase):
     def test_audit_ti_46_signal_flat_doji_atr_zero_uses_one_percent_fallback_brackets(self) -> None:
         """Verify Audit Round 1 fix: when atr_14 == Decimal('0.0000'), fallback 1% of close produces valid brackets."""
         gen = SignalGeneratorService()
-        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc)
+        as_of = datetime(2026, 6, 1, 18, 0, tzinfo=UTC)
         buy_snap = TechnicalIndicatorsSnapshot(
             ticker="GGAL",
             as_of=as_of,
@@ -1802,7 +1804,7 @@ class TestTechnicalIndicators(unittest.TestCase):
         gen = SignalGeneratorService()
         snap = TechnicalIndicatorsSnapshot(
             ticker="GGAL",
-            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=timezone.utc),
+            as_of=datetime(2026, 6, 1, 18, 0, tzinfo=UTC),
             close=Decimal("100.0000"),
             rsi_14=Decimal("20.0000"),
             atr_14=None,
@@ -1838,7 +1840,3 @@ class TestTechnicalIndicators(unittest.TestCase):
         for bad_pid in ("   ", "pf\x00bad", 123):
             with self.assertRaises(InvalidSignalParametersError):
                 intent.to_order_payload(Decimal("10"), portfolio_id=bad_pid)  # type: ignore[arg-type]
-
-
-
-

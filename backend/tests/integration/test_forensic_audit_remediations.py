@@ -7,15 +7,14 @@ Valida:
 4. Ejecución contable (POST /api/v1/orders/{id}/execute) con deducción de aranceles BYMA/CNV y actualización de tenencias, cancelación FSM (/cancel) y defensa anti-IDOR/BOLA.
 5. CRUD completo de cartera (PATCH y DELETE /api/v1/portfolios/{id}).
 """
-from typing import AsyncGenerator
+
 import uuid
+from collections.abc import AsyncGenerator
+
+import app.models  # noqa: F401
 import httpx
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
-
-import app.models  # noqa: F401
 from app.api.deps import get_db_session
 from app.core.database import Base
 from app.core.security import create_access_token, get_password_hash
@@ -28,6 +27,8 @@ from app.domain.services.ingestion.schema_detector import (
 from app.main import app
 from app.models.user import UserModel
 from app.schemas.user import UserRole
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 
 @pytest_asyncio.fixture
@@ -152,12 +153,12 @@ def test_balanz_real_header_detection_and_descriptive_ticker_cleaning() -> None:
 
     # Verify full CSV parsing + cleaning pipeline on Balanz format
     csv_content = (
-        "Tenencias al 02/11/2026,,,,,,\n"
-        "Descripcion,Cantidad,Precio,ValorActual,%Ganancia,Ganancia$,Moneda\n"
-        "GGAL - Grupo Financiero Galicia,1200,5120.00,6144000.00,21.90%,1104000.00,Pesos\n"
-        "CEDEAR NVDA,150,14290.00,2143500.00,14.78%,276000.00,Pesos\n"
-        "AL30D (Bono USD),2500,68.45,171125.00,15.04%,22375.00,Dolares\n"
-    ).encode("utf-8")
+        b"Tenencias al 02/11/2026,,,,,,\n"
+        b"Descripcion,Cantidad,Precio,ValorActual,%Ganancia,Ganancia$,Moneda\n"
+        b"GGAL - Grupo Financiero Galicia,1200,5120.00,6144000.00,21.90%,1104000.00,Pesos\n"
+        b"CEDEAR NVDA,150,14290.00,2143500.00,14.78%,276000.00,Pesos\n"
+        b"AL30D (Bono USD),2500,68.45,171125.00,15.04%,22375.00,Dolares\n"
+    )
 
     raw_records = CSVReportParser()._parse_sync(csv_content, "Tenencias_Balanz.csv")
     tickers = [DataCleaningPipeline.normalize_ticker(rec.raw_ticker) for rec in raw_records]
@@ -316,9 +317,7 @@ async def test_order_execute_and_cancel_fsm_settlement_and_bola_isolation(
     assert updated_port.status_code == 200
     port_json = updated_port.json()
     assert abs(float(port_json["cash_balance_ars"]) - 948439.04) < 0.05
-    ggal_holding = next(
-        h for h in port_json["holdings"] if h["asset_ticker"] == "GGAL"
-    )
+    ggal_holding = next(h for h in port_json["holdings"] if h["asset_ticker"] == "GGAL")
     assert float(ggal_holding["quantity"]) == 110.0
 
     # 2. Create another order and cancel it
@@ -532,6 +531,7 @@ async def test_ingestion_upload_real_balanz_xlsx_and_csv_auto_classification(
     y clasifica automáticamente CEDEAR, BOND y STOCK en la base de datos sin errores de 'Field'.
     """
     import io
+
     import openpyxl
 
     client: httpx.AsyncClient = forensic_env["client"]
@@ -652,11 +652,8 @@ async def test_ingestion_upload_real_balanz_xlsx_and_csv_auto_classification(
     # Verificar que la cartera tiene NVDA (CEDEAR), AL30 (BOND) y GGAL (STOCK)
     port_after = await client.get(f"/api/v1/portfolios/{pid}", headers=headers)
     assert port_after.status_code == 200
-    holdings_by_ticker = {
-        h["asset_ticker"]: h for h in port_after.json()["holdings"]
-    }
+    holdings_by_ticker = {h["asset_ticker"]: h for h in port_after.json()["holdings"]}
     assert set(holdings_by_ticker.keys()) == {"NVDA", "AL30", "GGAL"}
     assert holdings_by_ticker["NVDA"]["asset"]["asset_type"] == "CEDEAR"
     assert holdings_by_ticker["AL30"]["asset"]["asset_type"] == "BOND"
     assert holdings_by_ticker["GGAL"]["asset"]["asset_type"] == "STOCK"
-

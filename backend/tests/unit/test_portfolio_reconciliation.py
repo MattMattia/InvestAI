@@ -2,19 +2,15 @@
 Unit test suite for Module 6.3 Phase 1: Portfolio Reconciliation Service,
 Duplicate Lot Consolidation, Snapshot vs. Merge Synchronization, and Anti-IDOR.
 """
+
 from __future__ import annotations
 
-from decimal import Decimal
 import unittest
 import uuid
-
-from pydantic import ValidationError
-import pytest
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from decimal import Decimal
 
 import app.models  # noqa: F401 - register ORM metadata
+import pytest
 from app.core.database import Base
 from app.domain.services.ingestion.data_cleaning_pipeline import (
     CleanHoldingRecord,
@@ -35,6 +31,10 @@ from app.models.holding import HoldingModel
 from app.models.portfolio import PortfolioModel
 from app.models.user import UserModel
 from app.schemas.ingestion import IngestionReportSummary
+from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 
 @pytest.mark.unit
@@ -244,7 +244,10 @@ class TestPortfolioReconciliation(unittest.IsolatedAsyncioTestCase):
             any("Cross-currency lots detected for ticker 'AL30'" in w for w in warnings)
         )
         self.assertTrue(
-            any("Partial average purchase price across lots for ticker 'PAMP'" in w for w in warnings)
+            any(
+                "Partial average purchase price across lots for ticker 'PAMP'" in w
+                for w in warnings
+            )
         )
 
     async def test_reconcile_portfolio_snapshot_lifecycle_added_updated_unchanged_removed(
@@ -313,9 +316,7 @@ class TestPortfolioReconciliation(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events_by_ticker["COME"].quantity_delta, Decimal("-500.0000"))
 
         # Verify persisted DB state
-        stmt = select(HoldingModel).where(
-            HoldingModel.portfolio_id == self.portfolio_id
-        )
+        stmt = select(HoldingModel).where(HoldingModel.portfolio_id == self.portfolio_id)
         persisted = (await self.session.execute(stmt)).scalars().all()
         persisted_tickers = {h.asset_ticker: h for h in persisted}
         self.assertEqual(set(persisted_tickers.keys()), {"GGAL", "YPFD", "AAPL"})
@@ -368,13 +369,9 @@ class TestPortfolioReconciliation(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report.total_holdings_after, 4)
 
         events_by_ticker = {e.ticker: e for e in report.events}
-        self.assertEqual(
-            events_by_ticker["GGAL"].new_avg_price, Decimal("1500.0000")
-        )
+        self.assertEqual(events_by_ticker["GGAL"].new_avg_price, Decimal("1500.0000"))
         self.assertIsNone(events_by_ticker["NVDA"].new_avg_price)
-        self.assertTrue(
-            any("preserved historical average price" in w for w in report.warnings)
-        )
+        self.assertTrue(any("preserved historical average price" in w for w in report.warnings))
 
     async def test_reconcile_portfolio_empty_snapshot_guard_and_override(self) -> None:
         """
@@ -635,5 +632,3 @@ class TestPortfolioReconciliation(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report.events[0].ticker, "AL30")
         self.assertEqual(report.events[0].new_quantity, Decimal("1000.0000"))
         self.assertEqual(report.events[0].new_avg_price, Decimal("860.0000"))
-
-

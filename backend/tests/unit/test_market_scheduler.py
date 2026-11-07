@@ -2,16 +2,14 @@
 Unit tests for BYMA Market Calendar, Immutable DTO Contracts, and Market-Close Orchestrator
 (Module 8.2 - Phase 1: `backend/app/domain/services/market_scheduler.py`).
 """
+
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
 import unittest
-from unittest.mock import MagicMock
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 import pytest
-from pydantic import ValidationError
-
 from app.domain.services.market_scheduler import (
     BYMACalendarService,
     MarketCloseJobConfig,
@@ -29,6 +27,7 @@ from app.domain.services.tolerance_band_rebalancer import (
     RebalancePositionInput,
     ToleranceBandRebalancerConfig,
 )
+from pydantic import ValidationError
 
 
 @pytest.mark.unit
@@ -388,7 +387,7 @@ class TestMarketScheduler(unittest.TestCase):
         self.assertEqual(report.total_rebalance_orders_generated, 0)
         self.assertEqual(report.results, [])
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Invariant 1: portfolios_processed != succeeded + failed must raise ValidationError
         with self.assertRaises(ValidationError):

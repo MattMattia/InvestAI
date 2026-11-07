@@ -2,24 +2,23 @@
 Unit test suite for Module 6.1 Phase 1: Abstract Report Parser Interface
 and Format Strategies (CSV / Excel).
 """
+
 from __future__ import annotations
 
-from decimal import Decimal
 import io
 import unittest
-from unittest.mock import patch
 import zipfile
+from decimal import Decimal
+from unittest.mock import patch
 
 import openpyxl
-from pydantic import ValidationError
 import pytest
-
 from app.domain.services.ingestion import (
     MAX_COLUMNS_TO_SCAN,
     MAX_REPORT_SIZE_BYTES,
-    CSVReportParser,
     CanonicalReportField,
     CorruptedReportError,
+    CSVReportParser,
     EmptyReportError,
     ExcelReportParser,
     MissingRequiredColumnsError,
@@ -29,6 +28,7 @@ from app.domain.services.ingestion import (
     UnsupportedReportFormatError,
     get_report_parser,
 )
+from pydantic import ValidationError
 
 
 def _build_xlsx_bytes(sheets: dict[str, list[list[object]]]) -> bytes:
@@ -56,11 +56,11 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
     async def test_csv_parser_standard_comma_delimited(self) -> None:
         """Verify standard UTF-8 comma-delimited CSV parsing and raw field mapping."""
         csv_content = (
-            "symbol,quantity,avg_price,currency,market_value\n"
-            "GGAL,1500,4250.50,ARS,6375750.00\n"
-            "AAPL,25,185.20,USD,4630.00\n"
-            "Total,1525,,,6380380.00\n"
-        ).encode("utf-8")
+            b"symbol,quantity,avg_price,currency,market_value\n"
+            b"GGAL,1500,4250.50,ARS,6375750.00\n"
+            b"AAPL,25,185.20,USD,4630.00\n"
+            b"Total,1525,,,6380380.00\n"
+        )
 
         parser = CSVReportParser()
         records = await parser.parse_report(csv_content, "holdings_report.csv")
@@ -159,13 +159,13 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         across both CSVReportParser and RawHoldingRecord direct construction.
         """
         csv_payload = (
-            "Ticker,Cantidad,Precio,Moneda\n"
-            "=GGAL,100,1200,=ARS\n"
-            "+YPFD,50,25000,+USD\n"
-            "-PAMP,75,1800,-MEP\n"
-            "@ALUA,200,950,@CCL\n"
-            "\"=CMD|' /C calc'!A0\",10,100,\"=++==\"\n"
-        ).encode("utf-8")
+            b"Ticker,Cantidad,Precio,Moneda\n"
+            b"=GGAL,100,1200,=ARS\n"
+            b"+YPFD,50,25000,+USD\n"
+            b"-PAMP,75,1800,-MEP\n"
+            b"@ALUA,200,950,@CCL\n"
+            b'"=CMD|\' /C calc\'!A0",10,100,"=++=="\n'
+        )
 
         parser = CSVReportParser()
         records = await parser.parse_report(csv_payload, "adversarial.csv")
@@ -196,13 +196,9 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         parser = CSVReportParser()
 
         with self.assertRaises(CorruptedReportError):
-            await parser.parse_report(
-                b"Ticker,Cantidad\nGGAL\x00,100\n", "null_injected.csv"
-            )
+            await parser.parse_report(b"Ticker,Cantidad\nGGAL\x00,100\n", "null_injected.csv")
 
-        xlsx_stream = _build_xlsx_bytes(
-            {"Sheet1": [["Ticker", "Cantidad"], ["GGAL", 100]]}
-        )
+        xlsx_stream = _build_xlsx_bytes({"Sheet1": [["Ticker", "Cantidad"], ["GGAL", 100]]})
         with self.assertRaises(CorruptedReportError):
             await parser.parse_report(xlsx_stream, "renamed_excel.csv")
 
@@ -312,7 +308,14 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         Verify UnsupportedReportFormatError is raised for .xls, .xlsm, .pdf, .exe,
         missing extensions, or mismatched parser extensions.
         """
-        for bad_name in ("legacy.xls", "macros.xlsm", "statement.pdf", "script.exe", "noext", "   "):
+        for bad_name in (
+            "legacy.xls",
+            "macros.xlsm",
+            "statement.pdf",
+            "script.exe",
+            "noext",
+            "   ",
+        ):
             with self.assertRaises(UnsupportedReportFormatError):
                 get_report_parser(bad_name)
 
@@ -364,9 +367,7 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res_balanz.get_column_index(CanonicalReportField.QUANTITY), 1)
         self.assertEqual(res_balanz.get_column_index(CanonicalReportField.AVG_PRICE), 2)
         self.assertEqual(res_balanz.get_column_index(CanonicalReportField.CURRENCY), 3)
-        self.assertEqual(
-            res_balanz.get_column_index(CanonicalReportField.TOTAL_AMOUNT), 4
-        )
+        self.assertEqual(res_balanz.get_column_index(CanonicalReportField.TOTAL_AMOUNT), 4)
         self.assertAlmostEqual(res_balanz.total_confidence, 5.0, places=4)
 
         # IOL / PPI / Caja de Valores layout
@@ -408,9 +409,9 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
 
         # Also verify typo tolerance via SequenceMatcher and end-to-end CSV parsing
         typo_csv = (
-            "Simblo;Cantidadd;Precio Promdio;Moneda Orign;Valuasion Actual\n"
-            "GGAL;500;4100,00;ARS;2050000,00\n"
-        ).encode("utf-8")
+            b"Simblo;Cantidadd;Precio Promdio;Moneda Orign;Valuasion Actual\n"
+            b"GGAL;500;4100,00;ARS;2050000,00\n"
+        )
         records = await CSVReportParser().parse_report(typo_csv, "typo_alyc.csv")
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].raw_ticker, "GGAL")
@@ -438,9 +439,7 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         ]
         res_both = detector.detect_schema(coexisting_headers)
         self.assertEqual(res_both.get_column_index(CanonicalReportField.AVG_PRICE), 3)
-        self.assertEqual(
-            res_both.mappings[CanonicalReportField.AVG_PRICE].raw_header, "PPC"
-        )
+        self.assertEqual(res_both.mappings[CanonicalReportField.AVG_PRICE].raw_header, "PPC")
 
         # Case 2: Only market price columns exist (no PPC or historical cost) -> AVG_PRICE is None
         market_only_headers = [
@@ -454,9 +453,7 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         ]
         res_market_only = detector.detect_schema(market_only_headers)
         self.assertTrue(res_market_only.has_required_fields())
-        self.assertIsNone(
-            res_market_only.get_column_index(CanonicalReportField.AVG_PRICE)
-        )
+        self.assertIsNone(res_market_only.get_column_index(CanonicalReportField.AVG_PRICE))
 
     async def test_schema_detector_rejects_unrelated_columns(self) -> None:
         """
@@ -531,10 +528,9 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         and processed deterministically without algorithmic complexity explosion.
         """
         detector = SchemaDetector()
-        wide_headers = (
-            ["Ticker", "Cantidad", "PPC", "Moneda"]
-            + [f"Columna_Extra_{i}" for i in range(500)]
-        )
+        wide_headers = ["Ticker", "Cantidad", "PPC", "Moneda"] + [
+            f"Columna_Extra_{i}" for i in range(500)
+        ]
         res = detector.detect_schema(wide_headers)
         self.assertTrue(res.has_required_fields())
         self.assertEqual(res.get_column_index(CanonicalReportField.TICKER), 0)
@@ -566,8 +562,24 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
                 "Moneda Liquidación",
                 "Valuación",
             ],
-            ["AL30", "Bono Rep. Argentina 2030", "10.000", "64.200,50", "68.900,00", "ARS", "6890000,00"],
-            ["GGAL", "Grupo Financiero Galicia", "1.500", "4.100,00", "4.550,00", "ARS", "6825000,00"],
+            [
+                "AL30",
+                "Bono Rep. Argentina 2030",
+                "10.000",
+                "64.200,50",
+                "68.900,00",
+                "ARS",
+                "6890000,00",
+            ],
+            [
+                "GGAL",
+                "Grupo Financiero Galicia",
+                "1.500",
+                "4.100,00",
+                "4.550,00",
+                "ARS",
+                "6825000,00",
+            ],
             ["YPFD", "YPF S.A. Clase D", "50", "29.500,00", "32.100,00", "ARS", "1605000,00"],
             ["SPY", "CEDEAR SPDR S&P 500", "20", "23.100,00", "24.000,00", "ARS", "480000,00"],
             ["Total Cartera ARS", "", "1000", "", "", "ARS", "15800000,00"],
@@ -578,9 +590,7 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
             csv_text.encode("utf-8"), "balanz_tenencias.csv"
         )
         self.assertEqual(len(csv_records), 4)
-        self.assertEqual(
-            [r.raw_ticker for r in csv_records], ["AL30", "GGAL", "YPFD", "SPY"]
-        )
+        self.assertEqual([r.raw_ticker for r in csv_records], ["AL30", "GGAL", "YPFD", "SPY"])
         self.assertEqual(csv_records[0].raw_avg_price, "64.200,50")
         self.assertEqual(csv_records[1].raw_avg_price, "4.100,00")
         self.assertEqual(csv_records[2].raw_avg_price, "29.500,00")
@@ -588,13 +598,9 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(csv_records[0].raw_currency, "ARS")
 
         xlsx_bytes = _build_xlsx_bytes({"Tenencia Valorizada": balanz_rows})
-        xlsx_records = await ExcelReportParser().parse_report(
-            xlsx_bytes, "balanz_tenencias.xlsx"
-        )
+        xlsx_records = await ExcelReportParser().parse_report(xlsx_bytes, "balanz_tenencias.xlsx")
         self.assertEqual(len(xlsx_records), 4)
-        self.assertEqual(
-            [r.raw_ticker for r in xlsx_records], ["AL30", "GGAL", "YPFD", "SPY"]
-        )
+        self.assertEqual([r.raw_ticker for r in xlsx_records], ["AL30", "GGAL", "YPFD", "SPY"])
         self.assertEqual(xlsx_records[0].raw_avg_price, "64.200,50")
         self.assertEqual(xlsx_records[3].raw_avg_price, "23.100,00")
 
@@ -608,7 +614,7 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
             "PAMP;Pampa Energía S.A.;350;1.450,75;1.620,00;567.000,00;+11,67%\n"
             "TXAR;Ternium Argentina;1.200;890,25;910,00;1.092.000,00;+2,22%\n"
             "TOTAL;;1.550;;;1.659.000,00;\n"
-        ).encode("utf-8")
+        ).encode()
 
         records = await CSVReportParser().parse_report(iol_csv, "portafolio_iol.csv")
         self.assertEqual(len(records), 2)
@@ -625,12 +631,8 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         # Also verify dotted 'V.N.' maps to QUANTITY with score 1.0
         vn_schema = SchemaDetector().detect_schema(["Especie", "V.N.", "P.P.C."])
         self.assertTrue(vn_schema.has_required_fields())
-        self.assertEqual(
-            vn_schema.mappings[CanonicalReportField.QUANTITY].confidence_score, 1.0
-        )
-        self.assertEqual(
-            vn_schema.mappings[CanonicalReportField.AVG_PRICE].confidence_score, 1.0
-        )
+        self.assertEqual(vn_schema.mappings[CanonicalReportField.QUANTITY].confidence_score, 1.0)
+        self.assertEqual(vn_schema.mappings[CanonicalReportField.AVG_PRICE].confidence_score, 1.0)
 
     async def test_alyc_ppi_layout_with_interleaved_category_subtotals(self) -> None:
         """
@@ -652,9 +654,7 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         records = await ExcelReportParser().parse_report(xlsx_bytes, "ppi_cartera.xlsx")
 
         self.assertEqual(len(records), 4)
-        self.assertEqual(
-            [r.raw_ticker for r in records], ["GD30", "AL35", "BMA", "CEPU"]
-        )
+        self.assertEqual([r.raw_ticker for r in records], ["GD30", "AL35", "BMA", "CEPU"])
         self.assertEqual(records[0].raw_avg_price, Decimal("61.2"))
         self.assertEqual(records[2].raw_avg_price, Decimal("7100"))
 
@@ -667,7 +667,7 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
             "Ticker;Denominación;Nominales;Precio Compra;Moneda;Importe\n"
             "COME;Sociedad Comercial del Plata;5000;240,50;ARS;1202500,00\n"
             "LOMA;Loma Negra C.I.A.S.A.;300;2150,00;ARS;645000,00\n"
-        ).encode("utf-8")
+        ).encode()
         bmb_records = await CSVReportParser().parse_report(bmb_csv, "bull_market.csv")
         self.assertEqual(len(bmb_records), 2)
         self.assertEqual(bmb_records[0].raw_ticker, "COME")
@@ -683,9 +683,7 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
             ["Saldo Total Custodia", "", 17400, ""],
         ]
         cdv_xlsx = _build_xlsx_bytes({"Custodia": cdv_rows})
-        cdv_records = await ExcelReportParser().parse_report(
-            cdv_xlsx, "caja_de_valores.xlsx"
-        )
+        cdv_records = await ExcelReportParser().parse_report(cdv_xlsx, "caja_de_valores.xlsx")
         self.assertEqual(len(cdv_records), 2)
         self.assertEqual(cdv_records[0].raw_ticker, "5458")
         self.assertEqual(cdv_records[0].raw_quantity, 15000)
@@ -700,10 +698,9 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         parser = CSVReportParser()
 
         # 1. UTF-8 with BOM (\xef\xbb\xbf)
-        bom_csv = (
-            "\ufeffTicker,Cantidad,Precio Promedio,Moneda\n"
-            "MSFT,40,415.20,USD\n"
-        ).encode("utf-8-sig")
+        bom_csv = ("\ufeffTicker,Cantidad,Precio Promedio,Moneda\nMSFT,40,415.20,USD\n").encode(
+            "utf-8-sig"
+        )
         bom_records = await parser.parse_report(bom_csv, "utf8_bom.csv")
         self.assertEqual(len(bom_records), 1)
         self.assertEqual(bom_records[0].raw_ticker, "MSFT")
@@ -725,8 +722,7 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
 
         # 3. Latin-1 fallback (including byte 0x81 which is undefined in strict cp1252)
         latin1_bytes = (
-            b"Especie;Cantidad;Precio;Descripci\xf3n\n"
-            b"GGAL;250;4300,00;Nota\x81Acci\xf3n\n"
+            b"Especie;Cantidad;Precio;Descripci\xf3n\nGGAL;250;4300,00;Nota\x81Acci\xf3n\n"
         )
         latin1_records = await parser.parse_report(latin1_bytes, "latin1_fallback.csv")
         self.assertEqual(len(latin1_records), 1)
@@ -745,11 +741,9 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
             "Ticker;Cantidad;Precio\xa0Promedio;Moneda\n"
             "GFGC4500O;-150;$ \xa0 1.250,50;ARS\n"
             "AL30;\xa02.500\xa0;-\xa064.100,00;ARS\n"
-        ).encode("utf-8")
+        ).encode()
 
-        records = await CSVReportParser().parse_report(
-            csv_text, "short_options_nbsp.csv"
-        )
+        records = await CSVReportParser().parse_report(csv_text, "short_options_nbsp.csv")
         self.assertEqual(len(records), 2)
         self.assertEqual(records[0].raw_ticker, "GFGC4500O")
         self.assertEqual(records[0].raw_quantity, "-150")
@@ -769,14 +763,14 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         parser = CSVReportParser()
 
         tab_csv = (
-            "\n\n"
-            "Ticker\tNominales\tPPC\tMoneda\n"
-            "\t\t\t\n"
-            "NVDA\t15\t120.50\tUSD\n"
-            "   \t   \t   \t   \n"
-            "MELI\t8\t1850.00\tUSD\n"
-            "\n"
-        ).encode("utf-8")
+            b"\n\n"
+            b"Ticker\tNominales\tPPC\tMoneda\n"
+            b"\t\t\t\n"
+            b"NVDA\t15\t120.50\tUSD\n"
+            b"   \t   \t   \t   \n"
+            b"MELI\t8\t1850.00\tUSD\n"
+            b"\n"
+        )
         tab_records = await parser.parse_report(tab_csv, "tsv_export.csv")
         self.assertEqual(len(tab_records), 2)
         self.assertEqual([r.raw_ticker for r in tab_records], ["NVDA", "MELI"])
@@ -784,12 +778,12 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tab_records[1].raw_avg_price, "1850.00")
 
         pipe_csv = (
-            "Especie|Cantidad|Precio Promedio|Divisa\n"
-            "||||\n"
-            "PAM|100|55.25|USD\n"
-            " | | | \n"
-            "YPF|200|28.10|USD\n"
-        ).encode("utf-8")
+            b"Especie|Cantidad|Precio Promedio|Divisa\n"
+            b"||||\n"
+            b"PAM|100|55.25|USD\n"
+            b" | | | \n"
+            b"YPF|200|28.10|USD\n"
+        )
         pipe_records = await parser.parse_report(pipe_csv, "pipe_export.csv")
         self.assertEqual(len(pipe_records), 2)
         self.assertEqual([r.raw_ticker for r in pipe_records], ["PAM", "YPF"])
@@ -853,10 +847,7 @@ class TestReportParsers(unittest.IsolatedAsyncioTestCase):
         prev_limit = csv.field_size_limit()
         try:
             csv.field_size_limit(32)
-            oversized_field_csv = (
-                "Ticker,Cantidad,Descripcion\n"
-                f"GGAL,100,{'X' * 64}\n"
-            ).encode("utf-8")
+            oversized_field_csv = (f"Ticker,Cantidad,Descripcion\nGGAL,100,{'X' * 64}\n").encode()
             with self.assertRaises(CorruptedReportError):
                 await parser.parse_report(oversized_field_csv, "oversized_field.csv")
         finally:

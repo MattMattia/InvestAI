@@ -4,22 +4,21 @@ Verifica ciclo de vida asíncrono con SQLite in-memory (aiosqlite),
 defaults relacionales, restricciones de unicidad de email, mapeo canónico a UserResponse
 y consultas por email y UUID.
 """
-from datetime import datetime, timezone
+
 import unittest
 import uuid
+from datetime import UTC, datetime
+
 import pytest
-from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
-
-from pydantic import SecretStr
-
-import app.models  # Asegura registro de modelos relacionales
 from app.core.database import Base
 from app.core.security import get_password_hash, verify_password
 from app.infrastructure.db.models.user import UserModel
 from app.schemas.user import UserCreate, UserResponse, UserRole
+from pydantic import SecretStr
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 
 @pytest.mark.integration
@@ -92,8 +91,8 @@ class TestUserPersistenceIntegration(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(response_dto.is_active)
             self.assertIsInstance(response_dto.id, uuid.UUID)
             self.assertEqual(response_dto.id, user.id)
-            self.assertEqual(response_dto.created_at.tzinfo, timezone.utc)
-            self.assertEqual(response_dto.updated_at.tzinfo, timezone.utc)
+            self.assertEqual(response_dto.created_at.tzinfo, UTC)
+            self.assertEqual(response_dto.updated_at.tzinfo, UTC)
 
             # Verificar que el DTO jamás contenga hash ni contraseña
             dto_dict = response_dto.model_dump()
@@ -224,4 +223,3 @@ class TestUserPersistenceIntegration(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

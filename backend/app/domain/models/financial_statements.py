@@ -1,19 +1,20 @@
 import math
 import re
-from typing import Any, Optional
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.models.fx import Currency
 
 
-def clean_financial_float(v: Any) -> Optional[float]:
+def clean_financial_float(v: Any) -> float | None:
     """
     Sanitizes corrupt, string-formatted, NaN or Infinite inputs into clean floats or None.
     Handles values like '$ 1,234.50', 'N/A', 'None', float('nan'), float('inf').
     """
     if v is None:
         return None
-    if isinstance(v, (int, float)):
+    if isinstance(v, int | float):
         if math.isnan(v) or math.isinf(v):
             return None
         return float(v)
@@ -32,18 +33,23 @@ def clean_financial_float(v: Any) -> Optional[float]:
 
 
 def safe_divide(
-    numerator: Optional[float],
-    denominator: Optional[float],
-    default: Optional[float] = None,
+    numerator: float | None,
+    denominator: float | None,
+    default: float | None = None,
     precision: int = 4,
-) -> Optional[float]:
+) -> float | None:
     """
     Safely executes floating-point division without throwing ZeroDivisionError, NaN, or Inf.
     Returns default if either operand is None or denominator is zero/near-zero.
     """
     if numerator is None or denominator is None:
         return default
-    if math.isnan(numerator) or math.isnan(denominator) or math.isinf(numerator) or math.isinf(denominator):
+    if (
+        math.isnan(numerator)
+        or math.isnan(denominator)
+        or math.isinf(numerator)
+        or math.isinf(denominator)
+    ):
         return default
     if abs(denominator) < 1e-12:
         return default
@@ -55,17 +61,20 @@ class IncomeStatementStandard(BaseModel):
     """
     Immutable standardized Income Statement compliant with OpenBB canonical fundamentals.
     """
+
     model_config = ConfigDict(frozen=True, extra="ignore", arbitrary_types_allowed=True)
 
-    revenue: Optional[float] = Field(default=None, description="Total Revenue / Top-line sales")
-    net_income: Optional[float] = Field(default=None, description="Net Income / Bottom-line profit")
-    eps: Optional[float] = Field(default=None, description="Earnings Per Share (Basic)")
-    diluted_eps: Optional[float] = Field(default=None, description="Earnings Per Share (Diluted)")
-    operating_income: Optional[float] = Field(default=None, description="Operating Income / EBIT")
-    gross_profit: Optional[float] = Field(default=None, description="Gross Profit")
-    ebitda: Optional[float] = Field(default=None, description="EBITDA")
-    period: Optional[str] = Field(default="FY", description="Reporting period (e.g. 'FY2025', 'Q3-2025')")
-    fiscal_year: Optional[int] = Field(default=None, description="Fiscal year")
+    revenue: float | None = Field(default=None, description="Total Revenue / Top-line sales")
+    net_income: float | None = Field(default=None, description="Net Income / Bottom-line profit")
+    eps: float | None = Field(default=None, description="Earnings Per Share (Basic)")
+    diluted_eps: float | None = Field(default=None, description="Earnings Per Share (Diluted)")
+    operating_income: float | None = Field(default=None, description="Operating Income / EBIT")
+    gross_profit: float | None = Field(default=None, description="Gross Profit")
+    ebitda: float | None = Field(default=None, description="EBITDA")
+    period: str | None = Field(
+        default="FY", description="Reporting period (e.g. 'FY2025', 'Q3-2025')"
+    )
+    fiscal_year: int | None = Field(default=None, description="Fiscal year")
     currency: Currency = Field(default=Currency.USD, description="Statement reporting currency")
 
     @model_validator(mode="before")
@@ -75,7 +84,15 @@ class IncomeStatementStandard(BaseModel):
             return data
         cleaned = {}
         for k, v in data.items():
-            if k in {"revenue", "net_income", "eps", "diluted_eps", "operating_income", "gross_profit", "ebitda"}:
+            if k in {
+                "revenue",
+                "net_income",
+                "eps",
+                "diluted_eps",
+                "operating_income",
+                "gross_profit",
+                "ebitda",
+            }:
                 cleaned[k] = clean_financial_float(v)
             else:
                 cleaned[k] = v
@@ -87,18 +104,21 @@ class BalanceSheetStandard(BaseModel):
     Immutable standardized Balance Sheet statement.
     Features automatic synthesis of net_debt and total_equity when composite fields exist.
     """
+
     model_config = ConfigDict(frozen=True, extra="ignore", arbitrary_types_allowed=True)
 
-    total_assets: Optional[float] = Field(default=None, description="Total Assets")
-    total_liabilities: Optional[float] = Field(default=None, description="Total Liabilities")
-    total_debt: Optional[float] = Field(default=None, description="Total Debt (Short-term + Long-term)")
-    cash_and_equivalents: Optional[float] = Field(default=None, description="Cash & Cash Equivalents")
-    net_debt: Optional[float] = Field(default=None, description="Net Debt = Total Debt - Cash")
-    total_equity: Optional[float] = Field(default=None, description="Total Stockholders Equity")
-    current_assets: Optional[float] = Field(default=None, description="Current Assets")
-    current_liabilities: Optional[float] = Field(default=None, description="Current Liabilities")
-    period: Optional[str] = Field(default="FY", description="Reporting period")
-    fiscal_year: Optional[int] = Field(default=None, description="Fiscal year")
+    total_assets: float | None = Field(default=None, description="Total Assets")
+    total_liabilities: float | None = Field(default=None, description="Total Liabilities")
+    total_debt: float | None = Field(
+        default=None, description="Total Debt (Short-term + Long-term)"
+    )
+    cash_and_equivalents: float | None = Field(default=None, description="Cash & Cash Equivalents")
+    net_debt: float | None = Field(default=None, description="Net Debt = Total Debt - Cash")
+    total_equity: float | None = Field(default=None, description="Total Stockholders Equity")
+    current_assets: float | None = Field(default=None, description="Current Assets")
+    current_liabilities: float | None = Field(default=None, description="Current Liabilities")
+    period: str | None = Field(default="FY", description="Reporting period")
+    fiscal_year: int | None = Field(default=None, description="Fiscal year")
     currency: Currency = Field(default=Currency.USD, description="Statement reporting currency")
 
     @model_validator(mode="before")
@@ -142,15 +162,20 @@ class CashFlowStandard(BaseModel):
     Immutable standardized Cash Flow statement.
     Features automatic synthesis of free_cash_flow.
     """
+
     model_config = ConfigDict(frozen=True, extra="ignore", arbitrary_types_allowed=True)
 
-    operating_cash_flow: Optional[float] = Field(default=None, description="Cash Flow from Operations")
-    capital_expenditure: Optional[float] = Field(default=None, description="Capital Expenditures (CapEx)")
-    free_cash_flow: Optional[float] = Field(default=None, description="Free Cash Flow = Operating CF - CapEx")
-    financing_cash_flow: Optional[float] = Field(default=None, description="Cash Flow from Financing")
-    investing_cash_flow: Optional[float] = Field(default=None, description="Cash Flow from Investing")
-    period: Optional[str] = Field(default="FY", description="Reporting period")
-    fiscal_year: Optional[int] = Field(default=None, description="Fiscal year")
+    operating_cash_flow: float | None = Field(default=None, description="Cash Flow from Operations")
+    capital_expenditure: float | None = Field(
+        default=None, description="Capital Expenditures (CapEx)"
+    )
+    free_cash_flow: float | None = Field(
+        default=None, description="Free Cash Flow = Operating CF - CapEx"
+    )
+    financing_cash_flow: float | None = Field(default=None, description="Cash Flow from Financing")
+    investing_cash_flow: float | None = Field(default=None, description="Cash Flow from Investing")
+    period: str | None = Field(default="FY", description="Reporting period")
+    fiscal_year: int | None = Field(default=None, description="Fiscal year")
     currency: Currency = Field(default=Currency.USD, description="Statement reporting currency")
 
     @model_validator(mode="before")
@@ -184,15 +209,18 @@ class KeyMetricsStandard(BaseModel):
     """
     Immutable standardized valuation and financial health metrics with division-by-zero protection.
     """
+
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    pe_ratio: Optional[float] = Field(default=None, description="Price to Earnings ratio (P/E)")
-    pb_ratio: Optional[float] = Field(default=None, description="Price to Book ratio (P/B)")
-    peg_ratio: Optional[float] = Field(default=None, description="Price/Earnings to Growth (PEG)")
-    ev_to_ebitda: Optional[float] = Field(default=None, description="Enterprise Value to EBITDA")
-    current_ratio: Optional[float] = Field(default=None, description="Current Assets / Current Liabilities")
-    debt_to_equity: Optional[float] = Field(default=None, description="Total Debt / Total Equity")
-    roe: Optional[float] = Field(default=None, description="Return on Equity (Net Income / Equity)")
+    pe_ratio: float | None = Field(default=None, description="Price to Earnings ratio (P/E)")
+    pb_ratio: float | None = Field(default=None, description="Price to Book ratio (P/B)")
+    peg_ratio: float | None = Field(default=None, description="Price/Earnings to Growth (PEG)")
+    ev_to_ebitda: float | None = Field(default=None, description="Enterprise Value to EBITDA")
+    current_ratio: float | None = Field(
+        default=None, description="Current Assets / Current Liabilities"
+    )
+    debt_to_equity: float | None = Field(default=None, description="Total Debt / Total Equity")
+    roe: float | None = Field(default=None, description="Return on Equity (Net Income / Equity)")
 
     @model_validator(mode="before")
     @classmethod
@@ -209,10 +237,10 @@ def compute_standard_metrics(
     current_price: float,
     income: IncomeStatementStandard,
     balance: BalanceSheetStandard,
-    cash_flow: Optional[CashFlowStandard] = None,
-    shares_outstanding: Optional[float] = None,
-    earnings_growth_rate: Optional[float] = None,
-    enterprise_value: Optional[float] = None,
+    cash_flow: CashFlowStandard | None = None,
+    shares_outstanding: float | None = None,
+    earnings_growth_rate: float | None = None,
+    enterprise_value: float | None = None,
 ) -> KeyMetricsStandard:
     """
     Deterministically computes KeyMetricsStandard from financial statements and market price.
@@ -228,7 +256,11 @@ def compute_standard_metrics(
     book_value_per_share = None
     if balance.total_equity is not None and shares_outstanding and shares_outstanding > 0:
         book_value_per_share = safe_divide(balance.total_equity, shares_outstanding)
-    pb = safe_divide(price, book_value_per_share) if (book_value_per_share and book_value_per_share > 0) else None
+    pb = (
+        safe_divide(price, book_value_per_share)
+        if (book_value_per_share and book_value_per_share > 0)
+        else None
+    )
 
     # PEG Ratio: (P/E) / Earnings Growth Rate (%)
     peg = None
@@ -240,7 +272,12 @@ def compute_standard_metrics(
     ev_ebitda = None
     if enterprise_value is not None and income.ebitda is not None:
         ev_ebitda = safe_divide(enterprise_value, income.ebitda)
-    elif enterprise_value is None and shares_outstanding and income.ebitda is not None and balance.net_debt is not None:
+    elif (
+        enterprise_value is None
+        and shares_outstanding
+        and income.ebitda is not None
+        and balance.net_debt is not None
+    ):
         # Synthesize EV = Market Cap + Net Debt
         market_cap = price * shares_outstanding
         synthesized_ev = market_cap + balance.net_debt

@@ -3,9 +3,10 @@ Contratos canónicos de Token y Payload JWT (Módulo 5.2 - Fases 1 & 2).
 DTOs inmutables basados en Pydantic v2 para la representación, transporte y
 deserialización estricta de claims de seguridad según RFC 7519, incluyendo ciclo de vida de refresh tokens.
 """
-from datetime import datetime, timezone
+
 import enum
-from typing import Optional
+from datetime import UTC, datetime
+
 from pydantic import Field, field_validator
 
 from app.schemas.envelope import BaseSchema
@@ -46,7 +47,7 @@ class TokenPayload(BaseSchema):
         min_length=1,
         description="Identificador único global del token (UUIDv4) para trazabilidad y revocación",
     )
-    email: Optional[str] = Field(
+    email: str | None = Field(
         default=None,
         description="Correo electrónico asociado al sujeto (opcional)",
     )
@@ -63,8 +64,8 @@ class TokenPayload(BaseSchema):
     @classmethod
     def ensure_utc_timestamp(cls, v: datetime) -> datetime:
         if v.tzinfo is None:
-            return v.replace(tzinfo=timezone.utc)
-        return v.astimezone(timezone.utc)
+            return v.replace(tzinfo=UTC)
+        return v.astimezone(UTC)
 
 
 class TokenResponse(BaseSchema):
@@ -75,7 +76,7 @@ class TokenResponse(BaseSchema):
     access_token: str = Field(
         description="Token de acceso JWT codificado y firmado criptográficamente",
     )
-    refresh_token: Optional[str] = Field(
+    refresh_token: str | None = Field(
         default=None,
         description="Token de actualización (Refresh Token) para extender la sesión (opcional)",
     )

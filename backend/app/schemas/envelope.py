@@ -2,12 +2,17 @@
 Contratos de Transporte y Esquema Universal Envelope (ARQ-02).
 Define estructuras inmutables y fuertemente tipadas para respuestas de éxito y error en la API.
 """
-from datetime import datetime, timezone
-from typing import Generic, List, Optional, TypeVar
+
+import logging
 import uuid
+from datetime import UTC, datetime
+from typing import Generic, TypeVar
+
 from pydantic import BaseModel, ConfigDict, Field
 
 T = TypeVar("T")
+
+logger = logging.getLogger("investai.envelope")
 
 
 def _default_request_id() -> str:
@@ -18,8 +23,8 @@ def _default_request_id() -> str:
         req_id = get_current_request_id()
         if req_id:
             return req_id
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Request id lookup failed, generating a new one: %s", exc)
     return str(uuid.uuid4())
 
 
@@ -38,9 +43,8 @@ class ResponseMeta(BaseSchema):
     """Metadatos de observabilidad, trazabilidad y telemetría de solicitud."""
 
     request_id: str = Field(default_factory=_default_request_id)
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    execution_time_ms: Optional[float] = None
-
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    execution_time_ms: float | None = None
 
 
 class APIResponse(BaseSchema, Generic[T]):
@@ -54,7 +58,7 @@ class APIResponse(BaseSchema, Generic[T]):
 class SubErrorDetail(BaseSchema):
     """Detalle granular de error de validación o campo específico."""
 
-    field: Optional[str] = None
+    field: str | None = None
     issue: str
 
 
@@ -63,7 +67,7 @@ class ErrorDetail(BaseSchema):
 
     code: str
     message: str
-    details: List[SubErrorDetail] = Field(default_factory=list)
+    details: list[SubErrorDetail] = Field(default_factory=list)
 
 
 class APIErrorResponse(BaseSchema):
@@ -72,5 +76,3 @@ class APIErrorResponse(BaseSchema):
     success: bool = False
     error: ErrorDetail
     meta: ResponseMeta = Field(default_factory=ResponseMeta)
-
-

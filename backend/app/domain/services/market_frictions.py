@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Tuple, Union
 
 from app.domain.models.order import OrderSide
 
@@ -9,20 +8,21 @@ class ExecutionCostBreakdown:
     """
     Immutable representation of granular execution costs and frictions for a trade.
     """
+
     side: OrderSide
     quantity: float
     nominal_price: float
-    effective_price: float                # Execution price incorporating slippage
-    nominal_amount: float                 # nominal_price * quantity
-    effective_amount: float               # effective_price * quantity
-    slippage_amount: float                # Direct financial impact of slippage (|effective - nominal|)
-    alyc_commission: float                # Base broker commission
-    alyc_vat: float                       # VAT (IVA 21%) applied on broker commission
-    market_fees: float                    # Exchange rights and clearing fees (BYMA / CNV)
-    total_frictions: float                # Total costs: slippage + commission + VAT + market fees
-    net_total_amount: float               # Total cash outlay (BUY) or net cash received (SELL)
+    effective_price: float  # Execution price incorporating slippage
+    nominal_amount: float  # nominal_price * quantity
+    effective_amount: float  # effective_price * quantity
+    slippage_amount: float  # Direct financial impact of slippage (|effective - nominal|)
+    alyc_commission: float  # Base broker commission
+    alyc_vat: float  # VAT (IVA 21%) applied on broker commission
+    market_fees: float  # Exchange rights and clearing fees (BYMA / CNV)
+    total_frictions: float  # Total costs: slippage + commission + VAT + market fees
+    net_total_amount: float  # Total cash outlay (BUY) or net cash received (SELL)
     effective_net_price_per_share: float  # net_total_amount / quantity
-    friction_pct: float                   # (total_frictions / nominal_amount) * 100
+    friction_pct: float  # (total_frictions / nominal_amount) * 100
 
 
 def calculate_alyc_commission(
@@ -31,7 +31,7 @@ def calculate_alyc_commission(
     min_fee: float = 0.0,
     vat_rate: float = 0.21,
     include_vat: bool = True,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Calculates the ALyC broker commission and applicable VAT (IVA).
 
@@ -86,9 +86,9 @@ def calculate_market_fees(
 def calculate_slippage(
     price: float,
     quantity: float,
-    side: Union[OrderSide, str],
+    side: OrderSide | str,
     slippage_rate: float = 0.001,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Computes effective execution price and slippage monetary cost.
     For BUY orders: slippage shifts execution price upwards (adverse selection).
@@ -129,7 +129,7 @@ def calculate_slippage(
 def calculate_net_execution_cost(
     quantity: float,
     price: float,
-    side: Union[OrderSide, str],
+    side: OrderSide | str,
     alyc_rate: float = 0.005,
     min_alyc_fee: float = 0.0,
     market_fee_rate: float = 0.0009,
@@ -192,7 +192,9 @@ def calculate_net_execution_cost(
         net_total = round(max(0.0, net_proceeds), 4)
 
     effective_net_price = round(net_total / quantity, 4)
-    friction_pct = round((total_frictions / nominal_amount) * 100.0, 4) if nominal_amount > 0 else 0.0
+    friction_pct = (
+        round((total_frictions / nominal_amount) * 100.0, 4) if nominal_amount > 0 else 0.0
+    )
 
     return ExecutionCostBreakdown(
         side=side_enum,

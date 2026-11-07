@@ -1,7 +1,7 @@
 # Plan Maestro Unificado y Arquitectura Integral: InvestAI Enterprise
 
-> **Documento Canónico y Única Fuente de Verdad (Single Source of Truth - SSOT)**  
-> **Estado Consolidado:** Capítulos 1 al 4 [IMPLEMENTADO] | Capítulos 5 al 9 [PENDIENTE]  
+> **Documento Canónico y Única Fuente de Verdad (Single Source of Truth - SSOT)**
+> **Estado Consolidado:** Capítulos 1 al 4 [IMPLEMENTADO] | Capítulos 5 al 9 [PENDIENTE]
 > **Calidad y Cobertura:** 205 tests automatizados al 100% en verde (165 unitarios + 40 de integración)
 
 ---
@@ -590,4 +590,3 @@ El presente **Plan Maestro Unificado** consolida la totalidad del diseño técni
 | **Capítulo 7** | Motores Cuantitativos Avanzados y Valuación | 7.1 al 7.3 | **PENDIENTE** | Cap. 4, Cap. 6 |
 | **Capítulo 8** | Ciclo de Vida de DB (Alembic) y Background Tasks | 8.1 al 8.3 | **PENDIENTE** | Cap. 4, Cap. 5 |
 | **Capítulo 9** | Frontend Dashboard Reactivo (React + Vite) | 9.1 al 9.3 | **PENDIENTE** | Cap. 4, Cap. 5, Cap. 6 |
-

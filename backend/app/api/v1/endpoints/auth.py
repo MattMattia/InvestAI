@@ -4,9 +4,10 @@ Implementa registro público blindado contra Mass Assignment, inicio de sesión 
 de Timing Attacks (CWE-204), rotación criptográfica de Refresh Tokens y perfil de sesión activa,
 bajo el contrato canónico Universal Envelope (APIResponse[T] / APIErrorResponse).
 """
-from datetime import datetime, timezone
-from typing import Annotated
+
 import uuid
+from datetime import UTC, datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -37,9 +38,7 @@ router = APIRouter()
 
 # Hash bcrypt precalculado a nivel de módulo para mitigación de Timing Attacks (CWE-204)
 # cuando se intenta autenticar un correo electrónico inexistente.
-_DUMMY_PASSWORD_HASH: str = get_password_hash(
-    "investai_dummy_timing_defense_secret", rounds=12
-)
+_DUMMY_PASSWORD_HASH: str = get_password_hash("investai_dummy_timing_defense_secret", rounds=12)
 
 
 @router.post(
@@ -88,12 +87,12 @@ async def register_user(
     try:
         await db.commit()
         await db.refresh(new_user)
-    except IntegrityError:
+    except IntegrityError as exc:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
-        )
+        ) from exc
 
     return APIResponse(data=UserResponse.model_validate(new_user))
 
@@ -191,13 +190,13 @@ async def refresh_tokens(
                     'Bearer error="invalid_token", error_description="The token has expired"'
                 )
             },
-        )
+        ) from None
     except InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
             headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
-        )
+        ) from None
 
     try:
         user_id = uuid.UUID(token_payload.sub)
@@ -286,7 +285,7 @@ async def update_current_user_profile(
             payload.role.value if isinstance(payload.role, UserRole) else str(payload.role)
         )
 
-    current_user.updated_at = datetime.now(timezone.utc)
+    current_user.updated_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(current_user)
     return APIResponse(data=UserResponse.model_validate(current_user))

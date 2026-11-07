@@ -83,4 +83,3 @@ networks:
   investai_network:
     name: investai_network
     driver: bridge
-

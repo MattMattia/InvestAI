@@ -3,7 +3,9 @@ Esquemas canónicos de autenticación (Módulo 5.4 - Fase 1).
 Define contratos de entrada inmutables y blindados contra Mass Assignment (extra="forbid")
 para registro e inicio de sesión, con enmascaramiento SecretStr y validación RFC 5321/5322.
 """
+
 import re
+
 from pydantic import Field, SecretStr, field_validator
 
 from app.schemas.envelope import BaseSchema
@@ -98,5 +100,3 @@ class LoginRequest(BaseSchema):
         if len(raw.encode("utf-8")) > 72:
             raise ValueError("Password cannot exceed 72 bytes")
         return v
-
-

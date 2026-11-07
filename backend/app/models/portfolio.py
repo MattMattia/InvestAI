@@ -1,15 +1,17 @@
 import uuid
-from datetime import datetime, timezone
-from typing import List, TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
 from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.user import UserModel
     from app.models.holding import HoldingModel
-    from app.models.risk_audit import RiskAuditSnapshotModel
     from app.models.rebalance_order import RebalanceOrderModel
+    from app.models.risk_audit import RiskAuditSnapshotModel
+    from app.models.user import UserModel
 
 
 class PortfolioModel(Base):
@@ -49,8 +51,8 @@ class PortfolioModel(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -58,17 +60,17 @@ class PortfolioModel(Base):
         "UserModel",
         back_populates="portfolios",
     )
-    holdings: Mapped[List["HoldingModel"]] = relationship(
+    holdings: Mapped[list["HoldingModel"]] = relationship(
         "HoldingModel",
         back_populates="portfolio",
         cascade="all, delete-orphan",
     )
-    risk_snapshots: Mapped[List["RiskAuditSnapshotModel"]] = relationship(
+    risk_snapshots: Mapped[list["RiskAuditSnapshotModel"]] = relationship(
         "RiskAuditSnapshotModel",
         back_populates="portfolio",
         cascade="all, delete-orphan",
     )
-    rebalance_orders: Mapped[List["RebalanceOrderModel"]] = relationship(
+    rebalance_orders: Mapped[list["RebalanceOrderModel"]] = relationship(
         "RebalanceOrderModel",
         back_populates="portfolio",
         cascade="all, delete-orphan",

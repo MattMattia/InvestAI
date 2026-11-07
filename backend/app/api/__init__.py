@@ -1,6 +1,7 @@
 """
 API Package: Re-exportación canónica de dependencias de seguridad, base de datos y servicios.
 """
+
 from app.api.deps import (
     RoleChecker,
     check_login_rate_limit,
@@ -34,4 +35,3 @@ __all__ = [
     "check_register_rate_limit",
     "get_market_service",
 ]
-

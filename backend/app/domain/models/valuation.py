@@ -1,13 +1,15 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 
 class ValuationStatus(str, Enum):
     """Status indicator for accounting valuation multiples."""
-    VALID = "VALID"                                # Valid multiples computed
-    INDETERMINATE = "INDETERMINATE"                # Earnings <= 0 or inconsistent accounting denominator
-    NOT_APPLICABLE = "NOT_APPLICABLE"              # Instrument type does not support multiples (e.g. Bonds, Cash)
+
+    VALID = "VALID"  # Valid multiples computed
+    INDETERMINATE = "INDETERMINATE"  # Earnings <= 0 or inconsistent accounting denominator
+    NOT_APPLICABLE = (
+        "NOT_APPLICABLE"  # Instrument type does not support multiples (e.g. Bonds, Cash)
+    )
 
 
 @dataclass(frozen=True)
@@ -16,25 +18,26 @@ class ValuationMetrics:
     Fundamental accounting valuation metrics (P/E, P/B, PEG).
     Implements deterministic exception handling for negative or null earnings (EPS <= 0).
     """
+
     ticker: str
     price: float
-    eps: Optional[float] = None
-    book_value_per_share: Optional[float] = None
-    growth_rate_pct: Optional[float] = None
-    pe_ratio: Optional[float] = None
-    pb_ratio: Optional[float] = None
-    peg_ratio: Optional[float] = None
+    eps: float | None = None
+    book_value_per_share: float | None = None
+    growth_rate_pct: float | None = None
+    pe_ratio: float | None = None
+    pb_ratio: float | None = None
+    peg_ratio: float | None = None
     status: ValuationStatus = ValuationStatus.VALID
-    status_reason: Optional[str] = None
+    status_reason: str | None = None
 
     @classmethod
     def calculate(
         cls,
         ticker: str,
         price: float,
-        eps: Optional[float] = None,
-        book_value_per_share: Optional[float] = None,
-        growth_rate_pct: Optional[float] = None,
+        eps: float | None = None,
+        book_value_per_share: float | None = None,
+        growth_rate_pct: float | None = None,
         is_equity: bool = True,
     ) -> "ValuationMetrics":
         """
@@ -86,11 +89,7 @@ class ValuationMetrics:
         else:
             computed_pb = None
 
-        final_status = (
-            ValuationStatus.INDETERMINATE
-            if pe_indeterminate
-            else ValuationStatus.VALID
-        )
+        final_status = ValuationStatus.INDETERMINATE if pe_indeterminate else ValuationStatus.VALID
 
         return cls(
             ticker=ticker,
@@ -104,4 +103,3 @@ class ValuationMetrics:
             status=final_status,
             status_reason=indeterminate_reason,
         )
-

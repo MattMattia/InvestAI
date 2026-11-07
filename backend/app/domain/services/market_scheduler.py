@@ -9,17 +9,18 @@ Provides:
 - Asynchronous end-of-day market-close orchestrator with concurrency locking, snapshot persistence,
   and per-portfolio fault isolation (`MarketCloseSchedulerService`).
 """
+
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
-from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal, localcontext
-from enum import Enum
 import hashlib
 import time
-from typing import Any, Literal, Protocol, runtime_checkable
 import uuid
+from collections.abc import Sequence
+from datetime import UTC, date, datetime, timedelta, timezone
+from decimal import Decimal, localcontext
+from enum import Enum
+from typing import Any, Literal, Protocol, runtime_checkable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, field_validator, model_validator
@@ -321,32 +322,44 @@ class BYMACalendarService:
     canonical national holidays, and Buenos Aires market timezone.
     """
 
-    _FIXED_HOLIDAYS: frozenset[tuple[int, int]] = frozenset({
-        (1, 1),    # Año Nuevo
-        (3, 24),   # Día Nacional de la Memoria por la Verdad y la Justicia
-        (4, 2),    # Día del Veterano y de los Caídos en la Guerra de Malvinas
-        (5, 1),    # Día del Trabajador
-        (5, 25),   # Día de la Revolución de Mayo
-        (6, 17),   # Paso a la Inmortalidad del Gral. Don Martín Miguel de Güemes
-        (6, 20),   # Paso a la Inmortalidad del Gral. Manuel Belgrano / Día de la Bandera
-        (7, 9),    # Día de la Independencia
-        (8, 17),   # Paso a la Inmortalidad del Gral. José de San Martín
-        (10, 12),  # Día del Respeto a la Diversidad Cultural
-        (11, 20),  # Día de la Soberanía Nacional
-        (12, 8),   # Inmaculada Concepción de María
-        (12, 25),  # Navidad
-    })
+    _FIXED_HOLIDAYS: frozenset[tuple[int, int]] = frozenset(
+        {
+            (1, 1),  # Año Nuevo
+            (3, 24),  # Día Nacional de la Memoria por la Verdad y la Justicia
+            (4, 2),  # Día del Veterano y de los Caídos en la Guerra de Malvinas
+            (5, 1),  # Día del Trabajador
+            (5, 25),  # Día de la Revolución de Mayo
+            (6, 17),  # Paso a la Inmortalidad del Gral. Don Martín Miguel de Güemes
+            (6, 20),  # Paso a la Inmortalidad del Gral. Manuel Belgrano / Día de la Bandera
+            (7, 9),  # Día de la Independencia
+            (8, 17),  # Paso a la Inmortalidad del Gral. José de San Martín
+            (10, 12),  # Día del Respeto a la Diversidad Cultural
+            (11, 20),  # Día de la Soberanía Nacional
+            (12, 8),  # Inmaculada Concepción de María
+            (12, 25),  # Navidad
+        }
+    )
 
-    _KNOWN_VARIABLE_HOLIDAYS: frozenset[date] = frozenset({
-        # 2024
-        date(2024, 2, 12), date(2024, 2, 13), date(2024, 3, 29),
-        # 2025
-        date(2025, 3, 3), date(2025, 3, 4), date(2025, 4, 18),
-        # 2026
-        date(2026, 2, 16), date(2026, 2, 17), date(2026, 4, 3),
-        # 2027
-        date(2027, 2, 8), date(2027, 2, 9), date(2027, 3, 26),
-    })
+    _KNOWN_VARIABLE_HOLIDAYS: frozenset[date] = frozenset(
+        {
+            # 2024
+            date(2024, 2, 12),
+            date(2024, 2, 13),
+            date(2024, 3, 29),
+            # 2025
+            date(2025, 3, 3),
+            date(2025, 3, 4),
+            date(2025, 4, 18),
+            # 2026
+            date(2026, 2, 16),
+            date(2026, 2, 17),
+            date(2026, 4, 3),
+            # 2027
+            date(2027, 2, 8),
+            date(2027, 2, 9),
+            date(2027, 3, 26),
+        }
+    )
 
     def __init__(self, custom_holidays: set[date] | None = None) -> None:
         self._custom_holidays: set[date] = set(custom_holidays or set())
@@ -430,12 +443,12 @@ class MarketCloseSchedulerService:
         """
         Synchronously execute the end-of-day market-close workflow across portfolios (Phase 1).
         """
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         t0 = time.perf_counter()
         job_id = self._generate_job_id(config)
 
         if not self.calendar.is_trading_day(config.target_date) and not config.force_rerun:
-            completed_at = datetime.now(timezone.utc)
+            completed_at = datetime.now(UTC)
             duration_ms = max(0.0, (time.perf_counter() - t0) * 1000.0)
             return MarketCloseJobReport(
                 job_id=job_id,
@@ -555,7 +568,7 @@ class MarketCloseSchedulerService:
         else:
             global_status = MarketCloseJobStatus.FAILED
 
-        completed_at = datetime.now(timezone.utc)
+        completed_at = datetime.now(UTC)
         if completed_at < started_at:
             completed_at = started_at
         duration_ms = max(0.0, (time.perf_counter() - t0) * 1000.0)
@@ -589,7 +602,7 @@ class MarketCloseSchedulerService:
         Asynchronously execute market close with distributed locking, snapshot persistence,
         and per-portfolio fault isolation (Phase 2).
         """
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         t0 = time.perf_counter()
         job_id = self._generate_job_id(config)
         lock_key = self._generate_lock_key(config)
@@ -600,7 +613,7 @@ class MarketCloseSchedulerService:
         if self.lock_manager is not None:
             lock_res = await self.lock_manager.acquire(lock_key, ttl_seconds=600)
             if not lock_res.acquired and not config.force_rerun:
-                completed_at = datetime.now(timezone.utc)
+                completed_at = datetime.now(UTC)
                 duration_ms = max(0.0, (time.perf_counter() - t0) * 1000.0)
                 return MarketCloseJobReport(
                     job_id=job_id,
@@ -624,7 +637,7 @@ class MarketCloseSchedulerService:
         try:
             # 2. Calendar validation
             if not self.calendar.is_trading_day(config.target_date) and not config.force_rerun:
-                completed_at = datetime.now(timezone.utc)
+                completed_at = datetime.now(UTC)
                 duration_ms = max(0.0, (time.perf_counter() - t0) * 1000.0)
                 return MarketCloseJobReport(
                     job_id=job_id,
@@ -720,9 +733,7 @@ class MarketCloseSchedulerService:
                         snapshot_id = None
                         if not config.dry_run and self.snapshot_repo is not None:
                             compliance_st = (
-                                "BREACH_DETECTED"
-                                if report.needs_rebalancing
-                                else "COMPLIANCE_OK"
+                                "BREACH_DETECTED" if report.needs_rebalancing else "COMPLIANCE_OK"
                             )
                             snapshot_id = await self.snapshot_repo.persist_audit_snapshot(
                                 portfolio_id=p.portfolio_id,
@@ -781,7 +792,7 @@ class MarketCloseSchedulerService:
             else:
                 global_status = MarketCloseJobStatus.FAILED
 
-            completed_at = datetime.now(timezone.utc)
+            completed_at = datetime.now(UTC)
             if completed_at < started_at:
                 completed_at = started_at
             duration_ms = max(0.0, (time.perf_counter() - t0) * 1000.0)

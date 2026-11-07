@@ -5,16 +5,12 @@ validaciones defensivas (regex de tickers, consistencia de fechas, ratios),
 resolución de dependencias vía app.dependency_overrides,
 cálculo de MEP/CCL y adaptación canónica para BacktestEngine.
 """
-from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
-from typing import List
+
 import unittest
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 import httpx
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
-
-import app.models  # Asegura registro de modelos relacionales
 from app.api.deps import get_db_session, get_market_service
 from app.core.database import Base
 from app.domain.services.backtest_engine import BacktestEngine, bars_to_price_history
@@ -32,6 +28,8 @@ from app.schemas.market_data import (
     MarketQuoteDTO,
     Timeframe,
 )
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 
 class MockMarketDataConnector(BaseMarketConnector):
@@ -46,7 +44,7 @@ class MockMarketDataConnector(BaseMarketConnector):
     def add_quote(self, quote: MarketQuoteDTO):
         self.quotes_db[quote.ticker.upper()] = quote
 
-    def add_bars(self, ticker: str, bars: List[MarketBarDTO]):
+    def add_bars(self, ticker: str, bars: list[MarketBarDTO]):
         self.bars_db[ticker.upper()] = bars
 
     async def get_quote(self, ticker: str) -> MarketQuoteDTO:
@@ -64,17 +62,14 @@ class MockMarketDataConnector(BaseMarketConnector):
         start_date: date,
         end_date: date,
         timeframe: Timeframe = Timeframe.D1,
-    ) -> List[MarketBarDTO]:
+    ) -> list[MarketBarDTO]:
         norm = ticker.strip().upper()
         self.bars_calls[norm] = self.bars_calls.get(norm, 0) + 1
         if norm == "RATELIMIT":
             raise RateLimitExceededError("Rate limit excedido por el proveedor")
         if norm not in self.bars_db:
             raise TickerNotFoundError(f"Ticker '{norm}' no encontrado")
-        return [
-            b for b in self.bars_db[norm]
-            if start_date <= b.timestamp.date() <= end_date
-        ]
+        return [b for b in self.bars_db[norm] if start_date <= b.timestamp.date() <= end_date]
 
 
 class TestApiMarketIntegration(unittest.IsolatedAsyncioTestCase):
@@ -99,7 +94,7 @@ class TestApiMarketIntegration(unittest.IsolatedAsyncioTestCase):
         self.test_cache = InMemoryQuoteCache(ttl_seconds=30.0)
 
         # Poblar cotizaciones base
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self.mock_connector.add_quote(
             MarketQuoteDTO(
                 ticker="AL30",
@@ -147,7 +142,7 @@ class TestApiMarketIntegration(unittest.IsolatedAsyncioTestCase):
         aapl_bars = []
         for i in range(15):
             d = start_d + timedelta(days=i)
-            ts = datetime(d.year, d.month, d.day, 17, 0, 0, tzinfo=timezone.utc)
+            ts = datetime(d.year, d.month, d.day, 17, 0, 0, tzinfo=UTC)
             ggal_bars.append(
                 MarketBarDTO(
                     timestamp=ts,
@@ -325,7 +320,9 @@ class TestApiMarketIntegration(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_fx_mep_ticker_not_found(self) -> None:
         """Verifica 404 si alguno de los activos no existe para MEP."""
-        response = await self.client.get("/api/v1/market/fx/mep?local_ticker=INVENTADO&usd_ticker=AL30D")
+        response = await self.client.get(
+            "/api/v1/market/fx/mep?local_ticker=INVENTADO&usd_ticker=AL30D"
+        )
         self.assertEqual(response.status_code, 404)
 
         data = response.json()
@@ -364,8 +361,12 @@ class TestApiMarketIntegration(unittest.IsolatedAsyncioTestCase):
         y que BacktestEngine.run simule la cartera sobre los precios adaptados.
         """
         # 1. Recuperar barras de los instrumentos
-        res_ggal = await self.client.get("/api/v1/market/history/GGAL?start_date=2024-01-01&end_date=2024-01-15")
-        res_aapl = await self.client.get("/api/v1/market/history/AAPL?start_date=2024-01-01&end_date=2024-01-15")
+        res_ggal = await self.client.get(
+            "/api/v1/market/history/GGAL?start_date=2024-01-01&end_date=2024-01-15"
+        )
+        res_aapl = await self.client.get(
+            "/api/v1/market/history/AAPL?start_date=2024-01-01&end_date=2024-01-15"
+        )
         self.assertEqual(res_ggal.status_code, 200)
         self.assertEqual(res_aapl.status_code, 200)
 

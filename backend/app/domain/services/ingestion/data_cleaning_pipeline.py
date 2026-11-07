@@ -2,15 +2,16 @@
 Data cleaning, monetary normalization, and schema validation pipeline
 for broker report holdings (Module 6.2 - Phase 1).
 """
+
 from __future__ import annotations
 
-from collections.abc import Sequence
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from enum import Enum
 import math
 import re
-from typing import Any
 import unicodedata
+from collections.abc import Sequence
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from enum import Enum
+from typing import Any
 
 from pydantic import Field
 
@@ -36,9 +37,7 @@ MAX_HOLDING_QUANTITY: Decimal = Decimal("1000000000000")  # 10^12 ceiling
 VALID_TICKER_PATTERN: re.Pattern[str] = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,19}$")
 
 _LOCAL_EXCHANGE_SUFFIX_RE = re.compile(r"\.(BA|BCBA|RO|AR)$", re.IGNORECASE)
-_CURRENCY_TOKEN_STRIP_RE = re.compile(
-    r"(?:u\$s|us\$|ar\$|usd|ars|\$|%)", re.IGNORECASE
-)
+_CURRENCY_TOKEN_STRIP_RE = re.compile(r"(?:u\$s|us\$|ar\$|usd|ars|\$|%)", re.IGNORECASE)
 _THOUSANDS_COMMA_RE = re.compile(r"^\d{1,3}(,\d{3})+$")
 _THOUSANDS_DOT_RE = re.compile(r"^\d{1,3}(\.\d{3})+$")
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -233,9 +232,7 @@ class DataCleaningPipeline:
             cleaned = cleaned[1:]
 
         if not cleaned or len(cleaned) > MAX_NUMERIC_STR_LENGTH:
-            raise ValueError(
-                f"Invalid or oversized numeric token (length={len(cleaned)})"
-            )
+            raise ValueError(f"Invalid or oversized numeric token (length={len(cleaned)})")
 
         lowered = cleaned.lower()
         if "nan" in lowered or "inf" in lowered:
@@ -323,7 +320,20 @@ class DataCleaningPipeline:
         had_cedear_prefix = cleaned.startswith(("CEDEARS ", "CEDEAR "))
 
         # Strip common Argentine broker category prefixes (e.g. 'CEDEAR NVDA', 'BONO AL30')
-        for prefix in ("CEDEARS ", "CEDEAR ", "ACCIONES ", "ACCION ", "BONOS ", "BONO ", "BONAR ", "GLOBAL ", "ON ", "LETRA ", "LECAP ", "FCI "):
+        for prefix in (
+            "CEDEARS ",
+            "CEDEAR ",
+            "ACCIONES ",
+            "ACCION ",
+            "BONOS ",
+            "BONO ",
+            "BONAR ",
+            "GLOBAL ",
+            "ON ",
+            "LETRA ",
+            "LECAP ",
+            "FCI ",
+        ):
             if cleaned.startswith(prefix):
                 cleaned = cleaned[len(prefix) :].strip()
 
@@ -331,7 +341,17 @@ class DataCleaningPipeline:
             cleaned = "NVDA"
 
         # Strip common descriptive suffixes (e.g. 'AAPL CEDEAR N', 'NVDA CEDEAR', 'YPFD S.A.')
-        for suffix in (" CEDEAR N", " CEDEAR", " S.A.I.C.", " S.A.", " SA", " INC.", " INC", " CORP.", " CORP"):
+        for suffix in (
+            " CEDEAR N",
+            " CEDEAR",
+            " S.A.I.C.",
+            " S.A.",
+            " SA",
+            " INC.",
+            " INC",
+            " CORP.",
+            " CORP",
+        ):
             if cleaned.endswith(suffix):
                 cleaned = cleaned[: -len(suffix)].strip()
 
@@ -383,9 +403,7 @@ class DataCleaningPipeline:
 
         raise ValueError(f"Unsupported currency: '{raw_currency}'")
 
-    def clean_records(
-        self, raw_records: Sequence[RawHoldingRecord]
-    ) -> CleanReportResult:
+    def clean_records(self, raw_records: Sequence[RawHoldingRecord]) -> CleanReportResult:
         """
         Clean and validate a sequence of `RawHoldingRecord` items without aborting
         the batch when individual rows fail validation.
@@ -397,9 +415,7 @@ class DataCleaningPipeline:
         for raw in raw_records:
             # 1. Normalize & validate ticker
             try:
-                ticker = self.normalize_ticker(
-                    raw.raw_ticker, keep_ba_suffix=self.keep_ba_suffix
-                )
+                ticker = self.normalize_ticker(raw.raw_ticker, keep_ba_suffix=self.keep_ba_suffix)
             except ValueError as exc:
                 invalid_records.append(
                     InvalidHoldingRecord(
@@ -451,9 +467,7 @@ class DataCleaningPipeline:
                 )
                 continue
 
-            quantity = parsed_quantity.quantize(
-                HOLDING_DECIMAL_QUANTIZE, rounding=ROUND_HALF_UP
-            )
+            quantity = parsed_quantity.quantize(HOLDING_DECIMAL_QUANTIZE, rounding=ROUND_HALF_UP)
 
             if quantity < MIN_HOLDING_QUANTITY:
                 invalid_records.append(
@@ -463,8 +477,7 @@ class DataCleaningPipeline:
                         raw_quantity=raw.raw_quantity,
                         error_code=CleaningErrorCode.ZERO_QUANTITY,
                         reason=(
-                            "Holding quantity cannot be zero or sub-pip "
-                            f"(< {MIN_HOLDING_QUANTITY})"
+                            f"Holding quantity cannot be zero or sub-pip (< {MIN_HOLDING_QUANTITY})"
                         ),
                     )
                 )
@@ -485,9 +498,7 @@ class DataCleaningPipeline:
             # 3. Parse, quantize & validate optional average purchase price (PPC)
             avg_price: Decimal | None = None
             if raw.raw_avg_price is not None:
-                raw_price_str = (
-                    str(raw.raw_avg_price).replace("\xa0", " ").strip().lower()
-                )
+                raw_price_str = str(raw.raw_avg_price).replace("\xa0", " ").strip().lower()
                 if raw_price_str not in _EMPTY_PRICE_PLACEHOLDERS:
                     try:
                         parsed_price = self.parse_decimal(raw.raw_avg_price)
@@ -531,7 +542,10 @@ class DataCleaningPipeline:
             if avg_price is None and raw.raw_fields:
                 for fallback_key in ("Precio", "precio", "PrecioCompra", "preciocompra"):
                     fb_val = raw.raw_fields.get(fallback_key)
-                    if fb_val is not None and str(fb_val).strip().lower() not in _EMPTY_PRICE_PLACEHOLDERS:
+                    if (
+                        fb_val is not None
+                        and str(fb_val).strip().lower() not in _EMPTY_PRICE_PLACEHOLDERS
+                    ):
                         try:
                             fb_dec = self.parse_decimal(fb_val).quantize(
                                 HOLDING_DECIMAL_QUANTIZE, rounding=ROUND_HALF_UP
@@ -543,13 +557,9 @@ class DataCleaningPipeline:
                             pass
 
             # 4. Normalize or infer currency
-            inferred_default = self._infer_default_currency(
-                raw.raw_avg_price, raw.raw_quantity
-            )
+            inferred_default = self._infer_default_currency(raw.raw_avg_price, raw.raw_quantity)
             try:
-                currency = self.normalize_currency(
-                    raw.raw_currency, default=inferred_default
-                )
+                currency = self.normalize_currency(raw.raw_currency, default=inferred_default)
             except ValueError as exc:
                 invalid_records.append(
                     InvalidHoldingRecord(
@@ -589,4 +599,3 @@ class DataCleaningPipeline:
             if isinstance(candidate, str) and _EMBEDDED_USD_HINT_RE.search(candidate):
                 return "USD"
         return "ARS"
-

@@ -3,6 +3,7 @@ Concrete CSV report parsing strategy for local broker statements (Module 6.1 - P
 Supports multi-encoding fallback (UTF-8-SIG, UTF-8, CP1252, Latin-1) and automatic
 delimiter and header line discovery.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -48,15 +49,11 @@ class CSVReportParser(BaseReportParser):
     def __init__(self, schema_detector: SchemaDetector | None = None) -> None:
         self._schema_detector: SchemaDetector = schema_detector or SchemaDetector()
 
-    async def parse_report(
-        self, file_stream: bytes, filename: str
-    ) -> list[RawHoldingRecord]:
+    async def parse_report(self, file_stream: bytes, filename: str) -> list[RawHoldingRecord]:
         """Parse a CSV binary stream in a worker thread to avoid blocking the event loop."""
         return await asyncio.to_thread(self._parse_sync, file_stream, filename)
 
-    def _parse_sync(
-        self, file_stream: bytes, filename: str
-    ) -> list[RawHoldingRecord]:
+    def _parse_sync(self, file_stream: bytes, filename: str) -> list[RawHoldingRecord]:
         self.validate_stream(file_stream, filename)
 
         ext = PurePath(filename.strip()).suffix.lower()
@@ -72,9 +69,7 @@ class CSVReportParser(BaseReportParser):
 
         for sig in _BINARY_MAGIC_SIGNATURES:
             if file_stream.startswith(sig):
-                raise CorruptedReportError(
-                    "Binary file signature detected in CSV upload"
-                )
+                raise CorruptedReportError("Binary file signature detected in CSV upload")
 
         decoded_text = self._decode_stream(file_stream)
         if not decoded_text.strip():
@@ -85,20 +80,14 @@ class CSVReportParser(BaseReportParser):
         if not non_empty_exist:
             raise EmptyReportError("CSV report contains only blank lines")
 
-        header_line_idx, delimiter, header_cells, column_map = self._detect_header(
-            lines
-        )
+        header_line_idx, delimiter, header_cells, column_map = self._detect_header(lines)
 
-        clean_headers: list[str] = [
-            str(h).replace("\xa0", " ").strip() for h in header_cells
-        ]
+        clean_headers: list[str] = [str(h).replace("\xa0", " ").strip() for h in header_cells]
         remaining_text = "\n".join(lines[header_line_idx + 1 :])
 
         records: list[RawHoldingRecord] = []
         try:
-            reader = csv.reader(
-                io.StringIO(remaining_text), delimiter=delimiter, strict=True
-            )
+            reader = csv.reader(io.StringIO(remaining_text), delimiter=delimiter, strict=True)
             for offset, row in enumerate(reader, start=1):
                 row_number = header_line_idx + 1 + offset
                 if not row or all(not cell.replace("\xa0", " ").strip() for cell in row):
@@ -139,9 +128,7 @@ class CSVReportParser(BaseReportParser):
                     if not header_name:
                         continue
                     cell_val = (
-                        row[col_idx].replace("\xa0", " ").strip()
-                        if col_idx < len(row)
-                        else ""
+                        row[col_idx].replace("\xa0", " ").strip() if col_idx < len(row) else ""
                     )
                     raw_fields[header_name] = cell_val
 
@@ -164,9 +151,7 @@ class CSVReportParser(BaseReportParser):
             raise CorruptedReportError(f"Malformed CSV structure: {exc}") from exc
 
         if not records:
-            raise EmptyReportError(
-                "CSV report contains headers but no valid holding rows"
-            )
+            raise EmptyReportError("CSV report contains headers but no valid holding rows")
 
         return records
 
@@ -178,9 +163,7 @@ class CSVReportParser(BaseReportParser):
                 return file_stream.decode(encoding, errors="strict")
             except UnicodeDecodeError:
                 continue
-        raise CorruptedReportError(
-            "Unable to decode CSV stream with supported character encodings"
-        )
+        raise CorruptedReportError("Unable to decode CSV stream with supported character encodings")
 
     def _detect_header(
         self,
@@ -205,9 +188,7 @@ class CSVReportParser(BaseReportParser):
             delim_errors: list[csv.Error] = []
             for delim_prio, delimiter in enumerate(_CANDIDATE_DELIMITERS):
                 try:
-                    parsed_rows = list(
-                        csv.reader([line], delimiter=delimiter, strict=True)
-                    )
+                    parsed_rows = list(csv.reader([line], delimiter=delimiter, strict=True))
                 except csv.Error as exc:
                     delim_errors.append(exc)
                     continue
@@ -249,4 +230,3 @@ class CSVReportParser(BaseReportParser):
         raise MissingRequiredColumnsError(
             "Required columns ('ticker' and 'quantity') were not found in the CSV report"
         )
-

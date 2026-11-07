@@ -1,8 +1,8 @@
 # InvestAI Enterprise — Manual de Defensa Académica y Guía para el Tribunal Evaluador
 
-> **Autor:** Mattia Risso  
-> **Proyecto:** InvestAI Enterprise — Plataforma Institucional de Gestión de Portafolios, Ingeniería Financiera Cuantitativa, Control de Riesgo Determinista y Ejecución Asistida en BYMA  
-> **Arquitectura:** Clean Architecture & Domain-Driven Design (FastAPI + SQLAlchemy 2.0 Async + React 18 + TypeScript + Tailwind CSS)  
+> **Autor:** Mattia Risso
+> **Proyecto:** InvestAI Enterprise — Plataforma Institucional de Gestión de Portafolios, Ingeniería Financiera Cuantitativa, Control de Riesgo Determinista y Ejecución Asistida en BYMA
+> **Arquitectura:** Clean Architecture & Domain-Driven Design (FastAPI + SQLAlchemy 2.0 Async + React 18 + TypeScript + Tailwind CSS)
 > **Suite de Verificación:** **671 Pruebas Automatizadas Aprobadas (100% Passing)** | **0 Errores de Compilación TypeScript**
 
 ---
@@ -134,4 +134,3 @@ $env:PYTHONPATH="backend"; python -m pytest backend/tests -q
 # 2. Verificar tipado estricto TypeScript y empaquetado de producción del Frontend
 npm --prefix frontend run build
 ```
-

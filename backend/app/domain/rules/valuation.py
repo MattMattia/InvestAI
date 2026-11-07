@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from app.domain.models.portfolio import InvestorProfile, Portfolio
 from app.domain.models.valuation import ValuationMetrics, ValuationStatus
 from app.domain.rules.base import BaseRiskRule, RuleResult, Severity
@@ -15,6 +16,7 @@ class ValuationAnomalyRule(BaseRiskRule):
       - MODERATE: WARNING (or CRITICAL if extreme PEG >= 3.0)
       - AGGRESSIVE: INFO
     """
+
     rule_id = "RULE_VAL_001"
     rule_name = "Anomalías de Valuación Fundamental y Empresas con Pérdidas"
     description = "Evalúa anomalías en múltiplos contables (PEG > 2.0, P/B excesivo) e identifica imposibilidad de valuación contable ante EPS <= 0."
@@ -22,7 +24,7 @@ class ValuationAnomalyRule(BaseRiskRule):
     DEFAULT_MAX_PEG: float = 2.0
     DEFAULT_MAX_PB: float = 12.0
 
-    PROFILE_SEVERITY: Dict[InvestorProfile, Severity] = {
+    PROFILE_SEVERITY: dict[InvestorProfile, Severity] = {
         InvestorProfile.CONSERVATIVE: Severity.CRITICAL,
         InvestorProfile.MODERATE: Severity.WARNING,
         InvestorProfile.AGGRESSIVE: Severity.INFO,
@@ -36,7 +38,9 @@ class ValuationAnomalyRule(BaseRiskRule):
         self.max_peg = max_peg
         self.max_pb = max_pb
 
-    def _determine_failure_severity(self, portfolio: Portfolio, is_extreme: bool = False) -> Severity:
+    def _determine_failure_severity(
+        self, portfolio: Portfolio, is_extreme: bool = False
+    ) -> Severity:
         profile = getattr(portfolio, "investor_profile", InvestorProfile.MODERATE)
         if isinstance(profile, str):
             try:
@@ -54,14 +58,14 @@ class ValuationAnomalyRule(BaseRiskRule):
     def evaluate(
         self,
         portfolio: Portfolio,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> List[RuleResult]:
+        context: dict[str, Any] | None = None,
+    ) -> list[RuleResult]:
         ctx = context or {}
-        valuations_map: Dict[str, ValuationMetrics] = ctx.get("valuations", {})
+        valuations_map: dict[str, ValuationMetrics] = ctx.get("valuations", {})
         max_peg = ctx.get("max_peg_threshold", self.max_peg)
         max_pb = ctx.get("max_pb_threshold", self.max_pb)
 
-        results: List[RuleResult] = []
+        results: list[RuleResult] = []
 
         equity_holdings = [h for h in portfolio.holdings if h.asset.is_equity]
 
@@ -127,7 +131,9 @@ class ValuationAnomalyRule(BaseRiskRule):
                         rule_id=self.rule_id,
                         rule_name=self.rule_name,
                         passed=False,
-                        severity=self._determine_failure_severity(portfolio, is_extreme=is_critical),
+                        severity=self._determine_failure_severity(
+                            portfolio, is_extreme=is_critical
+                        ),
                         message=(
                             f"Alerta de Sobrevaloración Contable en '{ticker}': Ratio PEG de {val.peg_ratio:.2f} "
                             f"supera el umbral prudencial de {max_peg:.2f}."

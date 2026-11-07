@@ -1,11 +1,11 @@
 import io
 import unittest
-import pandas as pd
-from pydantic import ValidationError
 
+import pandas as pd
 from app.domain.models.asset import AssetType, Currency
 from app.schemas.ingestion import IngestionBatchPayload, RawHoldingRecord
 from app.services.parsers.universal_parser import UniversalHoldingParser
+from pydantic import ValidationError
 
 
 class TestIngestionSchemasAndParser(unittest.TestCase):
@@ -120,13 +120,15 @@ class TestIngestionSchemasAndParser(unittest.TestCase):
         self.assertEqual(report.holdings[1].average_buy_price, 15200.00)
 
     def test_excel_buffer_parsing(self):
-        df = pd.DataFrame({
-            "Ticker": ["KO", "GD30"],
-            "Nominales": [20, 1000],
-            "Costo": [850.0, 310.0],
-            "Precio Mercado": [920.0, 345.0],
-            "Moneda": ["ARS", "USD"],
-        })
+        df = pd.DataFrame(
+            {
+                "Ticker": ["KO", "GD30"],
+                "Nominales": [20, 1000],
+                "Costo": [850.0, 310.0],
+                "Precio Mercado": [920.0, 345.0],
+                "Moneda": ["ARS", "USD"],
+            }
+        )
         buffer = io.BytesIO()
         df.to_excel(buffer, index=False, engine="openpyxl")
         excel_bytes = buffer.getvalue()
@@ -142,10 +144,7 @@ class TestIngestionSchemasAndParser(unittest.TestCase):
         self.assertEqual(report.holdings[1].asset.asset_type, AssetType.BOND_SOVEREIGN)
 
     def test_custom_column_mapping_override(self):
-        csv_content = (
-            "Columna_Cod,Columna_Q,Columna_P\n"
-            "AAPL,10,1200\n"
-        )
+        csv_content = "Columna_Cod,Columna_Q,Columna_P\nAAPL,10,1200\n"
         custom_map = {
             "ticker": "Columna_Cod",
             "quantity": "Columna_Q",
@@ -182,10 +181,7 @@ class TestIngestionSchemasAndParser(unittest.TestCase):
         self.assertIn("AL30", tickers)
 
     def test_missing_mandatory_columns_error(self):
-        csv_content = (
-            "Descripcion,Comentario\n"
-            "Fila 1,Sin ticker ni cantidad\n"
-        )
+        csv_content = "Descripcion,Comentario\nFila 1,Sin ticker ni cantidad\n"
         parser = UniversalHoldingParser()
         report = parser.parse(csv_content.encode("utf-8"))
 

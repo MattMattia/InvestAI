@@ -3,28 +3,25 @@ Unit tests for Distributed Locks (InMemory and Redis), Snapshot Persistence,
 and Asynchronous Concurrency Isolation in Market Close Scheduler
 (Module 8.2 - Phase 2: `backend/tests/unit/test_market_scheduler_locks.py`).
 """
+
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
-from decimal import Decimal
-import time
-from typing import Any
 import unittest
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from app.domain.services.market_scheduler import (
     BYMACalendarService,
     InMemoryLockManager,
-    LockAcquireResult,
     MarketCloseJobConfig,
     MarketCloseJobStatus,
     MarketCloseSchedulerService,
     MarketCloseTriggerType,
     PortfolioCloseInput,
     RedisLockManager,
-    SnapshotPersistenceProtocol,
 )
 from app.domain.services.tolerance_band_rebalancer import (
     AssetTargetBandSpec,
@@ -49,14 +46,16 @@ class MockSnapshotRepository:
         critical_alerts_count: int = 0,
     ) -> str:
         snapshot_id = f"snap-{portfolio_id}-{len(self.snapshots) + 1}"
-        self.snapshots.append({
-            "snapshot_id": snapshot_id,
-            "portfolio_id": portfolio_id,
-            "as_of": as_of,
-            "compliance_status": compliance_status,
-            "report_payload": report_payload,
-            "critical_alerts_count": critical_alerts_count,
-        })
+        self.snapshots.append(
+            {
+                "snapshot_id": snapshot_id,
+                "portfolio_id": portfolio_id,
+                "as_of": as_of,
+                "compliance_status": compliance_status,
+                "report_payload": report_payload,
+                "critical_alerts_count": critical_alerts_count,
+            }
+        )
         return snapshot_id
 
 
@@ -229,7 +228,9 @@ class TestMarketSchedulerLocks(unittest.IsolatedAsyncioTestCase):
 
         # 2. Error case: ensure lock is released when an internal failure occurs
         with patch.object(
-            self.scheduler.calendar, "is_trading_day", side_effect=RuntimeError("Simulated DB failure")
+            self.scheduler.calendar,
+            "is_trading_day",
+            side_effect=RuntimeError("Simulated DB failure"),
         ):
             with self.assertRaises(RuntimeError):
                 await self.scheduler.execute_market_close_async(config, [portfolio])
@@ -289,4 +290,3 @@ class TestMarketSchedulerLocks(unittest.IsolatedAsyncioTestCase):
         r_rel = await redis_lock.release("redis:lock:test", r_acq.token)
         self.assertTrue(r_rel)
         mock_redis.eval.assert_awaited_once()
-

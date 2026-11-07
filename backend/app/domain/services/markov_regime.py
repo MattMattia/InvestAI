@@ -1,11 +1,11 @@
-from enum import Enum
 import math
-from typing import Dict, Optional, Union
+from enum import Enum
+
 import numpy as np
 
 
 class MarketRegime(str, Enum):
-    LOW_VOLATILITY = "LOW_VOLATILITY"    # Régimen de Expansión / Estabilidad
+    LOW_VOLATILITY = "LOW_VOLATILITY"  # Régimen de Expansión / Estabilidad
     HIGH_VOLATILITY = "HIGH_VOLATILITY"  # Régimen de Turbulencia / Crisis
 
 
@@ -23,7 +23,7 @@ class MarkovRegimeModel:
 
     def __init__(
         self,
-        transition_matrix: Optional[np.ndarray] = None,
+        transition_matrix: np.ndarray | None = None,
         annualized_vol_threshold: float = 0.22,
     ):
         """
@@ -36,14 +36,19 @@ class MarkovRegimeModel:
             # Typical empirical persistence in financial markets:
             # Low volatility regimes are sticky (95% persistence)
             # High volatility/crisis regimes are moderately sticky (85% persistence)
-            self.transition_matrix = np.array([
-                [0.95, 0.05],
-                [0.15, 0.85],
-            ], dtype=np.float64)
+            self.transition_matrix = np.array(
+                [
+                    [0.95, 0.05],
+                    [0.15, 0.85],
+                ],
+                dtype=np.float64,
+            )
         else:
             mat = np.asarray(transition_matrix, dtype=np.float64)
             if mat.shape != (2, 2):
-                raise ValueError(f"transition_matrix debe tener dimensiones (2, 2). Forma recibida: {mat.shape}")
+                raise ValueError(
+                    f"transition_matrix debe tener dimensiones (2, 2). Forma recibida: {mat.shape}"
+                )
             # Ensure row-stochastic property
             row_sums = np.sum(mat, axis=1, keepdims=True)
             if np.any(row_sums <= 0):
@@ -55,7 +60,7 @@ class MarkovRegimeModel:
     @classmethod
     def fit_from_returns(
         cls,
-        returns: Union[np.ndarray, list],
+        returns: np.ndarray | list,
         rolling_window: int = 20,
         annualized_vol_threshold: float = 0.22,
         trading_days: int = 252,
@@ -97,7 +102,7 @@ class MarkovRegimeModel:
 
     def detect_regime(
         self,
-        returns: Union[np.ndarray, list],
+        returns: np.ndarray | list,
         window: int = 20,
         trading_days: int = 252,
     ) -> MarketRegime:
@@ -119,14 +124,16 @@ class MarkovRegimeModel:
 
     def predict_next_regime_probabilities(
         self,
-        current_regime: Union[MarketRegime, str],
+        current_regime: MarketRegime | str,
         steps: int = 1,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """
         Forecasts regime probabilities k steps ahead:
             pi_{t+k} = pi_t @ (P^k)
         """
-        regime_str = str(current_regime.value if isinstance(current_regime, MarketRegime) else current_regime).upper()
+        regime_str = str(
+            current_regime.value if isinstance(current_regime, MarketRegime) else current_regime
+        ).upper()
         if "HIGH" in regime_str or "CRISIS" in regime_str:
             pi_0 = np.array([0.0, 1.0], dtype=np.float64)
         else:
@@ -141,7 +148,7 @@ class MarkovRegimeModel:
             MarketRegime.HIGH_VOLATILITY.value: round(float(pi_k[1]), 4),
         }
 
-    def stationary_distribution(self) -> Dict[str, float]:
+    def stationary_distribution(self) -> dict[str, float]:
         """
         Computes the long-run ergodic steady-state probabilities pi such that:
             pi @ P = pi  and  sum(pi) = 1.0
@@ -169,7 +176,7 @@ class MarkovRegimeModel:
 
 
 def get_dynamic_rebalance_band(
-    current_regime: Union[MarketRegime, str],
+    current_regime: MarketRegime | str,
     base_band: float,
 ) -> float:
     """
@@ -193,7 +200,9 @@ def get_dynamic_rebalance_band(
     if base_band <= 0:
         raise ValueError("base_band debe ser un número estrictamente positivo.")
 
-    regime_str = str(current_regime.value if isinstance(current_regime, MarketRegime) else current_regime).upper()
+    regime_str = str(
+        current_regime.value if isinstance(current_regime, MarketRegime) else current_regime
+    ).upper()
 
     if any(k in regime_str for k in ["HIGH", "CRISIS", "TURBULENCE"]):
         # Widens tolerance band by 75% to prevent costly churning in volatile markets

@@ -3,23 +3,22 @@ Unit tests for Alembic base migration 001_initial_schema, topological ordering,
 Zero Schema Drift certification, full lifecycle idempotency, and offline SQL generation
 (Module 8.1 - Phase 2: `backend/alembic/versions/001_initial_schema.py`).
 """
+
 from __future__ import annotations
 
 import contextlib
 import io
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-import pytest
-import sqlalchemy as sa
-
 from app.core.database import Base
-import app.models  # Ensures all domain models are loaded into Base.metadata
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -81,8 +80,12 @@ class TestAlembicMigrations(unittest.TestCase):
         self.assertLess(created_tables.index("users"), created_tables.index("portfolios"))
         self.assertLess(created_tables.index("assets"), created_tables.index("holdings"))
         self.assertLess(created_tables.index("portfolios"), created_tables.index("holdings"))
-        self.assertLess(created_tables.index("portfolios"), created_tables.index("rebalance_orders"))
-        self.assertLess(created_tables.index("portfolios"), created_tables.index("risk_audit_snapshots"))
+        self.assertLess(
+            created_tables.index("portfolios"), created_tables.index("rebalance_orders")
+        )
+        self.assertLess(
+            created_tables.index("portfolios"), created_tables.index("risk_audit_snapshots")
+        )
 
         # Verify downgrade order and drop_index calls preceding drop_table
         actions: list[tuple[str, str]] = []
@@ -169,9 +172,14 @@ class TestAlembicMigrations(unittest.TestCase):
                     # Verify column existence in key tables
                     user_cols = {c["name"] for c in inspector.get_columns("users")}
                     self.assertTrue(
-                        {"id", "email", "hashed_password", "role", "is_active", "full_name"}.issubset(
-                            user_cols
-                        )
+                        {
+                            "id",
+                            "email",
+                            "hashed_password",
+                            "role",
+                            "is_active",
+                            "full_name",
+                        }.issubset(user_cols)
                     )
 
                     mb_cols = {c["name"] for c in inspector.get_columns("market_bars")}
@@ -246,8 +254,7 @@ class TestAlembicMigrations(unittest.TestCase):
 
                         # 3. Foreign key constraints match 100%
                         orm_fks = {
-                            (fk.parent.name, fk.column.table.name)
-                            for fk in orm_table.foreign_keys
+                            (fk.parent.name, fk.column.table.name) for fk in orm_table.foreign_keys
                         }
                         db_fks = set()
                         for fk_info in inspector.get_foreign_keys(table_name):

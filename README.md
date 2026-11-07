@@ -1,6 +1,6 @@
 # InvestAI — Plataforma de Gestión de Portafolios y Evaluación de Riesgo
 
-> **Plataforma Institucional Full-Stack (Capítulos 1 al 9 Completados + Auditoría Forense Sellada)**  
+> **Plataforma Institucional Full-Stack (Capítulos 1 al 9 Completados + Auditoría Forense Sellada)**
 > Sistema integral de gestión de portafolios bimonetarios (ARS/USD), valuación Mark-to-Market en BYMA, ingesta inteligente de extractos de brokers locales (Balanz, IOL, PPI), motor cuantitativo de riesgo y optimización convexa, ejecución asistida de órdenes con cálculo pre-trade de aranceles BYMA/CNV y observabilidad OpenMetrics/Prometheus.
 >
 > 📖 **Para el Tribunal Evaluador:** Consulte el [**Manual de Defensa Académica y Guía de Demostración en Vivo (`docs/ACADEMIC_DEFENSE_GUIDE.md`)**](docs/ACADEMIC_DEFENSE_GUIDE.md) y el [**Registro de Auditoría Forense (`docs/AUDIT_LEDGER.md`)**](docs/AUDIT_LEDGER.md).
@@ -377,4 +377,3 @@ npm --prefix frontend run build
 - **Capítulo 8 — Automatización en Background, Schedulers BYMA, Telemetría RED Prometheus y Resiliencia:** ✅ **100% Completado**
 - **Capítulo 9 — Frontend Dashboard Institucional Reactivo (React 18 + Vite + TypeScript + SVG Puro):** ✅ **100% Completado**
 - **Protocolo de Auditoría Forense y Sellado Progresivo (`docs/AUDIT_LEDGER.md` y `docs/ACADEMIC_DEFENSE_GUIDE.md`):** ✅ **8 / 8 Apartados Sellados al 100%**
-

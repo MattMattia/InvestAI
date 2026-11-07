@@ -1,8 +1,9 @@
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 import io
 import re
-from typing import Any, Dict, List, Optional
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any
+
 import pandas as pd
 from pydantic import ValidationError
 
@@ -14,11 +15,12 @@ from app.schemas.ingestion import RawHoldingRecord
 @dataclass
 class IngestionReport:
     """Report detailing the result of the ingestion and parsing process."""
+
     total_rows: int = 0
     valid_records_count: int = 0
     discarded_records_count: int = 0
-    holdings: List[Holding] = field(default_factory=list)
-    errors: List[Dict[str, Any]] = field(default_factory=list)
+    holdings: list[Holding] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def is_successful(self) -> bool:
@@ -48,42 +50,118 @@ class UniversalHoldingParser(BaseHoldingParser):
     """
 
     KNOWN_SOVEREIGN = (
-        "AL30", "GD30", "AL29", "GD29", "AL35", "GD35", "AE38", "GD38",
-        "AL41", "GD41", "GD46", "TX26", "TX28", "T2V4", "TV24", "TO26", "DICP", "PARP"
+        "AL30",
+        "GD30",
+        "AL29",
+        "GD29",
+        "AL35",
+        "GD35",
+        "AE38",
+        "GD38",
+        "AL41",
+        "GD41",
+        "GD46",
+        "TX26",
+        "TX28",
+        "T2V4",
+        "TV24",
+        "TO26",
+        "DICP",
+        "PARP",
     )
 
     KNOWN_LOCAL_EQUITIES = {
-        "GGAL", "YPFD", "PAMP", "BMA", "BBAR", "ALUA", "TXAR", "CRES",
-        "TGSU2", "TECO2", "CEPU", "EDN", "TRAN", "LOMA", "MIRG", "COME",
-        "BYMA", "VALO", "SUPV", "MORI", "BHIP", "BPAT", "DGCU2", "CGPA2",
-        "BOLT", "AUSO", "OEST", "INVJ", "HAVA", "SEMI", "MOLI", "AGRO"
+        "GGAL",
+        "YPFD",
+        "PAMP",
+        "BMA",
+        "BBAR",
+        "ALUA",
+        "TXAR",
+        "CRES",
+        "TGSU2",
+        "TECO2",
+        "CEPU",
+        "EDN",
+        "TRAN",
+        "LOMA",
+        "MIRG",
+        "COME",
+        "BYMA",
+        "VALO",
+        "SUPV",
+        "MORI",
+        "BHIP",
+        "BPAT",
+        "DGCU2",
+        "CGPA2",
+        "BOLT",
+        "AUSO",
+        "OEST",
+        "INVJ",
+        "HAVA",
+        "SEMI",
+        "MOLI",
+        "AGRO",
     }
 
     COLUMN_SYNONYMS = {
         "ticker": [
-            "ticker", "simbolo", "especie", "codigo", "activo", "symbol",
-            "cod_especie", "instrumento", "columna_cod", "columnacod"
+            "ticker",
+            "simbolo",
+            "especie",
+            "codigo",
+            "activo",
+            "symbol",
+            "cod_especie",
+            "instrumento",
+            "columna_cod",
+            "columnacod",
         ],
         "quantity": [
-            "cantidad", "nominales", "titulos", "shares", "quantity",
-            "posicion", "cantidad_titulos", "columna_q", "columnaq"
+            "cantidad",
+            "nominales",
+            "titulos",
+            "shares",
+            "quantity",
+            "posicion",
+            "cantidad_titulos",
+            "columna_q",
+            "columnaq",
         ],
         "purchase_price": [
-            "precio compra", "preciocompra", "costo", "precio promedio",
-            "preciopromedio", "precio_promedio", "ppc", "precio de compra",
-            "purchase_price", "buy_price", "columna_p", "columnap"
+            "precio compra",
+            "preciocompra",
+            "costo",
+            "precio promedio",
+            "preciopromedio",
+            "precio_promedio",
+            "ppc",
+            "precio de compra",
+            "purchase_price",
+            "buy_price",
+            "columna_p",
+            "columnap",
         ],
         "current_price": [
-            "precio actual", "precioactual", "cotizacion", "precio mercado",
-            "preciomercado", "precio_mercado", "ult precio", "ult_precio",
-            "current_price", "market_price", "precio"
+            "precio actual",
+            "precioactual",
+            "cotizacion",
+            "precio mercado",
+            "preciomercado",
+            "precio_mercado",
+            "ult precio",
+            "ult_precio",
+            "current_price",
+            "market_price",
+            "precio",
         ],
         "currency": ["moneda", "divisa", "currency"],
         "market": ["mercado", "plaza", "market"],
-        "asset_type": ["tipo", "tipo activo", "tipo_activo", "asset_type", "clase"]
+        "asset_type": ["tipo", "tipo activo", "tipo_activo", "asset_type", "clase"],
     }
 
-    def __init__(self, column_mapping: Optional[Dict[str, str]] = None) -> None:
+    def __init__(self, column_mapping: dict[str, str] | None = None) -> None:
         self.custom_mapping = column_mapping or {}
 
     def _normalize_col_name(self, col: str) -> str:
@@ -91,8 +169,8 @@ class UniversalHoldingParser(BaseHoldingParser):
         c = re.sub(r"[\s_]+", "", c)
         return c
 
-    def _resolve_columns(self, available_columns: List[str]) -> Dict[str, str]:
-        resolved: Dict[str, str] = {}
+    def _resolve_columns(self, available_columns: list[str]) -> dict[str, str]:
+        resolved: dict[str, str] = {}
         norm_available = {self._normalize_col_name(c): c for c in available_columns}
 
         # Apply custom overrides first
@@ -119,7 +197,7 @@ class UniversalHoldingParser(BaseHoldingParser):
     def _parse_numeric(self, val: Any) -> float:
         if val is None or pd.isna(val):
             raise ValueError("Valor nulo o vacío.")
-        if isinstance(val, (int, float)):
+        if isinstance(val, int | float):
             return float(val)
 
         s = str(val).strip()
@@ -139,7 +217,7 @@ class UniversalHoldingParser(BaseHoldingParser):
 
         return float(s)
 
-    def _infer_asset_type(self, ticker: str, explicit_type: Optional[str] = None) -> AssetType:
+    def _infer_asset_type(self, ticker: str, explicit_type: str | None = None) -> AssetType:
         if explicit_type:
             up_type = explicit_type.strip().upper()
             for at in AssetType:
@@ -147,7 +225,9 @@ class UniversalHoldingParser(BaseHoldingParser):
                     return at
 
         t = ticker.strip().upper()
-        if t in self.KNOWN_SOVEREIGN or (t.startswith(("AL", "GD", "AE", "TX", "TV", "TO", "T2")) and len(t) in (4, 5)):
+        if t in self.KNOWN_SOVEREIGN or (
+            t.startswith(("AL", "GD", "AE", "TX", "TV", "TO", "T2")) and len(t) in (4, 5)
+        ):
             return AssetType.BOND_SOVEREIGN
         if t.startswith(("YMC", "IRC", "TLC", "MTC")):
             return AssetType.BOND_CORPORATE
@@ -172,10 +252,12 @@ class UniversalHoldingParser(BaseHoldingParser):
         except Exception as e:
             report.total_rows = 1
             report.discarded_records_count = 1
-            report.errors.append({
-                "error_type": "FILE_READ_ERROR",
-                "message": f"Error al decodificar el archivo: {str(e)}"
-            })
+            report.errors.append(
+                {
+                    "error_type": "FILE_READ_ERROR",
+                    "message": f"Error al decodificar el archivo: {str(e)}",
+                }
+            )
             return report
 
         report.total_rows = len(df)
@@ -186,13 +268,15 @@ class UniversalHoldingParser(BaseHoldingParser):
 
         if "ticker" not in col_map or "quantity" not in col_map:
             report.discarded_records_count = report.total_rows
-            report.errors.append({
-                "error_type": "MAPPING_ERROR",
-                "message": (
-                    f"No se pudieron resolver las columnas obligatorias (ticker, cantidad). "
-                    f"Columnas detectadas: {list(df.columns)}"
-                )
-            })
+            report.errors.append(
+                {
+                    "error_type": "MAPPING_ERROR",
+                    "message": (
+                        f"No se pudieron resolver las columnas obligatorias (ticker, cantidad). "
+                        f"Columnas detectadas: {list(df.columns)}"
+                    ),
+                }
+            )
             return report
 
         for idx, row in df.iterrows():
@@ -238,9 +322,11 @@ class UniversalHoldingParser(BaseHoldingParser):
                     asset_type=asset_type_val,
                 )
 
-                inferred_asset_type = self._infer_asset_type(raw_record.ticker, raw_record.asset_type)
+                inferred_asset_type = self._infer_asset_type(
+                    raw_record.ticker, raw_record.asset_type
+                )
                 holding_curr = Currency.USD if raw_record.currency == "USD" else Currency.ARS
-                
+
                 asset = Asset(
                     ticker=raw_record.ticker,
                     name=raw_record.ticker,
@@ -262,11 +348,13 @@ class UniversalHoldingParser(BaseHoldingParser):
 
             except (ValidationError, ValueError, Exception) as err:
                 report.discarded_records_count += 1
-                report.errors.append({
-                    "row": row_idx,
-                    "ticker": str(row.get(col_map.get("ticker", ""), "")),
-                    "error_type": "ROW_VALIDATION_ERROR",
-                    "detail": str(err)
-                })
+                report.errors.append(
+                    {
+                        "row": row_idx,
+                        "ticker": str(row.get(col_map.get("ticker", ""), "")),
+                        "error_type": "ROW_VALIDATION_ERROR",
+                        "detail": str(err),
+                    }
+                )
 
         return report

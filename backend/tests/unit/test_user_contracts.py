@@ -3,18 +3,19 @@ Suite de pruebas unitarias para contratos canónicos de identidad y usuario (Mó
 Verifica validación de contraseñas (largo y UTF-8 byte boundary para bcrypt DoS),
 enmascaramiento SecretStr, validación RFC de email, inmutabilidad y política extra='forbid'.
 """
-from datetime import datetime, timezone, timedelta
+
 import unittest
 import uuid
-import pytest
-from pydantic import ValidationError, SecretStr
+from datetime import UTC, datetime, timedelta, timezone
 
+import pytest
 from app.schemas.user import (
-    UserRole,
     UserBase,
     UserCreate,
     UserResponse,
+    UserRole,
 )
+from pydantic import SecretStr, ValidationError
 
 
 @pytest.mark.unit
@@ -142,7 +143,7 @@ class TestUserContracts(unittest.TestCase):
         como password o hashed_password.
         """
         user_id = uuid.uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         response_dto = UserResponse(
             id=user_id,
             email="investor@investai.com",
@@ -182,8 +183,8 @@ class TestUserContracts(unittest.TestCase):
                 full_name="Extra Response",
                 role=UserRole.VIEWER,
                 is_active=True,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
                 hashed_password="forbidden_hash",
             )
         assert "extra_forbidden" in str(exc_info.value)
@@ -199,8 +200,8 @@ class TestUserContracts(unittest.TestCase):
             created_at=naive_now,
             updated_at=naive_now,
         )
-        assert response_dto.created_at.tzinfo == timezone.utc
-        assert response_dto.updated_at.tzinfo == timezone.utc
+        assert response_dto.created_at.tzinfo == UTC
+        assert response_dto.updated_at.tzinfo == UTC
 
         # Con timezone no-UTC (UTC-3)
         tz_art = timezone(timedelta(hours=-3))
@@ -212,7 +213,7 @@ class TestUserContracts(unittest.TestCase):
             created_at=aware_now,
             updated_at=aware_now,
         )
-        assert response_dto_aware.created_at.tzinfo == timezone.utc
+        assert response_dto_aware.created_at.tzinfo == UTC
         assert response_dto_aware.created_at.hour == 15  # 12:00 -03:00 == 15:00 UTC
 
 

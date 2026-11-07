@@ -14,13 +14,14 @@ Implements:
 - Historical valuation curve evaluation with bimonetary High-Water Mark and
   Drawdown tracking, plus direct valuation of ingested `CleanHoldingRecord` items.
 """
+
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
-import math
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation, localcontext
 from typing import Any, Literal
 
 from pydantic import Field, ValidationError, field_validator, model_validator
@@ -99,9 +100,7 @@ def _coerce_finite_decimal(value: Any, field_name: str) -> Decimal:
         except InvalidOperation as exc:
             raise ValueError(f"Invalid Decimal string for '{field_name}'.") from exc
     else:
-        raise ValueError(
-            f"Unsupported type '{type(value).__name__}' for '{field_name}'."
-        )
+        raise ValueError(f"Unsupported type '{type(value).__name__}' for '{field_name}'.")
 
     if not dec.is_finite():
         raise ValueError(f"Non-finite Decimal is not permitted for '{field_name}'.")
@@ -408,18 +407,10 @@ class PortfolioMarkToMarketReport(BaseSchema):
     def _enforce_vertical_accounting_and_weights(self) -> PortfolioMarkToMarketReport:
         with localcontext() as ctx:
             ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
-            sum_cost_ars = sum(
-                (p.cost_basis_ars for p in self.positions), Decimal("0.0000")
-            )
-            sum_cost_usd = sum(
-                (p.cost_basis_usd for p in self.positions), Decimal("0.0000")
-            )
-            sum_mkt_ars = sum(
-                (p.market_value_ars for p in self.positions), Decimal("0.0000")
-            )
-            sum_mkt_usd = sum(
-                (p.market_value_usd for p in self.positions), Decimal("0.0000")
-            )
+            sum_cost_ars = sum((p.cost_basis_ars for p in self.positions), Decimal("0.0000"))
+            sum_cost_usd = sum((p.cost_basis_usd for p in self.positions), Decimal("0.0000"))
+            sum_mkt_ars = sum((p.market_value_ars for p in self.positions), Decimal("0.0000"))
+            sum_mkt_usd = sum((p.market_value_usd for p in self.positions), Decimal("0.0000"))
 
             if self.total_cost_basis_ars != sum_cost_ars:
                 raise ValueError(
@@ -511,20 +502,12 @@ class PortfolioMarkToMarketReport(BaseSchema):
                     )
 
             if self.positions:
-                sum_w_pos = sum(
-                    (p.weight_in_positions for p in self.positions), Decimal("0.0000")
-                )
+                sum_w_pos = sum((p.weight_in_positions for p in self.positions), Decimal("0.0000"))
                 if sum_w_pos != Decimal("1.0000"):
-                    raise ValueError(
-                        f"Positions weight sum must equal 1.0000 (got {sum_w_pos})."
-                    )
-                sum_w_nw = sum(
-                    (p.weight_in_net_worth for p in self.positions), Decimal("0.0000")
-                )
+                    raise ValueError(f"Positions weight sum must equal 1.0000 (got {sum_w_pos}).")
+                sum_w_nw = sum((p.weight_in_net_worth for p in self.positions), Decimal("0.0000"))
                 if sum_w_nw > Decimal("1.0000"):
-                    raise ValueError(
-                        f"Net worth weight sum cannot exceed 1.0000 (got {sum_w_nw})."
-                    )
+                    raise ValueError(f"Net worth weight sum cannot exceed 1.0000 (got {sum_w_nw}).")
 
         return self
 
@@ -674,14 +657,10 @@ class HistoricalValuationSnapshot(BaseSchema):
         with localcontext() as ctx:
             ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
             if self.net_worth_usd is None:
-                computed_nw_usd = _quantize(
-                    self.net_worth_ars / self.fx_rate_ars_per_usd
-                )
+                computed_nw_usd = _quantize(self.net_worth_ars / self.fx_rate_ars_per_usd)
                 object.__setattr__(self, "net_worth_usd", computed_nw_usd)
             if self.net_cash_flow_usd is None:
-                computed_cf_usd = _quantize(
-                    self.net_cash_flow_ars / self.fx_rate_ars_per_usd
-                )
+                computed_cf_usd = _quantize(self.net_cash_flow_ars / self.fx_rate_ars_per_usd)
                 object.__setattr__(self, "net_cash_flow_usd", computed_cf_usd)
         return self
 
@@ -843,14 +822,10 @@ class PortfolioValuationService:
         weights via the Largest Remainder Method.
         """
         fx_rate = self._validate_fx_rate(fx_rate_ars_per_usd, "fx_rate_ars_per_usd")
-        clean_cash_ars = self._validate_non_negative_input(
-            cash_balance_ars, "cash_balance_ars"
-        )
-        clean_cash_usd = self._validate_non_negative_input(
-            cash_balance_usd, "cash_balance_usd"
-        )
+        clean_cash_ars = self._validate_non_negative_input(cash_balance_ars, "cash_balance_ars")
+        clean_cash_usd = self._validate_non_negative_input(cash_balance_usd, "cash_balance_usd")
 
-        if isinstance(positions, (str, bytes)) or not isinstance(positions, Sequence):
+        if isinstance(positions, str | bytes) or not isinstance(positions, Sequence):
             raise InvalidValuationInputError(
                 "positions must be a sequence of PositionValuationInput instances."
             )
@@ -859,10 +834,8 @@ class PortfolioValuationService:
                 f"positions count ({len(positions)}) exceeds maximum allowed ({MAX_VALUATION_POSITIONS})."
             )
 
-        effective_as_of = as_of if as_of is not None else datetime.now(timezone.utc)
-        if not isinstance(effective_as_of, datetime) or isinstance(
-            effective_as_of, bool
-        ):
+        effective_as_of = as_of if as_of is not None else datetime.now(UTC)
+        if not isinstance(effective_as_of, datetime) or isinstance(effective_as_of, bool):
             raise InvalidValuationInputError("as_of must be a valid datetime instance.")
         try:
             portfolio_id = _validate_optional_portfolio_id(portfolio_id)
@@ -883,9 +856,7 @@ class PortfolioValuationService:
                         f"Position '{pos.ticker}' has a non-positive market price ({pos.market_price})."
                     )
 
-                lot_entry_fx = (
-                    pos.entry_fx_rate if pos.entry_fx_rate is not None else fx_rate
-                )
+                lot_entry_fx = pos.entry_fx_rate if pos.entry_fx_rate is not None else fx_rate
                 if lot_entry_fx <= Decimal("0"):
                     raise InvalidFXRateError(
                         f"Position '{pos.ticker}' has a non-positive entry_fx_rate ({lot_entry_fx})."
@@ -927,8 +898,7 @@ class PortfolioValuationService:
                     nw_weights = list(pos_weights)
                 else:
                     nw_all_weights = _allocate_largest_remainder_weights(
-                        [item.raw_mkt_usd for item in consolidated_list]
-                        + [raw_total_cash_usd]
+                        [item.raw_mkt_usd for item in consolidated_list] + [raw_total_cash_usd]
                     )
                     nw_weights = nw_all_weights[: len(consolidated_list)]
             else:
@@ -969,12 +939,8 @@ class PortfolioValuationService:
                 pnl_usd = _quantize(mkt_usd - cost_usd)
 
                 if item.raw_cost_ars > Decimal("0") and item.raw_cost_usd > Decimal("0"):
-                    r_ars_q = _quantize(
-                        (item.raw_mkt_ars - item.raw_cost_ars) / item.raw_cost_ars
-                    )
-                    r_usd_q = _quantize(
-                        (item.raw_mkt_usd - item.raw_cost_usd) / item.raw_cost_usd
-                    )
+                    r_ars_q = _quantize((item.raw_mkt_ars - item.raw_cost_ars) / item.raw_cost_ars)
+                    r_usd_q = _quantize((item.raw_mkt_usd - item.raw_cost_usd) / item.raw_cost_usd)
                     effective_entry_fx = item.raw_cost_ars / item.raw_cost_usd
                     r_fx_q = _quantize((fx_rate / effective_entry_fx) - Decimal("1"))
                     r_inter_q = _quantize(r_ars_q - r_usd_q - r_fx_q)
@@ -1006,28 +972,16 @@ class PortfolioValuationService:
                     )
                 )
 
-            total_cost_ars = sum(
-                (p.cost_basis_ars for p in valued_positions), Decimal("0.0000")
-            )
-            total_cost_usd = sum(
-                (p.cost_basis_usd for p in valued_positions), Decimal("0.0000")
-            )
-            total_pos_ars = sum(
-                (p.market_value_ars for p in valued_positions), Decimal("0.0000")
-            )
-            total_pos_usd = sum(
-                (p.market_value_usd for p in valued_positions), Decimal("0.0000")
-            )
+            total_cost_ars = sum((p.cost_basis_ars for p in valued_positions), Decimal("0.0000"))
+            total_cost_usd = sum((p.cost_basis_usd for p in valued_positions), Decimal("0.0000"))
+            total_pos_ars = sum((p.market_value_ars for p in valued_positions), Decimal("0.0000"))
+            total_pos_usd = sum((p.market_value_usd for p in valued_positions), Decimal("0.0000"))
 
             q_cash_ars = _quantize(clean_cash_ars)
             q_cash_usd = _quantize(clean_cash_usd)
 
-            total_nw_ars = _quantize(
-                total_pos_ars + q_cash_ars + (q_cash_usd * fx_rate)
-            )
-            total_nw_usd = _quantize(
-                total_pos_usd + q_cash_usd + (q_cash_ars / fx_rate)
-            )
+            total_nw_ars = _quantize(total_pos_ars + q_cash_ars + (q_cash_usd * fx_rate))
+            total_nw_usd = _quantize(total_pos_usd + q_cash_usd + (q_cash_ars / fx_rate))
 
             total_pnl_ars = _quantize(total_pos_ars - total_cost_ars)
             total_pnl_usd = _quantize(total_pos_usd - total_cost_usd)
@@ -1097,7 +1051,7 @@ class PortfolioValuationService:
         a mapping of market quotes, resolving case-insensitive tickers and `.BA`
         exchange suffixes automatically.
         """
-        if isinstance(holdings, (str, bytes)) or not isinstance(holdings, Sequence):
+        if isinstance(holdings, str | bytes) or not isinstance(holdings, Sequence):
             raise InvalidValuationInputError(
                 "holdings must be a sequence of CleanHoldingRecord instances."
             )
@@ -1113,9 +1067,7 @@ class PortfolioValuationService:
         normalized_quotes: dict[str, Any] = {}
         for raw_key, raw_val in market_quotes.items():
             if not isinstance(raw_key, str) or isinstance(raw_key, bool):
-                raise InvalidValuationInputError(
-                    "market_quotes keys must be valid strings."
-                )
+                raise InvalidValuationInputError("market_quotes keys must be valid strings.")
             clean_key = raw_key.strip().upper()
             if clean_key:
                 normalized_quotes[clean_key] = raw_val
@@ -1128,9 +1080,7 @@ class PortfolioValuationService:
                 )
             for raw_key, raw_fx in entry_fx_rates.items():
                 if not isinstance(raw_key, str) or isinstance(raw_key, bool):
-                    raise InvalidValuationInputError(
-                        "entry_fx_rates keys must be valid strings."
-                    )
+                    raise InvalidValuationInputError("entry_fx_rates keys must be valid strings.")
                 clean_key = raw_key.strip().upper()
                 if clean_key:
                     normalized_entry_fx[clean_key] = self._validate_fx_rate(
@@ -1154,8 +1104,8 @@ class PortfolioValuationService:
                     else holding.get("avg_price")
                 )
             elif hasattr(holding, "ticker") and hasattr(holding, "quantity"):
-                raw_ticker = getattr(holding, "ticker")
-                raw_qty = getattr(holding, "quantity")
+                raw_ticker = holding.ticker
+                raw_qty = holding.quantity
                 raw_currency = getattr(holding, "currency", "ARS")
                 raw_avg_cost = getattr(holding, "avg_cost_price", None)
                 if raw_avg_cost is None:
@@ -1166,16 +1116,10 @@ class PortfolioValuationService:
                 )
 
             if not isinstance(raw_ticker, str) or isinstance(raw_ticker, bool):
-                raise InvalidValuationInputError(
-                    f"Holding at index {idx} has an invalid ticker."
-                )
+                raise InvalidValuationInputError(f"Holding at index {idx} has an invalid ticker.")
 
             ticker_upper = raw_ticker.strip().upper()
-            alt_ticker = (
-                ticker_upper[:-3]
-                if ticker_upper.endswith(".BA")
-                else f"{ticker_upper}.BA"
-            )
+            alt_ticker = ticker_upper[:-3] if ticker_upper.endswith(".BA") else f"{ticker_upper}.BA"
 
             if ticker_upper in normalized_quotes:
                 raw_price = normalized_quotes[ticker_upper]
@@ -1191,9 +1135,7 @@ class PortfolioValuationService:
                     f"Invalid market quote for ticker '{ticker_upper}': boolean or None is not permitted."
                 )
             try:
-                mkt_price = _coerce_finite_decimal(
-                    raw_price, f"market_quotes['{ticker_upper}']"
-                )
+                mkt_price = _coerce_finite_decimal(raw_price, f"market_quotes['{ticker_upper}']")
             except ValueError as exc:
                 raise MissingMarketPriceError(
                     f"Invalid market quote for ticker '{ticker_upper}': {exc}"
@@ -1210,11 +1152,7 @@ class PortfolioValuationService:
             elif alt_ticker in normalized_entry_fx:
                 resolved_entry_fx = normalized_entry_fx[alt_ticker]
 
-            avg_cost = (
-                raw_avg_cost
-                if raw_avg_cost is not None
-                else Decimal("0.0000")
-            )
+            avg_cost = raw_avg_cost if raw_avg_cost is not None else Decimal("0.0000")
 
             try:
                 position_inputs.append(
@@ -1246,11 +1184,7 @@ class PortfolioValuationService:
 
         $$1 + R_{\\text{TWR}} = \\prod_{t=1}^{K} (1 + r_t)$$
         """
-        if (
-            isinstance(slices, (str, bytes))
-            or not isinstance(slices, Sequence)
-            or len(slices) == 0
-        ):
+        if isinstance(slices, str | bytes) or not isinstance(slices, Sequence) or len(slices) == 0:
             raise InvalidCashFlowPeriodError(
                 "slices must be a non-empty sequence of SubPeriodValuationSlice."
             )
@@ -1278,9 +1212,7 @@ class PortfolioValuationService:
                         raise InvalidCashFlowPeriodError(
                             f"Slice at index {idx} has non-positive start_value ({sl.start_value}) with END timing."
                         )
-                    r_t = (
-                        sl.end_value - sl.net_cash_flow - sl.start_value
-                    ) / sl.start_value
+                    r_t = (sl.end_value - sl.net_cash_flow - sl.start_value) / sl.start_value
                 elif sl.cash_flow_timing == "START":
                     capital_base = sl.start_value + sl.net_cash_flow
                     if capital_base <= Decimal("0"):
@@ -1321,7 +1253,7 @@ class PortfolioValuationService:
             raise InvalidCashFlowPeriodError(
                 f"total_days must be an integer >= 1 (got {total_days})."
             )
-        if isinstance(cash_flows, (str, bytes)) or not isinstance(cash_flows, Sequence):
+        if isinstance(cash_flows, str | bytes) or not isinstance(cash_flows, Sequence):
             raise InvalidCashFlowPeriodError(
                 "cash_flows must be a sequence of DatedCashFlowEvent instances."
             )
@@ -1387,9 +1319,7 @@ class PortfolioValuationService:
             # Group cash flows by day_offset
             grouped_cf: dict[int, Decimal] = {}
             for cf in cash_flows:
-                grouped_cf[cf.day_offset] = (
-                    grouped_cf.get(cf.day_offset, Decimal("0")) + cf.amount
-                )
+                grouped_cf[cf.day_offset] = grouped_cf.get(cf.day_offset, Decimal("0")) + cf.amount
 
             cf_start = grouped_cf.pop(0, Decimal("0"))
             cf_end = grouped_cf.pop(total_days, Decimal("0"))
@@ -1459,7 +1389,6 @@ class PortfolioValuationService:
             bracket_low: Decimal | None = None
             bracket_high: Decimal | None = None
             f_low = Decimal("0")
-            f_high = Decimal("0")
 
             prev_u = grid[0]
             prev_f, _ = _eval_f_and_df(prev_u)
@@ -1470,33 +1399,24 @@ class PortfolioValuationService:
                 cand_f, _ = _eval_f_and_df(cand_u)
                 if abs(cand_f) <= Decimal("1e-12"):
                     return _quantize(cand_u - Decimal("1"))
-                if (prev_f < Decimal("0") < cand_f) or (
-                    prev_f > Decimal("0") > cand_f
-                ):
+                if (prev_f < Decimal("0") < cand_f) or (prev_f > Decimal("0") > cand_f):
                     bracket_low = prev_u
                     bracket_high = cand_u
                     f_low = prev_f
-                    f_high = cand_f
                     break
                 prev_u = cand_u
                 prev_f = cand_f
 
             # Dynamic upper bracket expansion up to 10^9 if hyperinflationary return exceeds initial grid
-            while (
-                bracket_low is None
-                and prev_u < Decimal("1000000000")
-            ):
+            while bracket_low is None and prev_u < Decimal("1000000000"):
                 cand_u = prev_u * Decimal("10")
                 cand_f, _ = _eval_f_and_df(cand_u)
                 if abs(cand_f) <= Decimal("1e-12"):
                     return _quantize(cand_u - Decimal("1"))
-                if (prev_f < Decimal("0") < cand_f) or (
-                    prev_f > Decimal("0") > cand_f
-                ):
+                if (prev_f < Decimal("0") < cand_f) or (prev_f > Decimal("0") > cand_f):
                     bracket_low = prev_u
                     bracket_high = cand_u
                     f_low = prev_f
-                    f_high = cand_f
                     break
                 prev_u = cand_u
                 prev_f = cand_f
@@ -1513,9 +1433,7 @@ class PortfolioValuationService:
 
             for _ in range(80):
                 f_curr, df_curr = _eval_f_and_df(u_curr)
-                if abs(f_curr) <= tol or abs(bracket_high - bracket_low) <= Decimal(
-                    "1e-14"
-                ):
+                if abs(f_curr) <= tol or abs(bracket_high - bracket_low) <= Decimal("1e-14"):
                     break
 
                 if (f_low < Decimal("0") and f_curr < Decimal("0")) or (
@@ -1525,7 +1443,6 @@ class PortfolioValuationService:
                     f_low = f_curr
                 else:
                     bracket_high = u_curr
-                    f_high = f_curr
 
                 if df_curr != Decimal("0"):
                     newton_u = u_curr - (f_curr / df_curr)
@@ -1646,7 +1563,7 @@ class PortfolioValuationService:
         performance reports in both ARS and USD, and tracking High-Water Marks
         and Drawdowns across both currencies.
         """
-        if isinstance(snapshots, (str, bytes)) or not isinstance(snapshots, Sequence):
+        if isinstance(snapshots, str | bytes) or not isinstance(snapshots, Sequence):
             raise InvalidValuationInputError(
                 "snapshots must be a sequence of HistoricalValuationSnapshot instances."
             )
@@ -1686,9 +1603,7 @@ class PortfolioValuationService:
                     f"Duplicate or non-increasing snapshot timestamp detected: {ordered[idx].as_of.isoformat()}."
                 )
 
-        total_days = max(
-            1, int((ordered[-1].as_of - ordered[0].as_of).total_seconds() // 86400)
-        )
+        total_days = max(1, int((ordered[-1].as_of - ordered[0].as_of).total_seconds() // 86400))
 
         with localcontext() as ctx:
             ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
@@ -1785,13 +1700,9 @@ class PortfolioValuationService:
                 )
 
                 if curr.cash_flow_timing == "START":
-                    raw_offset = int(
-                        (prev.as_of - ordered[0].as_of).total_seconds() // 86400
-                    )
+                    raw_offset = int((prev.as_of - ordered[0].as_of).total_seconds() // 86400)
                 else:
-                    raw_offset = int(
-                        (curr.as_of - ordered[0].as_of).total_seconds() // 86400
-                    )
+                    raw_offset = int((curr.as_of - ordered[0].as_of).total_seconds() // 86400)
                 day_offset = min(max(0, raw_offset), total_days)
 
                 if curr.net_cash_flow_ars != Decimal("0"):

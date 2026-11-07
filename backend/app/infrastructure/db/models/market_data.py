@@ -2,10 +2,11 @@
 Modelo relacional para series temporales de mercado OHLCV (Módulo 6 - Fase 3).
 Permite persistencia particionada por ticker y timeframe con constraint de unicidad temporal.
 """
+
+import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
-import uuid
+
 from sqlalchemy import DateTime, Numeric, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -70,9 +71,8 @@ class MarketBarModel(Base):
         default=Decimal("0"),
         server_default="0",
     )
-    vwap: Mapped[Optional[Decimal]] = mapped_column(
+    vwap: Mapped[Decimal | None] = mapped_column(
         Numeric(18, 4),
         nullable=True,
         default=None,
     )
-

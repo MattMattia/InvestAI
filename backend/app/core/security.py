@@ -4,9 +4,9 @@ Implementación directa sobre bcrypt nativo (hashing) y PyJWT (RFC 7519 / HS256)
 con soporte para pydantic.SecretStr, mitigación de ataques DoS, verificación en tiempo constante,
 emisión atómica de pares de tokens (access/refresh) y validación estricta de claims tipados.
 """
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Union
+
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 import jwt
@@ -54,7 +54,7 @@ class ExpiredTokenError(TokenSecurityError):
     pass
 
 
-def get_password_hash(password: Union[str, SecretStr], rounds: int = 12) -> str:
+def get_password_hash(password: str | SecretStr, rounds: int = 12) -> str:
     """
     Genera un hash criptográfico bcrypt seguro a partir de una contraseña plana o SecretStr.
 
@@ -66,7 +66,7 @@ def get_password_hash(password: Union[str, SecretStr], rounds: int = 12) -> str:
     - Valida que el factor de costo `rounds` esté acotado entre 4 y 16 (default 12).
     - Retorna el hash serializado como string UTF-8.
     """
-    if not isinstance(password, (str, SecretStr)):
+    if not isinstance(password, str | SecretStr):
         raise TypeError("Password must be a string or SecretStr")
 
     raw = password.get_secret_value() if isinstance(password, SecretStr) else password
@@ -88,7 +88,7 @@ def get_password_hash(password: Union[str, SecretStr], rounds: int = 12) -> str:
     return hash_bytes.decode("utf-8")
 
 
-def verify_password(plain_password: Union[str, SecretStr], hashed_password: str) -> bool:
+def verify_password(plain_password: str | SecretStr, hashed_password: str) -> bool:
     """
     Verifica una contraseña contra un hash bcrypt en tiempo constante.
 
@@ -98,10 +98,18 @@ def verify_password(plain_password: Union[str, SecretStr], hashed_password: str)
     - Captura cualquier excepción de decodificación o formato de hash devolviendo False,
       evitando la propagación de errores no controlados (500 Internal Server Error).
     """
-    if not isinstance(plain_password, (str, SecretStr)) or not isinstance(hashed_password, str) or not hashed_password:
+    if (
+        not isinstance(plain_password, str | SecretStr)
+        or not isinstance(hashed_password, str)
+        or not hashed_password
+    ):
         return False
 
-    raw = plain_password.get_secret_value() if isinstance(plain_password, SecretStr) else plain_password
+    raw = (
+        plain_password.get_secret_value()
+        if isinstance(plain_password, SecretStr)
+        else plain_password
+    )
     if not raw:
         return False
 
@@ -118,11 +126,11 @@ def verify_password(plain_password: Union[str, SecretStr], hashed_password: str)
 
 
 def create_access_token(
-    subject: Union[str, uuid.UUID],
+    subject: str | uuid.UUID,
     role: UserRole,
-    email: Optional[str] = None,
-    expires_delta: Optional[timedelta] = None,
-    jti: Optional[str] = None,
+    email: str | None = None,
+    expires_delta: timedelta | None = None,
+    jti: str | None = None,
 ) -> str:
     """
     Genera y firma criptográficamente un Access Token JWT conforme a RFC 7519.
@@ -140,7 +148,7 @@ def create_access_token(
     if not sub_str:
         raise ValueError("Subject (sub) cannot be empty")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expire_duration = (
         expires_delta
         if expires_delta is not None
@@ -168,11 +176,11 @@ def create_access_token(
 
 
 def create_refresh_token(
-    subject: Union[str, uuid.UUID],
+    subject: str | uuid.UUID,
     role: UserRole,
-    email: Optional[str] = None,
-    expires_delta: Optional[timedelta] = None,
-    jti: Optional[str] = None,
+    email: str | None = None,
+    expires_delta: timedelta | None = None,
+    jti: str | None = None,
 ) -> str:
     """
     Genera y firma criptográficamente un Refresh Token JWT de ciclo extendido conforme a RFC 7519.
@@ -190,7 +198,7 @@ def create_refresh_token(
     if not sub_str:
         raise ValueError("Subject (sub) cannot be empty")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expire_duration = (
         expires_delta
         if expires_delta is not None
@@ -218,11 +226,11 @@ def create_refresh_token(
 
 
 def create_token_pair(
-    subject: Union[str, uuid.UUID],
+    subject: str | uuid.UUID,
     role: UserRole,
-    email: Optional[str] = None,
-    access_expires_delta: Optional[timedelta] = None,
-    refresh_expires_delta: Optional[timedelta] = None,
+    email: str | None = None,
+    access_expires_delta: timedelta | None = None,
+    refresh_expires_delta: timedelta | None = None,
 ) -> TokenResponse:
     """
     Emisión atómica y coordinada de un par de tokens (Access Token + Refresh Token).
@@ -250,14 +258,14 @@ def create_token_pair(
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        token_type="bearer",
+        token_type="bearer",  # noqa: S106  # OAuth2 token type, not a secret
         expires_in=expires_in_seconds,
     )
 
 
 def decode_token(
     token: str,
-    expected_type: Optional[TokenType] = TokenType.ACCESS,
+    expected_type: TokenType | None = TokenType.ACCESS,
 ) -> TokenPayload:
     """
     Decodifica, valida criptográficamente y mapea un token JWT a un DTO TokenPayload.
@@ -290,14 +298,13 @@ def decode_token(
             sub=decoded["sub"],
             role=decoded["role"],
             type=decoded["type"],
-            exp=datetime.fromtimestamp(decoded["exp"], tz=timezone.utc),
-            iat=datetime.fromtimestamp(decoded["iat"], tz=timezone.utc),
+            exp=datetime.fromtimestamp(decoded["exp"], tz=UTC),
+            iat=datetime.fromtimestamp(decoded["iat"], tz=UTC),
             jti=decoded["jti"],
             email=decoded.get("email"),
         )
     except (ValidationError, ValueError, KeyError, TypeError, OSError, OverflowError) as e:
         raise InvalidTokenError("Token payload claims are malformed") from e
-
 
     if expected_type is not None and payload.type != expected_type:
         raise InvalidTokenError(

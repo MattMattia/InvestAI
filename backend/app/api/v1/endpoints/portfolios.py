@@ -1,8 +1,9 @@
-from typing import Annotated, List
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import (
     get_current_active_user,
@@ -28,11 +29,11 @@ from app.services.portfolio_service import (
 router = APIRouter()
 
 
-@router.get("", response_model=List[PortfolioListItemResponse])
+@router.get("", response_model=list[PortfolioListItemResponse])
 async def list_portfolios(
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> List[PortfolioListItemResponse]:
+) -> list[PortfolioListItemResponse]:
     """
     Retrieves investment portfolios belonging to the current authenticated user.
     Users with UserRole.ADMIN have cross-tenant visibility across all portfolios.
@@ -88,7 +89,9 @@ async def create_portfolio(
     new_portfolio = PortfolioModel(
         user_id=str(current_user.id),
         name=payload.name,
-        investor_profile=payload.investor_profile.upper() if payload.investor_profile else "MODERATE",
+        investor_profile=payload.investor_profile.upper()
+        if payload.investor_profile
+        else "MODERATE",
         cash_balance_ars=payload.cash_balance_ars,
         cash_balance_usd=payload.cash_balance_usd,
     )

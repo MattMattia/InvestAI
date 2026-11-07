@@ -6,16 +6,15 @@ Excess Cash Deployment, Idempotent Order FSM Execution Batching, and
 End-to-End Chapter 7 Quantitative Certification
 (`backend/app/domain/services/tolerance_band_rebalancer.py`).
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 import unittest
-
-from pydantic import ValidationError
-import pytest
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import app.domain.services as domain_services_pkg
+import pytest
 from app.domain.services.portfolio_valuation_service import (
     PortfolioValuationService,
     PositionValuationInput,
@@ -45,12 +44,12 @@ from app.domain.services.tolerance_band_rebalancer import (
     RebalancePositionInput,
     RebalanceTradeOrder,
     TaxLotSelectionPolicy,
-    ToleranceBandRebalanceReport,
     ToleranceBandRebalancerConfig,
+    ToleranceBandRebalanceReport,
     ToleranceBandRebalancerService,
 )
 from app.schemas.market_data import MarketBarDTO
-
+from pydantic import ValidationError
 
 
 @pytest.mark.unit
@@ -58,7 +57,7 @@ class TestToleranceBandRebalancer(unittest.TestCase):
     """Unit tests verifying tolerance-band corridor monitoring and self-financing rebalance execution."""
 
     def setUp(self) -> None:
-        self.as_of = datetime(2026, 10, 25, 15, 0, tzinfo=timezone.utc)
+        self.as_of = datetime(2026, 10, 25, 15, 0, tzinfo=UTC)
         self.default_service = ToleranceBandRebalancerService()
 
     def test_no_rebalance_triggered_when_all_positions_inside_tolerance_corridor(
@@ -718,12 +717,8 @@ class TestToleranceBandRebalancer(unittest.TestCase):
 
         # GGAL sells 20 shares @ $100 (avg cost $80) -> gross gain = 20 * 20 = $400; comm = 1% of $2,000 = $20 -> net realized PnL = $380.0000
         orders_by_side = {o.side: o for o in report.orders}
-        self.assertEqual(
-            orders_by_side["SELL"].estimated_realized_pnl, Decimal("380.0000")
-        )
-        self.assertEqual(
-            orders_by_side["BUY"].estimated_realized_pnl, Decimal("0.0000")
-        )
+        self.assertEqual(orders_by_side["SELL"].estimated_realized_pnl, Decimal("380.0000"))
+        self.assertEqual(orders_by_side["BUY"].estimated_realized_pnl, Decimal("0.0000"))
         self.assertEqual(report.total_estimated_realized_pnl, Decimal("380.0000"))
 
         # Verify propagation from PortfolioMarkToMarketReport in ARS
@@ -756,9 +751,7 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             base_currency="ARS",
         )
         # In ARS: sells 20 GGAL @ 100,000 (cost 80,000) -> gain 400,000 - 20,000 comm = 380,000.0000 ARS
-        self.assertEqual(
-            ars_report.total_estimated_realized_pnl, Decimal("380000.0000")
-        )
+        self.assertEqual(ars_report.total_estimated_realized_pnl, Decimal("380000.0000"))
 
     def test_deploy_excess_cash_when_inside_bands_allocates_inflow_without_sells(
         self,
@@ -1000,7 +993,7 @@ class TestToleranceBandRebalancer(unittest.TestCase):
            in both USD and ARS base currencies, and emit a deterministic, two-phase
            `RebalanceFSMExecutionBatch` (`build_fsm_execution_batch`).
         """
-        base_dt = datetime(2026, 9, 1, 15, 0, tzinfo=timezone.utc)
+        base_dt = datetime(2026, 9, 1, 15, 0, tzinfo=UTC)
         ggal_bars: list[MarketBarDTO] = []
         ypfd_bars: list[MarketBarDTO] = []
         aapl_bars: list[MarketBarDTO] = []
@@ -1081,7 +1074,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
                 ticker="AAPL",
                 quantity=Decimal("2"),
                 currency="USD",
-                avg_cost_price=Decimal("0"),  # Caja de Valores zero-cost -> indeterminate PnL % (None)
+                avg_cost_price=Decimal(
+                    "0"
+                ),  # Caja de Valores zero-cost -> indeterminate PnL % (None)
                 market_price=indicators_map["AAPL"].close,  # 224 USD -> 448 USD total
             ),
         ]
@@ -1130,9 +1125,7 @@ class TestToleranceBandRebalancer(unittest.TestCase):
         self.assertIn("AAPL", reb_usd.breached_tickers)
         # AAPL was sold to reduce weight from ~89.6% to ~40%, and its unknown cost basis
         # must produce estimated_realized_pnl = None on the AAPL SELL order!
-        aapl_sell = next(
-            o for o in reb_usd.orders if o.ticker == "AAPL" and o.side == "SELL"
-        )
+        aapl_sell = next(o for o in reb_usd.orders if o.ticker == "AAPL" and o.side == "SELL")
         self.assertIsNone(aapl_sell.estimated_realized_pnl)
 
         # Rebalance in ARS base currency (verifies Round 4 unit price conversion for USD asset AAPL)
@@ -1142,9 +1135,7 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             base_currency="ARS",
         )
         self.assertTrue(reb_ars.needs_rebalancing)
-        aapl_sell_ars = next(
-            o for o in reb_ars.orders if o.ticker == "AAPL" and o.side == "SELL"
-        )
+        aapl_sell_ars = next(o for o in reb_ars.orders if o.ticker == "AAPL" and o.side == "SELL")
         # AAPL unit price in ARS must be 224 USD * 1000 ARS/USD = 224,000.0000 ARS
         self.assertEqual(aapl_sell_ars.execution_price, Decimal("224000.0000"))
         self.assertIsNone(aapl_sell_ars.estimated_realized_pnl)
@@ -1170,9 +1161,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
           known cost basis from positive lots is preserved.
         - Conflicting `market_price` across duplicate ticker entries raises `InvalidToleranceBandConfigError`.
         """
-        t1 = datetime(2026, 1, 10, 12, 0, tzinfo=timezone.utc)
-        t2 = datetime(2026, 3, 15, 12, 0, tzinfo=timezone.utc)
-        t3 = datetime(2026, 6, 20, 12, 0, tzinfo=timezone.utc)
+        t1 = datetime(2026, 1, 10, 12, 0, tzinfo=UTC)
+        t2 = datetime(2026, 3, 15, 12, 0, tzinfo=UTC)
+        t3 = datetime(2026, 6, 20, 12, 0, tzinfo=UTC)
 
         # GGAL has 3 tax lots totaling 60 shares @ $100 market price ($6,000):
         # Lot A (oldest, t1): 20 shares @ $50 cost
@@ -1236,9 +1227,7 @@ class TestToleranceBandRebalancer(unittest.TestCase):
                 target_specs=targets,
                 as_of=self.as_of,
             )
-            sell_ord = next(
-                o for o in rep.orders if o.ticker == "GGAL" and o.side == "SELL"
-            )
+            sell_ord = next(o for o in rep.orders if o.ticker == "GGAL" and o.side == "SELL")
             self.assertEqual(sell_ord.quantity, Decimal("30.0000"))
             return sell_ord.estimated_realized_pnl
 
@@ -1642,8 +1631,12 @@ class TestToleranceBandRebalancer(unittest.TestCase):
     def test_audit_tbr_01_exact_lower_and_upper_band_boundary_non_breach_invariants(self) -> None:
         """Verify positions sitting exactly at lower_band or upper_band are NOT breached."""
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("40"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("60"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("40"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("60"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
@@ -1660,8 +1653,12 @@ class TestToleranceBandRebalancer(unittest.TestCase):
     def test_audit_tbr_02_one_pip_beyond_band_boundary_triggers_rebalance(self) -> None:
         """Verify 0.0001 weight drift beyond [0.4000, 0.6000] triggers rebalancing."""
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("39.99"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("60.01"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("39.99"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("60.01"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
@@ -1684,8 +1681,12 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             )
         )
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("50"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("50"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("50"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("50"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(
@@ -1699,7 +1700,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
                 absolute_tolerance_override=Decimal("0.2500"),  # Clamped down to 0.1000
             ),
         ]
-        rep = svc.evaluate_and_rebalance(positions=positions, target_specs=targets, as_of=self.as_of)
+        rep = svc.evaluate_and_rebalance(
+            positions=positions, target_specs=targets, as_of=self.as_of
+        )
         ev_map = {e.ticker: e for e in rep.evaluations}
         self.assertEqual(ev_map["AAA"].upper_band - ev_map["AAA"].target_weight, Decimal("0.0200"))
         self.assertEqual(ev_map["BBB"].upper_band - ev_map["BBB"].target_weight, Decimal("0.1000"))
@@ -1707,8 +1710,12 @@ class TestToleranceBandRebalancer(unittest.TestCase):
     def test_audit_tbr_04_relative_band_with_per_asset_override(self) -> None:
         """Verify BandType.RELATIVE uses relative_tolerance_override * target_weight when provided."""
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("50"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("50"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("50"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("50"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(
@@ -1739,8 +1746,12 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             )
         )
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("50"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("50"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("50"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("50"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(
@@ -1754,7 +1765,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
                 volatility_multiplier=Decimal("2.0000"),  # 0.50 * 0.20 * 2.00 = 0.2000
             ),
         ]
-        rep = svc.evaluate_and_rebalance(positions=positions, target_specs=targets, as_of=self.as_of)
+        rep = svc.evaluate_and_rebalance(
+            positions=positions, target_specs=targets, as_of=self.as_of
+        )
         ev_map = {e.ticker: e for e in rep.evaluations}
         self.assertEqual(ev_map["AAA"].upper_band - ev_map["AAA"].target_weight, Decimal("0.0500"))
         self.assertEqual(ev_map["BBB"].upper_band - ev_map["BBB"].target_weight, Decimal("0.2000"))
@@ -1762,10 +1775,18 @@ class TestToleranceBandRebalancer(unittest.TestCase):
     def test_audit_tbr_06_full_to_target_vs_to_band_boundary_on_4_assets(self) -> None:
         """Verify FULL_TO_TARGET generates strictly greater or equal turnover than TO_BAND_BOUNDARY on 4 assets."""
         positions = [
-            RebalancePositionInput(ticker="A1", quantity=Decimal("40"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="A2", quantity=Decimal("35"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="A3", quantity=Decimal("15"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="A4", quantity=Decimal("10"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="A1", quantity=Decimal("40"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="A2", quantity=Decimal("35"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="A3", quantity=Decimal("15"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="A4", quantity=Decimal("10"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker=f"A{i}", target_weight=Decimal("0.2500"))
@@ -1838,8 +1859,12 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             )
         )
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("1.5"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("1.5"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("1.5"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("1.5"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.4000")),
@@ -1857,17 +1882,28 @@ class TestToleranceBandRebalancer(unittest.TestCase):
 
     def test_audit_tbr_10_tax_lot_fifo_partial_single_lot_consumption(self) -> None:
         """Verify FIFO consuming only a partial slice of the oldest lot."""
-        t1 = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        t2 = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        t1 = datetime(2026, 1, 1, tzinfo=UTC)
+        t2 = datetime(2026, 6, 1, tzinfo=UTC)
         lots = [
             RebalancePositionInput(
-                ticker="AAA", quantity=Decimal("50"), market_price=Decimal("100"), avg_cost_price=Decimal("60"), acquired_at=t1
+                ticker="AAA",
+                quantity=Decimal("50"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("60"),
+                acquired_at=t1,
             ),
             RebalancePositionInput(
-                ticker="AAA", quantity=Decimal("20"), market_price=Decimal("100"), avg_cost_price=Decimal("90"), acquired_at=t2
+                ticker="AAA",
+                quantity=Decimal("20"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("90"),
+                acquired_at=t2,
             ),
             RebalancePositionInput(
-                ticker="BBB", quantity=Decimal("30"), market_price=Decimal("100"), avg_cost_price=Decimal("100")
+                ticker="BBB",
+                quantity=Decimal("30"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("100"),
             ),
         ]
         targets = [
@@ -1875,7 +1911,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             AssetTargetBandSpec(ticker="BBB", target_weight=Decimal("0.5000")),
         ]
         svc = ToleranceBandRebalancerService(
-            ToleranceBandRebalancerConfig(tax_lot_policy=TaxLotSelectionPolicy.FIFO, commission_bps=Decimal("0"))
+            ToleranceBandRebalancerConfig(
+                tax_lot_policy=TaxLotSelectionPolicy.FIFO, commission_bps=Decimal("0")
+            )
         )
         rep = svc.evaluate_and_rebalance(positions=lots, target_specs=targets, as_of=self.as_of)
         sell_ord = next(o for o in rep.orders if o.ticker == "AAA")
@@ -1885,17 +1923,28 @@ class TestToleranceBandRebalancer(unittest.TestCase):
 
     def test_audit_tbr_11_tax_lot_lifo_partial_single_lot_consumption(self) -> None:
         """Verify LIFO consuming only the newest lot."""
-        t1 = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        t2 = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        t1 = datetime(2026, 1, 1, tzinfo=UTC)
+        t2 = datetime(2026, 6, 1, tzinfo=UTC)
         lots = [
             RebalancePositionInput(
-                ticker="AAA", quantity=Decimal("50"), market_price=Decimal("100"), avg_cost_price=Decimal("60"), acquired_at=t1
+                ticker="AAA",
+                quantity=Decimal("50"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("60"),
+                acquired_at=t1,
             ),
             RebalancePositionInput(
-                ticker="AAA", quantity=Decimal("20"), market_price=Decimal("100"), avg_cost_price=Decimal("90"), acquired_at=t2
+                ticker="AAA",
+                quantity=Decimal("20"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("90"),
+                acquired_at=t2,
             ),
             RebalancePositionInput(
-                ticker="BBB", quantity=Decimal("30"), market_price=Decimal("100"), avg_cost_price=Decimal("100")
+                ticker="BBB",
+                quantity=Decimal("30"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("100"),
             ),
         ]
         targets = [
@@ -1903,7 +1952,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             AssetTargetBandSpec(ticker="BBB", target_weight=Decimal("0.5000")),
         ]
         svc = ToleranceBandRebalancerService(
-            ToleranceBandRebalancerConfig(tax_lot_policy=TaxLotSelectionPolicy.LIFO, commission_bps=Decimal("0"))
+            ToleranceBandRebalancerConfig(
+                tax_lot_policy=TaxLotSelectionPolicy.LIFO, commission_bps=Decimal("0")
+            )
         )
         rep = svc.evaluate_and_rebalance(positions=lots, target_specs=targets, as_of=self.as_of)
         sell_ord = next(o for o in rep.orders if o.ticker == "AAA")
@@ -1912,17 +1963,28 @@ class TestToleranceBandRebalancer(unittest.TestCase):
 
     def test_audit_tbr_12_tax_lot_hifo_full_liquidation_all_lots_equals_average_cost(self) -> None:
         """Verify that when 100% of an unlisted asset's lots are liquidated, FIFO, LIFO, HIFO, and AVERAGE_COST agree."""
-        t1 = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        t2 = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        t1 = datetime(2026, 1, 1, tzinfo=UTC)
+        t2 = datetime(2026, 6, 1, tzinfo=UTC)
         lots = [
             RebalancePositionInput(
-                ticker="LEGACY", quantity=Decimal("10"), market_price=Decimal("100"), avg_cost_price=Decimal("50"), acquired_at=t1
+                ticker="LEGACY",
+                quantity=Decimal("10"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("50"),
+                acquired_at=t1,
             ),
             RebalancePositionInput(
-                ticker="LEGACY", quantity=Decimal("10"), market_price=Decimal("100"), avg_cost_price=Decimal("110"), acquired_at=t2
+                ticker="LEGACY",
+                quantity=Decimal("10"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("110"),
+                acquired_at=t2,
             ),
             RebalancePositionInput(
-                ticker="CORE", quantity=Decimal("80"), market_price=Decimal("100"), avg_cost_price=Decimal("100")
+                ticker="CORE",
+                quantity=Decimal("80"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("100"),
             ),
         ]
         targets = [AssetTargetBandSpec(ticker="CORE", target_weight=Decimal("1.0000"))]
@@ -1940,7 +2002,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             pnls.append(rep.total_estimated_realized_pnl)
         self.assertEqual(pnls, [Decimal("400.0000")] * 4)
 
-    def test_audit_tbr_13_tax_lot_mixed_timezone_naive_aware_and_none_acquired_at_sorting(self) -> None:
+    def test_audit_tbr_13_tax_lot_mixed_timezone_naive_aware_and_none_acquired_at_sorting(
+        self,
+    ) -> None:
         """Verify FIFO and LIFO sort mixed timezone-aware, timezone-naive, and None acquired_at timestamps without TypeError."""
         lots = [
             RebalancePositionInput(
@@ -1956,7 +2020,7 @@ class TestToleranceBandRebalancer(unittest.TestCase):
                 quantity=Decimal("25"),
                 market_price=Decimal("100"),
                 avg_cost_price=Decimal("80"),
-                acquired_at=datetime(2026, 2, 10, 12, 0, tzinfo=timezone.utc),  # Aware
+                acquired_at=datetime(2026, 2, 10, 12, 0, tzinfo=UTC),  # Aware
                 lot_id="L-AWARE",
             ),
             RebalancePositionInput(
@@ -1978,7 +2042,11 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
             AssetTargetBandSpec(ticker="BBB", target_weight=Decimal("0.5000")),
         ]
-        for pol in (TaxLotSelectionPolicy.FIFO, TaxLotSelectionPolicy.LIFO, TaxLotSelectionPolicy.HIFO):
+        for pol in (
+            TaxLotSelectionPolicy.FIFO,
+            TaxLotSelectionPolicy.LIFO,
+            TaxLotSelectionPolicy.HIFO,
+        ):
             svc = ToleranceBandRebalancerService(ToleranceBandRebalancerConfig(tax_lot_policy=pol))
             rep = svc.evaluate_and_rebalance(positions=lots, target_specs=targets, as_of=self.as_of)
             self.assertIsNotNone(rep.total_estimated_realized_pnl)
@@ -1986,8 +2054,12 @@ class TestToleranceBandRebalancer(unittest.TestCase):
     def test_audit_tbr_14_commission_bps_zero_exact_self_financing_symmetry(self) -> None:
         """Verify with commission_bps=0 and initial_cash=0 that total_sell_gross == total_buy_gross."""
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("70"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("30"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("70"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("30"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
@@ -2006,14 +2078,20 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             ToleranceBandRebalancerConfig(commission_bps=Decimal("10"))
         )
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("70"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("30"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("70"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("30"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
             AssetTargetBandSpec(ticker="BBB", target_weight=Decimal("0.5000")),
         ]
-        rep = svc.evaluate_and_rebalance(positions=positions, target_specs=targets, as_of=self.as_of)
+        rep = svc.evaluate_and_rebalance(
+            positions=positions, target_specs=targets, as_of=self.as_of
+        )
         self.assertGreater(rep.total_estimated_commissions, Decimal("0.0000"))
         self.assertGreaterEqual(rep.projected_ending_cash, Decimal("0.0000"))
 
@@ -2023,16 +2101,25 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             ToleranceBandRebalancerConfig(commission_bps=Decimal("50"))
         )
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("70"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("30"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("70"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("30"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
             AssetTargetBandSpec(ticker="BBB", target_weight=Decimal("0.5000")),
         ]
-        rep = svc.evaluate_and_rebalance(positions=positions, target_specs=targets, as_of=self.as_of)
+        rep = svc.evaluate_and_rebalance(
+            positions=positions, target_specs=targets, as_of=self.as_of
+        )
         self.assertEqual(
-            rep.initial_cash + rep.total_sell_gross - rep.total_buy_gross - rep.total_estimated_commissions,
+            rep.initial_cash
+            + rep.total_sell_gross
+            - rep.total_buy_gross
+            - rep.total_estimated_commissions,
             rep.projected_ending_cash,
         )
 
@@ -2043,17 +2130,25 @@ class TestToleranceBandRebalancer(unittest.TestCase):
         )
         positions = [
             RebalancePositionInput(
-                ticker="AAA", quantity=Decimal("70"), market_price=Decimal("100"), avg_cost_price=Decimal("80")
+                ticker="AAA",
+                quantity=Decimal("70"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("80"),
             ),
             RebalancePositionInput(
-                ticker="BBB", quantity=Decimal("30"), market_price=Decimal("100"), avg_cost_price=Decimal("100")
+                ticker="BBB",
+                quantity=Decimal("30"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("100"),
             ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
             AssetTargetBandSpec(ticker="BBB", target_weight=Decimal("0.5000")),
         ]
-        rep = svc.evaluate_and_rebalance(positions=positions, target_specs=targets, as_of=self.as_of)
+        rep = svc.evaluate_and_rebalance(
+            positions=positions, target_specs=targets, as_of=self.as_of
+        )
         sell_ord = next(o for o in rep.orders if o.side == "SELL")
         # Sells 20 shares @ $100 ($2,000 gross), cost = $1,600, commission = 1.5% of $2,000 = $30 -> net PnL = $370.0000
         self.assertEqual(sell_ord.estimated_commission, Decimal("30.0000"))
@@ -2065,23 +2160,35 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             ToleranceBandRebalancerConfig(cash_buffer_weight=Decimal("0.1000"))
         )
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("90"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("10"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("90"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("10"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.4500")),
             AssetTargetBandSpec(ticker="BBB", target_weight=Decimal("0.4500")),
         ]
-        rep = svc.evaluate_and_rebalance(positions=positions, target_specs=targets, as_of=self.as_of)
+        rep = svc.evaluate_and_rebalance(
+            positions=positions, target_specs=targets, as_of=self.as_of
+        )
         self.assertGreaterEqual(rep.projected_ending_cash, Decimal("1000.0000"))
 
-    def test_audit_tbr_19_integer_shares_rounding_with_multiple_buys_preserves_positive_cash(self) -> None:
+    def test_audit_tbr_19_integer_shares_rounding_with_multiple_buys_preserves_positive_cash(
+        self,
+    ) -> None:
         """Verify allow_fractional_shares=False across 3 BUY orders floors share quantities and leaves residual cash."""
         svc = ToleranceBandRebalancerService(
-            ToleranceBandRebalancerConfig(allow_fractional_shares=False, commission_bps=Decimal("25"))
+            ToleranceBandRebalancerConfig(
+                allow_fractional_shares=False, commission_bps=Decimal("25")
+            )
         )
         positions = [
-            RebalancePositionInput(ticker="A1", quantity=Decimal("80"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="A1", quantity=Decimal("80"), market_price=Decimal("100")
+            ),
             RebalancePositionInput(ticker="A2", quantity=Decimal("5"), market_price=Decimal("33")),
             RebalancePositionInput(ticker="A3", quantity=Decimal("5"), market_price=Decimal("37")),
             RebalancePositionInput(ticker="A4", quantity=Decimal("5"), market_price=Decimal("41")),
@@ -2090,7 +2197,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             AssetTargetBandSpec(ticker=f"A{i}", target_weight=Decimal("0.2500"))
             for i in range(1, 5)
         ]
-        rep = svc.evaluate_and_rebalance(positions=positions, target_specs=targets, as_of=self.as_of)
+        rep = svc.evaluate_and_rebalance(
+            positions=positions, target_specs=targets, as_of=self.as_of
+        )
         for o in rep.orders:
             self.assertEqual(o.quantity, o.quantity.to_integral_value())
         self.assertGreaterEqual(rep.projected_ending_cash, Decimal("0.0000"))
@@ -2098,8 +2207,12 @@ class TestToleranceBandRebalancer(unittest.TestCase):
     def test_audit_tbr_20_liquidate_unlisted_holdings_true_sells_100_pct_of_unlisted(self) -> None:
         """Verify liquidate_unlisted_holdings=True liquidates 100% of positions not in target_specs."""
         positions = [
-            RebalancePositionInput(ticker="UNLISTED", quantity=Decimal("30"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="CORE", quantity=Decimal("70"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="UNLISTED", quantity=Decimal("30"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="CORE", quantity=Decimal("70"), market_price=Decimal("100")
+            ),
         ]
         targets = [AssetTargetBandSpec(ticker="CORE", target_weight=Decimal("1.0000"))]
         rep = self.default_service.evaluate_and_rebalance(
@@ -2115,18 +2228,26 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             ToleranceBandRebalancerConfig(liquidate_unlisted_holdings=False)
         )
         positions = [
-            RebalancePositionInput(ticker="UNLISTED", quantity=Decimal("10"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="CORE", quantity=Decimal("90"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="UNLISTED", quantity=Decimal("10"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="CORE", quantity=Decimal("90"), market_price=Decimal("100")
+            ),
         ]
         targets = [AssetTargetBandSpec(ticker="CORE", target_weight=Decimal("1.0000"))]
-        rep = svc.evaluate_and_rebalance(positions=positions, target_specs=targets, as_of=self.as_of)
+        rep = svc.evaluate_and_rebalance(
+            positions=positions, target_specs=targets, as_of=self.as_of
+        )
         self.assertFalse(rep.needs_rebalancing)
         self.assertEqual(rep.orders, [])
 
     def test_audit_tbr_22_unheld_target_asset_resolved_via_reference_price_on_spec(self) -> None:
         """Verify unheld target asset resolves execution price via AssetTargetBandSpec.reference_price."""
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("100"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("100"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
@@ -2144,7 +2265,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
     def test_audit_tbr_23_unheld_target_asset_missing_price_raises_error(self) -> None:
         """Verify unheld target asset without market_prices entry or reference_price raises MissingRebalancePriceError."""
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("100"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("100"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
@@ -2155,11 +2278,16 @@ class TestToleranceBandRebalancer(unittest.TestCase):
                 positions=positions, target_specs=targets, as_of=self.as_of
             )
 
-    def test_audit_tbr_24_calibrate_specs_from_indicators_low_volatility_narrows_multiplier(self) -> None:
+    def test_audit_tbr_24_calibrate_specs_from_indicators_low_volatility_narrows_multiplier(
+        self,
+    ) -> None:
         """Verify calibrate_specs_from_indicators narrows volatility_multiplier (< 1.0) when ATR% < baseline_atr_pct."""
         specs = [AssetTargetBandSpec(ticker="AAPL", target_weight=Decimal("1.0000"))]
         snap = TechnicalIndicatorsSnapshot(
-            ticker="AAPL", as_of=self.as_of, close=Decimal("200"), atr_14=Decimal("2.0")  # 1.0% ATR vs 2.0% baseline
+            ticker="AAPL",
+            as_of=self.as_of,
+            close=Decimal("200"),
+            atr_14=Decimal("2.0"),  # 1.0% ATR vs 2.0% baseline
         )
         calibrated = self.default_service.calibrate_specs_from_indicators(
             target_specs=specs,
@@ -2168,11 +2296,16 @@ class TestToleranceBandRebalancer(unittest.TestCase):
         )
         self.assertEqual(calibrated[0].volatility_multiplier, Decimal("0.5000"))
 
-    def test_audit_tbr_25_calibrate_specs_from_indicators_high_volatility_widens_and_clamps_multiplier(self) -> None:
+    def test_audit_tbr_25_calibrate_specs_from_indicators_high_volatility_widens_and_clamps_multiplier(
+        self,
+    ) -> None:
         """Verify calibrate_specs_from_indicators widens volatility_multiplier and clamps at max_multiplier."""
         specs = [AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("1.0000"))]
         snap = TechnicalIndicatorsSnapshot(
-            ticker="GGAL", as_of=self.as_of, close=Decimal("100"), atr_14=Decimal("10.0")  # 10% ATR vs 2% baseline -> 5.0 -> clamped to 2.5
+            ticker="GGAL",
+            as_of=self.as_of,
+            close=Decimal("100"),
+            atr_14=Decimal("10.0"),  # 10% ATR vs 2% baseline -> 5.0 -> clamped to 2.5
         )
         calibrated = self.default_service.calibrate_specs_from_indicators(
             target_specs=specs,
@@ -2182,11 +2315,21 @@ class TestToleranceBandRebalancer(unittest.TestCase):
         )
         self.assertEqual(calibrated[0].volatility_multiplier, Decimal("2.5000"))
 
-    def test_audit_tbr_26_calibrate_specs_from_indicators_missing_snapshot_or_none_atr_preserves_spec(self) -> None:
+    def test_audit_tbr_26_calibrate_specs_from_indicators_missing_snapshot_or_none_atr_preserves_spec(
+        self,
+    ) -> None:
         """Verify calibrate_specs_from_indicators preserves existing volatility_multiplier when snapshot or atr_14 is absent."""
         specs = [
-            AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000"), volatility_multiplier=Decimal("1.2500")),
-            AssetTargetBandSpec(ticker="BBB", target_weight=Decimal("0.5000"), volatility_multiplier=Decimal("1.1000")),
+            AssetTargetBandSpec(
+                ticker="AAA",
+                target_weight=Decimal("0.5000"),
+                volatility_multiplier=Decimal("1.2500"),
+            ),
+            AssetTargetBandSpec(
+                ticker="BBB",
+                target_weight=Decimal("0.5000"),
+                volatility_multiplier=Decimal("1.1000"),
+            ),
         ]
         snap_no_atr = TechnicalIndicatorsSnapshot(
             ticker="AAA", as_of=self.as_of, close=Decimal("100"), atr_14=None
@@ -2198,7 +2341,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
         self.assertEqual(calibrated[0].volatility_multiplier, Decimal("1.2500"))
         self.assertEqual(calibrated[1].volatility_multiplier, Decimal("1.1000"))
 
-    def test_audit_tbr_27_rebalance_from_mtm_report_usd_base_currency_with_mixed_assets(self) -> None:
+    def test_audit_tbr_27_rebalance_from_mtm_report_usd_base_currency_with_mixed_assets(
+        self,
+    ) -> None:
         """Verify rebalance_from_mtm_report in USD converts ARS positions to USD unit prices accurately."""
         val_svc = PortfolioValuationService()
         mtm = val_svc.value_portfolio_mark_to_market(
@@ -2233,7 +2378,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
         ggal_sell = next(o for o in rep.orders if o.ticker == "GGAL")
         self.assertEqual(ggal_sell.execution_price, Decimal("2.0000"))
 
-    def test_audit_tbr_28_rebalance_from_mtm_report_ars_base_currency_with_mixed_assets(self) -> None:
+    def test_audit_tbr_28_rebalance_from_mtm_report_ars_base_currency_with_mixed_assets(
+        self,
+    ) -> None:
         """Verify rebalance_from_mtm_report in ARS converts USD positions to ARS unit prices accurately."""
         val_svc = PortfolioValuationService()
         mtm = val_svc.value_portfolio_mark_to_market(
@@ -2272,19 +2419,34 @@ class TestToleranceBandRebalancer(unittest.TestCase):
         """Verify rebalance_from_mtm_report rejects unsupported base_currency."""
         val_svc = PortfolioValuationService()
         mtm = val_svc.value_portfolio_mark_to_market(
-            positions=[], fx_rate_ars_per_usd=Decimal("1000"), cash_balance_usd=Decimal("1000"), as_of=self.as_of
+            positions=[],
+            fx_rate_ars_per_usd=Decimal("1000"),
+            cash_balance_usd=Decimal("1000"),
+            as_of=self.as_of,
         )
-        targets = [AssetTargetBandSpec(ticker="AAPL", target_weight=Decimal("1.0000"), reference_price=Decimal("100"))]
+        targets = [
+            AssetTargetBandSpec(
+                ticker="AAPL", target_weight=Decimal("1.0000"), reference_price=Decimal("100")
+            )
+        ]
         with self.assertRaises(InvalidToleranceBandConfigError):
             self.default_service.rebalance_from_mtm_report(
-                mtm_report=mtm, target_specs=targets, base_currency="EUR"  # type: ignore[arg-type]
+                mtm_report=mtm,
+                target_specs=targets,
+                base_currency="EUR",  # type: ignore[arg-type]
             )
 
-    def test_audit_tbr_30_build_fsm_execution_batch_empty_orders_produces_zero_ticket_batch(self) -> None:
+    def test_audit_tbr_30_build_fsm_execution_batch_empty_orders_produces_zero_ticket_batch(
+        self,
+    ) -> None:
         """Verify build_fsm_execution_batch on a no-rebalance report produces an empty tickets list and valid batch_id."""
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("50"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("50"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("50"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("50"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
@@ -2300,11 +2462,17 @@ class TestToleranceBandRebalancer(unittest.TestCase):
         self.assertEqual(batch.tickets, [])
         self.assertTrue(batch.batch_id.startswith("reb-batch-"))
 
-    def test_audit_tbr_31_build_fsm_execution_batch_batch_tag_changes_batch_id_and_idempotency_keys(self) -> None:
+    def test_audit_tbr_31_build_fsm_execution_batch_batch_tag_changes_batch_id_and_idempotency_keys(
+        self,
+    ) -> None:
         """Verify passing reports with distinct portfolio_id changes both batch_id and per-ticket idempotency_key hashes."""
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("80"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("20"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("80"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("20"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
@@ -2321,7 +2489,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
         self.assertNotEqual(b1.batch_id, b2.batch_id)
         self.assertNotEqual(b1.tickets[0].idempotency_key, b2.tickets[0].idempotency_key)
 
-    def test_audit_tbr_32_config_invalid_min_greater_than_max_band_half_width_rejected(self) -> None:
+    def test_audit_tbr_32_config_invalid_min_greater_than_max_band_half_width_rejected(
+        self,
+    ) -> None:
         """Verify ToleranceBandRebalancerConfig rejects min_band_half_width > max_band_half_width."""
         with self.assertRaises(ValidationError):
             ToleranceBandRebalancerConfig(
@@ -2341,7 +2511,11 @@ class TestToleranceBandRebalancer(unittest.TestCase):
 
     def test_audit_tbr_35_target_specs_duplicate_normalized_ticker_rejected(self) -> None:
         """Verify evaluate_and_rebalance rejects duplicate tickers in target_specs (e.g. GGAL and GGAL.BA)."""
-        positions = [RebalancePositionInput(ticker="GGAL", quantity=Decimal("10"), market_price=Decimal("100"))]
+        positions = [
+            RebalancePositionInput(
+                ticker="GGAL", quantity=Decimal("10"), market_price=Decimal("100")
+            )
+        ]
         targets = [
             AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("0.5000")),
             AssetTargetBandSpec(ticker="GGAL.BA", target_weight=Decimal("0.5000")),
@@ -2351,9 +2525,15 @@ class TestToleranceBandRebalancer(unittest.TestCase):
                 positions=positions, target_specs=targets, as_of=self.as_of
             )
 
-    def test_audit_tbr_36_target_specs_weights_not_summing_to_one_minus_buffer_rejected(self) -> None:
+    def test_audit_tbr_36_target_specs_weights_not_summing_to_one_minus_buffer_rejected(
+        self,
+    ) -> None:
         """Verify evaluate_and_rebalance rejects target weights that do not sum to 1.0 - cash_buffer_weight."""
-        positions = [RebalancePositionInput(ticker="GGAL", quantity=Decimal("10"), market_price=Decimal("100"))]
+        positions = [
+            RebalancePositionInput(
+                ticker="GGAL", quantity=Decimal("10"), market_price=Decimal("100")
+            )
+        ]
         targets = [AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("0.8000"))]
         with self.assertRaises(InvalidTargetAllocationError):
             self.default_service.evaluate_and_rebalance(
@@ -2362,33 +2542,57 @@ class TestToleranceBandRebalancer(unittest.TestCase):
 
     def test_audit_tbr_37_empty_target_specs_rejected(self) -> None:
         """Verify evaluate_and_rebalance rejects an empty target_specs list."""
-        positions = [RebalancePositionInput(ticker="GGAL", quantity=Decimal("10"), market_price=Decimal("100"))]
+        positions = [
+            RebalancePositionInput(
+                ticker="GGAL", quantity=Decimal("10"), market_price=Decimal("100")
+            )
+        ]
         with self.assertRaises(InvalidTargetAllocationError):
             self.default_service.evaluate_and_rebalance(
                 positions=positions, target_specs=[], as_of=self.as_of
             )
 
-    def test_audit_tbr_38_non_positive_total_portfolio_value_raises_insufficient_liquidity(self) -> None:
+    def test_audit_tbr_38_non_positive_total_portfolio_value_raises_insufficient_liquidity(
+        self,
+    ) -> None:
         """Verify zero total portfolio value raises InsufficientLiquidityForRebalanceError."""
-        positions = [RebalancePositionInput(ticker="GGAL", quantity=Decimal("0"), market_price=Decimal("100"))]
+        positions = [
+            RebalancePositionInput(
+                ticker="GGAL", quantity=Decimal("0"), market_price=Decimal("100")
+            )
+        ]
         targets = [AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("1.0000"))]
         with self.assertRaises(InsufficientLiquidityForRebalanceError):
             self.default_service.evaluate_and_rebalance(
-                positions=positions, target_specs=targets, initial_cash=Decimal("0"), as_of=self.as_of
+                positions=positions,
+                target_specs=targets,
+                initial_cash=Decimal("0"),
+                as_of=self.as_of,
             )
 
     def test_audit_tbr_39_negative_initial_cash_rejected(self) -> None:
         """Verify negative initial_cash raises InsufficientLiquidityForRebalanceError."""
-        positions = [RebalancePositionInput(ticker="GGAL", quantity=Decimal("10"), market_price=Decimal("100"))]
+        positions = [
+            RebalancePositionInput(
+                ticker="GGAL", quantity=Decimal("10"), market_price=Decimal("100")
+            )
+        ]
         targets = [AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("1.0000"))]
         with self.assertRaises(InsufficientLiquidityForRebalanceError):
             self.default_service.evaluate_and_rebalance(
-                positions=positions, target_specs=targets, initial_cash=Decimal("-10"), as_of=self.as_of
+                positions=positions,
+                target_specs=targets,
+                initial_cash=Decimal("-10"),
+                as_of=self.as_of,
             )
 
     def test_audit_tbr_40_exceeding_max_rebalance_assets_rejected(self) -> None:
         """Verify passing > MAX_REBALANCE_ASSETS (500) target specs raises InvalidTargetAllocationError."""
-        positions = [RebalancePositionInput(ticker="T001", quantity=Decimal("10"), market_price=Decimal("100"))]
+        positions = [
+            RebalancePositionInput(
+                ticker="T001", quantity=Decimal("10"), market_price=Decimal("100")
+            )
+        ]
         targets = [
             AssetTargetBandSpec(ticker=f"T{i:03d}", target_weight=Decimal("0.0010"))
             for i in range(1, MAX_REBALANCE_ASSETS + 2)
@@ -2430,7 +2634,11 @@ class TestToleranceBandRebalancer(unittest.TestCase):
                 market_price=Decimal("100"),
                 lot_id="bad\x07lot",
             )
-        positions = [RebalancePositionInput(ticker="GGAL", quantity=Decimal("10"), market_price=Decimal("100"))]
+        positions = [
+            RebalancePositionInput(
+                ticker="GGAL", quantity=Decimal("10"), market_price=Decimal("100")
+            )
+        ]
         targets = [AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("1.0000"))]
         with self.assertRaises(InvalidToleranceBandConfigError):
             self.default_service.evaluate_and_rebalance(
@@ -2440,7 +2648,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
                 as_of=self.as_of,
             )
 
-    def test_audit_tbr_44_rebalance_trade_order_model_validator_rejects_tampered_net_cash_impact(self) -> None:
+    def test_audit_tbr_44_rebalance_trade_order_model_validator_rejects_tampered_net_cash_impact(
+        self,
+    ) -> None:
         """Verify RebalanceTradeOrder model validator rejects inconsistent gross_amount or net_cash_impact."""
         with self.assertRaises(ValidationError):
             RebalanceTradeOrder(
@@ -2462,7 +2672,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
                 ),
             )
 
-    def test_audit_tbr_45_rebalance_trade_order_buy_rejects_non_null_estimated_realized_pnl(self) -> None:
+    def test_audit_tbr_45_rebalance_trade_order_buy_rejects_non_null_estimated_realized_pnl(
+        self,
+    ) -> None:
         """Verify RebalanceTradeOrder model validator rejects a BUY order with non-zero estimated_realized_pnl."""
         with self.assertRaises(ValidationError):
             RebalanceTradeOrder(
@@ -2485,7 +2697,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
                 ),
             )
 
-    def test_audit_tbr_46_asset_band_evaluation_model_validator_rejects_inconsistent_breach_direction(self) -> None:
+    def test_audit_tbr_46_asset_band_evaluation_model_validator_rejects_inconsistent_breach_direction(
+        self,
+    ) -> None:
         """Verify AssetBandEvaluation rejects negative market_price or out-of-range weights."""
         with self.assertRaises(ValidationError):
             AssetBandEvaluation(
@@ -2510,8 +2724,12 @@ class TestToleranceBandRebalancer(unittest.TestCase):
     def test_audit_tbr_47_report_model_validator_rejects_buy_before_sell_in_orders(self) -> None:
         """Verify ToleranceBandRebalanceReport rejects an order list where a SELL appears after a BUY."""
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("70"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("30"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("70"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("30"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
@@ -2542,7 +2760,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
                 orders=list(reversed(rep.orders)),  # BUY before SELL -> must raise ValidationError!
             )
 
-    def test_audit_tbr_48_deploy_excess_cash_when_inside_bands_with_to_band_boundary_mode(self) -> None:
+    def test_audit_tbr_48_deploy_excess_cash_when_inside_bands_with_to_band_boundary_mode(
+        self,
+    ) -> None:
         """Verify deploy_excess_cash_when_inside_bands=True also allocates excess cash under TO_BAND_BOUNDARY mode."""
         svc = ToleranceBandRebalancerService(
             ToleranceBandRebalancerConfig(
@@ -2552,15 +2772,22 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             )
         )
         positions = [
-            RebalancePositionInput(ticker="GGAL", quantity=Decimal("45"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="YPFD", quantity=Decimal("45"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="GGAL", quantity=Decimal("45"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="YPFD", quantity=Decimal("45"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="GGAL", target_weight=Decimal("0.4800")),
             AssetTargetBandSpec(ticker="YPFD", target_weight=Decimal("0.4800")),
         ]
         rep = svc.evaluate_and_rebalance(
-            positions=positions, target_specs=targets, initial_cash=Decimal("1000"), as_of=self.as_of
+            positions=positions,
+            target_specs=targets,
+            initial_cash=Decimal("1000"),
+            as_of=self.as_of,
         )
         self.assertTrue(rep.needs_rebalancing)
         self.assertEqual(rep.total_buy_gross, Decimal("600.0000"))
@@ -2569,10 +2796,16 @@ class TestToleranceBandRebalancer(unittest.TestCase):
         """Verify selling an underwater position (market_price < avg_cost_price) yields negative estimated_realized_pnl."""
         positions = [
             RebalancePositionInput(
-                ticker="AAA", quantity=Decimal("70"), market_price=Decimal("100"), avg_cost_price=Decimal("150")
+                ticker="AAA",
+                quantity=Decimal("70"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("150"),
             ),
             RebalancePositionInput(
-                ticker="BBB", quantity=Decimal("30"), market_price=Decimal("100"), avg_cost_price=Decimal("100")
+                ticker="BBB",
+                quantity=Decimal("30"),
+                market_price=Decimal("100"),
+                avg_cost_price=Decimal("100"),
             ),
         ]
         targets = [
@@ -2587,15 +2820,22 @@ class TestToleranceBandRebalancer(unittest.TestCase):
     def test_audit_tbr_50_buy_only_rebalance_has_none_total_estimated_realized_pnl(self) -> None:
         """Verify a BUY-only rebalance (funded by initial_cash) has total_estimated_realized_pnl == 0.0000."""
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("20"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("50"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("20"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("50"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
             AssetTargetBandSpec(ticker="BBB", target_weight=Decimal("0.5000")),
         ]
         rep = self.default_service.evaluate_and_rebalance(
-            positions=positions, target_specs=targets, initial_cash=Decimal("3000"), as_of=self.as_of
+            positions=positions,
+            target_specs=targets,
+            initial_cash=Decimal("3000"),
+            as_of=self.as_of,
         )
         self.assertTrue(all(o.side == "BUY" for o in rep.orders))
         self.assertEqual(rep.total_estimated_realized_pnl, Decimal("0.0000"))
@@ -2627,8 +2867,12 @@ class TestToleranceBandRebalancer(unittest.TestCase):
     def test_audit_tbr_52_no_negative_zero_in_rebalance_report_serialized_fields(self) -> None:
         """Verify no serialized Decimal in ToleranceBandRebalanceReport ever formats as '-0.0000'."""
         positions = [
-            RebalancePositionInput(ticker="AAA", quantity=Decimal("50"), market_price=Decimal("100")),
-            RebalancePositionInput(ticker="BBB", quantity=Decimal("50"), market_price=Decimal("100")),
+            RebalancePositionInput(
+                ticker="AAA", quantity=Decimal("50"), market_price=Decimal("100")
+            ),
+            RebalancePositionInput(
+                ticker="BBB", quantity=Decimal("50"), market_price=Decimal("100")
+            ),
         ]
         targets = [
             AssetTargetBandSpec(ticker="AAA", target_weight=Decimal("0.5000")),
@@ -2639,6 +2883,3 @@ class TestToleranceBandRebalancer(unittest.TestCase):
         )
         dumped = rep.model_dump_json()
         self.assertNotIn("-0.0000", dumped)
-
-
-

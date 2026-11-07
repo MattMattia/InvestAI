@@ -1,8 +1,8 @@
 # INFORME DE AUDITORÍA TÉCNICA INTEGRAL Y ARQUITECTURA
-**Proyecto:** InvestAI — Plataforma Cuantitativa y Determinista de Gestión de Carteras  
-**Fecha de Emisión:** 7 de Octubre de 2026  
-**Alcance:** Totalidad de la base de código en `backend/` (dominio, modelos, servicios numéricos, routers y suite de 137 tests)  
-**Modalidad:** Auditoría Técnica y Diagnóstico Integral (Lectura Estricta)  
+**Proyecto:** InvestAI — Plataforma Cuantitativa y Determinista de Gestión de Carteras
+**Fecha de Emisión:** 7 de Octubre de 2026
+**Alcance:** Totalidad de la base de código en `backend/` (dominio, modelos, servicios numéricos, routers y suite de 137 tests)
+**Modalidad:** Auditoría Técnica y Diagnóstico Integral (Lectura Estricta)
 **Estándares y Marcos de Referencia Aplicados:**
 - `adversarial-code-auditor`: Modelado de amenazas cuantitativas, robustez numérica y casos extremos de álgebra lineal.
 - `api-contract-fastapi`: Clean Architecture, Universal Envelope, desacoplamiento de capas y contratos DTO.

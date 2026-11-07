@@ -2,30 +2,34 @@
 Interfaz canónica y excepciones de dominio para conectores de datos de mercado (Módulo 6 - Fase 2).
 Define la abstracción desacoplada para proveedores de cotizaciones en tiempo real y series históricas.
 """
+
 from abc import ABC, abstractmethod
 from datetime import date
-from typing import List
 
 from app.schemas.market_data import MarketBarDTO, MarketQuoteDTO, Timeframe
 
 
 class MarketDataConnectorError(Exception):
     """Excepción base para anomalías y fallos en conectores de datos de mercado."""
+
     pass
 
 
 class TickerNotFoundError(MarketDataConnectorError):
     """Lanzada cuando un activo o ticker no existe o no fue hallado en el proveedor (HTTP 404)."""
+
     pass
 
 
 class RateLimitExceededError(MarketDataConnectorError):
     """Lanzada cuando se agotan los reintentos tras alcanzar el límite de tasa del proveedor (HTTP 429)."""
+
     pass
 
 
 class SecuritySSRFViolationError(MarketDataConnectorError):
     """Lanzada cuando una dirección o URL de destino viola las restricciones defensivas anti-SSRF."""
+
     pass
 
 
@@ -57,7 +61,7 @@ class BaseMarketConnector(ABC):
         start_date: date,
         end_date: date,
         timeframe: Timeframe = Timeframe.D1,
-    ) -> List[MarketBarDTO]:
+    ) -> list[MarketBarDTO]:
         """
         Obtiene el histórico de barras OHLCV para el rango temporal e intervalo solicitado.
 
@@ -73,4 +77,3 @@ class BaseMarketConnector(ABC):
         List[MarketBarDTO]: Lista de barras OHLCV ordenadas cronológicamente.
         """
         pass
-

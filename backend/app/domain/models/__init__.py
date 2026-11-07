@@ -1,4 +1,5 @@
 """Domain Entities, Value Objects and Financial Models Package."""
+
 from app.domain.models.asset import Asset, AssetType, Sector
 from app.domain.models.calendar import (
     MarketExchange,

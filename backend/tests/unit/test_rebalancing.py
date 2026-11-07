@@ -1,4 +1,5 @@
 import unittest
+
 from app.domain.models.asset import Asset, AssetType, Currency, Sector
 from app.domain.models.portfolio import Holding, InvestorProfile, Portfolio
 from app.domain.rules.rebalancing import (
@@ -10,9 +11,15 @@ from app.domain.rules.rebalancing import (
 
 class TestToleranceBandRebalancer(unittest.TestCase):
     def setUp(self):
-        self.aapl = Asset("AAPL", "Apple Inc.", AssetType.CEDEAR, Currency.ARS, Sector.TECHNOLOGY, "US", 10.0)
-        self.msft = Asset("MSFT", "Microsoft Corp.", AssetType.CEDEAR, Currency.ARS, Sector.TECHNOLOGY, "US", 10.0)
-        self.al30 = Asset("AL30", "Bono AL30", AssetType.BOND_SOVEREIGN, Currency.ARS, Sector.GOVERNMENT, "AR")
+        self.aapl = Asset(
+            "AAPL", "Apple Inc.", AssetType.CEDEAR, Currency.ARS, Sector.TECHNOLOGY, "US", 10.0
+        )
+        self.msft = Asset(
+            "MSFT", "Microsoft Corp.", AssetType.CEDEAR, Currency.ARS, Sector.TECHNOLOGY, "US", 10.0
+        )
+        self.al30 = Asset(
+            "AL30", "Bono AL30", AssetType.BOND_SOVEREIGN, Currency.ARS, Sector.GOVERNMENT, "AR"
+        )
 
     def test_rebalance_excess_generates_sell(self):
         h_aapl = Holding(self.aapl, quantity=60, average_buy_price=1000.0, current_price=1000.0)
@@ -67,10 +74,14 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             TargetAllocation(ticker="AAPL", target_weight=20.0, tolerance_band=5.0),
         ]
 
-        orders_filtered = ToleranceBandRebalancer.calculate_orders(portfolio, targets, include_hold=False)
+        orders_filtered = ToleranceBandRebalancer.calculate_orders(
+            portfolio, targets, include_hold=False
+        )
         self.assertEqual(len(orders_filtered), 0)
 
-        orders_hold = ToleranceBandRebalancer.calculate_orders(portfolio, targets, include_hold=True)
+        orders_hold = ToleranceBandRebalancer.calculate_orders(
+            portfolio, targets, include_hold=True
+        )
         self.assertEqual(len(orders_hold), 1)
         self.assertEqual(orders_hold[0].side, OrderSide.HOLD)
         self.assertEqual(orders_hold[0].estimated_shares, 0)
@@ -125,7 +136,9 @@ class TestToleranceBandRebalancer(unittest.TestCase):
             TargetAllocation(ticker="AAPL", target_weight=30.0, tolerance_band=5.0),
             TargetAllocation(ticker="MSFT", target_weight=60.0, tolerance_band=5.0),
         ]
-        plan_deficit = ToleranceBandRebalancer.generate_plan(portfolio_no_cash, targets_large_buy, prices=prices)
+        plan_deficit = ToleranceBandRebalancer.generate_plan(
+            portfolio_no_cash, targets_large_buy, prices=prices
+        )
         self.assertFalse(plan_deficit.is_liquidity_sufficient)
         self.assertIsNotNone(plan_deficit.liquidity_warning)
         self.assertIn("Alerta de Liquidez", plan_deficit.liquidity_warning)

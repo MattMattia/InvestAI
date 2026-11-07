@@ -1,11 +1,8 @@
 import io
 import unittest
 import uuid
-import httpx
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
 
-import app.models  # Registers all declarative tables first
+import httpx
 from app.api.deps import get_db_session
 from app.core.database import Base
 from app.core.security import create_access_token, get_password_hash
@@ -13,6 +10,8 @@ from app.main import app as fastapi_app
 from app.models.portfolio import PortfolioModel
 from app.models.user import UserModel
 from app.schemas.user import UserRole
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 
 class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
@@ -201,18 +200,14 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(data["total_market_value_ars"], 0)
 
         # 2. List Portfolios
-        res_list = await self.client.get(
-            "/api/v1/portfolios", headers=self.auth_headers
-        )
+        res_list = await self.client.get("/api/v1/portfolios", headers=self.auth_headers)
         self.assertEqual(res_list.status_code, 200)
         port_list = res_list.json()
         self.assertEqual(len(port_list), 1)
         self.assertEqual(port_list[0]["id"], port_id)
 
         # 3. Get Details
-        res_get = await self.client.get(
-            f"/api/v1/portfolios/{port_id}", headers=self.auth_headers
-        )
+        res_get = await self.client.get(f"/api/v1/portfolios/{port_id}", headers=self.auth_headers)
         self.assertEqual(res_get.status_code, 200)
         port_details = res_get.json()
         self.assertEqual(len(port_details["holdings"]), 2)
@@ -305,9 +300,7 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(report_data["is_successful"])
 
         # Check that holdings were persisted
-        port_get = await self.client.get(
-            f"/api/v1/portfolios/{port_id}", headers=self.auth_headers
-        )
+        port_get = await self.client.get(f"/api/v1/portfolios/{port_id}", headers=self.auth_headers)
         port_data = port_get.json()
         self.assertEqual(port_data["holdings_count"], 2)
         tickers = [h["asset_ticker"] for h in port_data["holdings"]]
@@ -420,9 +413,7 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(patch_res.json()["investor_profile"], "CONSERVATIVE")
 
         # Verify persistence with GET
-        get_res = await self.client.get(
-            f"/api/v1/portfolios/{port_id}", headers=self.auth_headers
-        )
+        get_res = await self.client.get(f"/api/v1/portfolios/{port_id}", headers=self.auth_headers)
         self.assertEqual(get_res.status_code, 200)
         self.assertEqual(get_res.json()["investor_profile"], "CONSERVATIVE")
 
@@ -454,7 +445,11 @@ class TestApiEndpointsIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["meta"]["request_id"], "req-trace-422-test")
         self.assertIn("timestamp", body["meta"])
         self.assertTrue(len(body["error"]["details"]) > 0)
-        self.assertTrue(any("forbidden_extra_attribute" in str(d.get("field")) for d in body["error"]["details"]))
+        self.assertTrue(
+            any(
+                "forbidden_extra_attribute" in str(d.get("field")) for d in body["error"]["details"]
+            )
+        )
 
     # -------------------------------------------------------------------------
     # Pruebas Adversariales de Seguridad, RBAC y Aislamiento Anti-IDOR/BOLA (SEC-03)

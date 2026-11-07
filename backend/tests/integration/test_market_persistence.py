@@ -3,23 +3,22 @@ Pruebas de integración para la persistencia de series temporales, deduplicació
 Utiliza SQLite en memoria (aiosqlite) y verifica la integridad relacional de MarketBarModel,
 el servicio MarketHistoryService y el ciclo de vida del caché.
 """
-import asyncio
-from datetime import date, datetime, timezone
-from decimal import Decimal
-import unittest
-from typing import List
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
 
-import app.models  # Asegura registro de modelos relacionales
+import asyncio
+import unittest
+from datetime import UTC, date, datetime
+from decimal import Decimal
+
 from app.core.database import Base
 from app.domain.services.market_connector import BaseMarketConnector
 from app.domain.services.market_history_service import MarketHistoryService
 from app.infrastructure.db.models.market_data import MarketBarModel
 from app.infrastructure.market_data.quote_cache import InMemoryQuoteCache
 from app.schemas.market_data import MarketBarDTO, MarketQuoteDTO, Timeframe
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 
 class MockMarketConnector(BaseMarketConnector):
@@ -37,7 +36,7 @@ class MockMarketConnector(BaseMarketConnector):
             bid=Decimal("1490.00"),
             ask=Decimal("1510.00"),
             volume=Decimal("10000"),
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
 
     async def get_historical_bars(
@@ -46,13 +45,13 @@ class MockMarketConnector(BaseMarketConnector):
         start_date: date,
         end_date: date,
         timeframe: Timeframe = Timeframe.D1,
-    ) -> List[MarketBarDTO]:
+    ) -> list[MarketBarDTO]:
         self.bars_calls += 1
         # Generar una barra por día en el intervalo
         bars = []
         curr = start_date
         while curr <= end_date:
-            ts = datetime(curr.year, curr.month, curr.day, 18, 0, 0, tzinfo=timezone.utc)
+            ts = datetime(curr.year, curr.month, curr.day, 18, 0, 0, tzinfo=UTC)
             bars.append(
                 MarketBarDTO(
                     timestamp=ts,
@@ -91,7 +90,7 @@ class TestMarketPersistenceIntegration(unittest.IsolatedAsyncioTestCase):
 
     async def test_direct_market_bar_model_crud_and_unique_constraint(self) -> None:
         """Valida inserción, consulta y enforcement de la constraint única en MarketBarModel."""
-        ts = datetime(2026, 10, 8, 15, 0, 0, tzinfo=timezone.utc)
+        ts = datetime(2026, 10, 8, 15, 0, 0, tzinfo=UTC)
 
         # 1. Inserción exitosa
         async with self.SessionLocal() as session:
@@ -158,7 +157,7 @@ class TestMarketPersistenceIntegration(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(mock_connector.bars_calls, 1)
             for b in bars_first:
                 self.assertIsInstance(b, MarketBarDTO)
-                self.assertEqual(b.timestamp.tzinfo, timezone.utc)
+                self.assertEqual(b.timestamp.tzinfo, UTC)
 
             # Verificar que se hayan persistido en base de datos
             stmt = select(MarketBarModel).where(MarketBarModel.ticker == "GGAL")
@@ -213,7 +212,7 @@ class TestMarketPersistenceIntegration(unittest.IsolatedAsyncioTestCase):
         quote = MarketQuoteDTO(
             ticker="YPFD",
             price=Decimal("25000.00"),
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
         )
 
         # Set y Hit inmediato
@@ -262,4 +261,3 @@ class TestMarketPersistenceIntegration(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

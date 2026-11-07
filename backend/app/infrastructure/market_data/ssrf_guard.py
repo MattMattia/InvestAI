@@ -3,9 +3,10 @@ Guardián de seguridad anti-SSRF (Server-Side Request Forgery) (Módulo 6 - Fase
 Valida esquemas, hostnames y rangos de direcciones IP para prevenir ataques SSRF hacia
 redes internas, localhost, link-local y servicios de metadatos de nube (AWS/GCP/Azure).
 """
+
 import ipaddress
 import socket
-from typing import Callable, List, Optional
+from collections.abc import Callable
 from urllib.parse import urlsplit
 
 from app.domain.services.market_connector import SecuritySSRFViolationError
@@ -13,20 +14,20 @@ from app.domain.services.market_connector import SecuritySSRFViolationError
 # Redes IPv4 e IPv6 estrictamente prohibidas para salida HTTP
 BLOCKED_NETWORKS = [
     # IPv4 loopback, privadas y reservadas
-    ipaddress.ip_network("0.0.0.0/8"),       # Red local actual / difusión
-    ipaddress.ip_network("10.0.0.0/8"),      # RFC 1918 privada
-    ipaddress.ip_network("100.64.0.0/10"),   # RFC 6598 Carrier Grade NAT
-    ipaddress.ip_network("127.0.0.0/8"),     # Loopback localhost
+    ipaddress.ip_network("0.0.0.0/8"),  # Red local actual / difusión
+    ipaddress.ip_network("10.0.0.0/8"),  # RFC 1918 privada
+    ipaddress.ip_network("100.64.0.0/10"),  # RFC 6598 Carrier Grade NAT
+    ipaddress.ip_network("127.0.0.0/8"),  # Loopback localhost
     ipaddress.ip_network("169.254.0.0/16"),  # Link-local / Cloud Metadata (169.254.169.254)
-    ipaddress.ip_network("172.16.0.0/12"),   # RFC 1918 privada
+    ipaddress.ip_network("172.16.0.0/12"),  # RFC 1918 privada
     ipaddress.ip_network("192.168.0.0/16"),  # RFC 1918 privada
-    ipaddress.ip_network("224.0.0.0/4"),     # Multicast
-    ipaddress.ip_network("240.0.0.0/4"),     # Reservada / experimental
+    ipaddress.ip_network("224.0.0.0/4"),  # Multicast
+    ipaddress.ip_network("240.0.0.0/4"),  # Reservada / experimental
     # IPv6 loopback, únicas locales y link-local
-    ipaddress.ip_network("::/128"),          # No especificada
-    ipaddress.ip_network("::1/128"),         # Loopback IPv6
-    ipaddress.ip_network("fc00::/7"),        # Unique Local Address (ULA)
-    ipaddress.ip_network("fe80::/10"),       # Link-local IPv6
+    ipaddress.ip_network("::/128"),  # No especificada
+    ipaddress.ip_network("::1/128"),  # Loopback IPv6
+    ipaddress.ip_network("fc00::/7"),  # Unique Local Address (ULA)
+    ipaddress.ip_network("fe80::/10"),  # Link-local IPv6
 ]
 
 LOCAL_HOSTNAMES = {
@@ -34,21 +35,25 @@ LOCAL_HOSTNAMES = {
     "localhost.localdomain",
     "127.0.0.1",
     "::1",
-    "0.0.0.0",
+    "0.0.0.0",  # noqa: S104  # blocklist entry, not a bind address
 }
 
 
-def _default_dns_resolver(hostname: str) -> List[str]:
+def _default_dns_resolver(hostname: str) -> list[str]:
     """Resolución DNS estándar utilizando socket.getaddrinfo."""
     try:
         addr_info = socket.getaddrinfo(hostname, None)
         # Extraer las IPs únicas resueltas
         ips = list({sockaddr[0] for _, _, _, _, sockaddr in addr_info})
         if not ips:
-            raise SecuritySSRFViolationError(f"No fue posible resolver la dirección para el host '{hostname}'.")
+            raise SecuritySSRFViolationError(
+                f"No fue posible resolver la dirección para el host '{hostname}'."
+            )
         return ips
     except socket.gaierror as e:
-        raise SecuritySSRFViolationError(f"Fallo en la resolución DNS para el host '{hostname}': {e}") from e
+        raise SecuritySSRFViolationError(
+            f"Fallo en la resolución DNS para el host '{hostname}': {e}"
+        ) from e
     except Exception as e:
         raise SecuritySSRFViolationError(f"Error inesperado al resolver '{hostname}': {e}") from e
 
@@ -88,7 +93,7 @@ def validate_ip_address(ip_str: str) -> None:
 
 def validate_url_against_ssrf(
     url: str,
-    dns_resolver: Optional[Callable[[str], List[str]]] = None,
+    dns_resolver: Callable[[str], list[str]] | None = None,
 ) -> str:
     """
     Valida rigurosamente una URL para mitigar ataques de Server-Side Request Forgery (SSRF).
@@ -130,7 +135,11 @@ def validate_url_against_ssrf(
         raise SecuritySSRFViolationError("La URL provista no contiene un hostname válido.")
 
     hostname_lower = hostname.strip().lower()
-    if hostname_lower in LOCAL_HOSTNAMES or hostname_lower.endswith(".local") or hostname_lower.endswith(".internal"):
+    if (
+        hostname_lower in LOCAL_HOSTNAMES
+        or hostname_lower.endswith(".local")
+        or hostname_lower.endswith(".internal")
+    ):
         raise SecuritySSRFViolationError(
             f"Acceso prohibido a host o dominio interno/local: '{hostname}'."
         )
@@ -150,11 +159,12 @@ def validate_url_against_ssrf(
     resolved_ips = resolver(hostname_lower)
 
     if not resolved_ips:
-        raise SecuritySSRFViolationError(f"El hostname '{hostname}' no resolvió a ninguna dirección IP.")
+        raise SecuritySSRFViolationError(
+            f"El hostname '{hostname}' no resolvió a ninguna dirección IP."
+        )
 
     # Validar cada una de las IPs resueltas
     for ip_candidate in resolved_ips:
         validate_ip_address(ip_candidate)
 
     return url
-

@@ -68,5 +68,3 @@
     5. Normalización de escala en tarjeta cuantitativa (`formatQuantPct` en `MarketDataView.tsx`) asegurando lecturas coherentes para Max Drawdown (`-50.2%` o valor empírico) y VaR 95% (`3.1%` o valor empírico) junto con el glifo griego $\mu$ (`μ_quant`).
     6. Badge informativo enriquecido en `MarketStatusBar.tsx`: estado `MERCADO CERRADO (MODO CONTINUO / AFTER-HOURS ACTIVO)` y `⚡ LIVE FEED (AUTO-SYNC 5s): YAHOO .BA / GOOGLE BCBA`.
     - Verificación: 674/674 tests backend aprobados (`pytest backend/tests -q`) y compilación TypeScript/Vite impecable (0 errores).
-
-

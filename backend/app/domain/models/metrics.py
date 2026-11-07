@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from statistics import NormalDist
-from typing import List, Tuple, Union
+
 import numpy as np
 
 
-def log_returns(prices: Union[List[float], np.ndarray]) -> np.ndarray:
+def log_returns(prices: list[float] | np.ndarray) -> np.ndarray:
     """
     Calculates continuous logarithmic returns from a sequential price series:
     r_t = ln(P_t / P_{t-1})
@@ -20,7 +22,7 @@ def log_returns(prices: Union[List[float], np.ndarray]) -> np.ndarray:
 
 
 def realized_volatility(
-    returns: Union[List[float], np.ndarray],
+    returns: list[float] | np.ndarray,
     trading_days: int = 252,
 ) -> float:
     """
@@ -39,7 +41,7 @@ def realized_volatility(
 
 
 def portfolio_volatility(
-    weights: Union[List[float], np.ndarray],
+    weights: list[float] | np.ndarray,
     cov_matrix: np.ndarray,
     trading_days: int = 252,
 ) -> float:
@@ -65,7 +67,7 @@ def portfolio_volatility(
 
 
 def sharpe_ratio(
-    returns: Union[List[float], np.ndarray],
+    returns: list[float] | np.ndarray,
     risk_free_rate: float = 0.0,
     trading_days: int = 252,
 ) -> float:
@@ -85,7 +87,7 @@ def sharpe_ratio(
 
 
 def sortino_ratio(
-    returns: Union[List[float], np.ndarray],
+    returns: list[float] | np.ndarray,
     risk_free_rate: float = 0.0,
     trading_days: int = 252,
     target_return: float = 0.0,
@@ -111,9 +113,9 @@ def sortino_ratio(
 
 
 def max_drawdown(
-    nav_series: Union[List[float], np.ndarray],
+    nav_series: list[float] | np.ndarray,
     trading_days: int = 252,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Deterministically computes the Maximum Drawdown (MDD) and Calmar Ratio from a NAV series.
     """
@@ -146,7 +148,7 @@ def max_drawdown(
 
 
 def parametric_var(
-    returns: Union[List[float], np.ndarray],
+    returns: list[float] | np.ndarray,
     confidence: float = 0.95,
 ) -> float:
     """
@@ -183,8 +185,8 @@ class QuantitativeRiskSummary:
     @classmethod
     def from_returns_and_nav(
         cls,
-        returns: Union[List[float], np.ndarray],
-        nav_series: Union[List[float], np.ndarray],
+        returns: list[float] | np.ndarray,
+        nav_series: list[float] | np.ndarray,
         risk_free_rate: float = 0.0,
         trading_days: int = 252,
     ) -> QuantitativeRiskSummary:

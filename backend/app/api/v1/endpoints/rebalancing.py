@@ -1,7 +1,8 @@
 import math
-from typing import Annotated, Any, Dict, List, Tuple
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import Annotated, Any
+
 import numpy as np
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db_session, require_trader_or_admin
@@ -30,10 +31,10 @@ router = APIRouter()
 
 
 def compute_10y_optimal_strategy_weights(
-    tickers: List[str],
+    tickers: list[str],
     strategy_code: str,
     investor_profile: str = "MODERATE",
-) -> Tuple[str, Dict[str, float], List[Dict[str, Any]]]:
+) -> tuple[str, dict[str, float], list[dict[str, Any]]]:
     r"""
     Calcula las ponderaciones objetivo óptimas (W_target, suma = 100.0%) sobre la
     Matriz de Covarianza Empírica de 10 Años (\Sigma_{10Y}) y los indicadores
@@ -120,7 +121,9 @@ def compute_10y_optimal_strategy_weights(
             roe = max(8.0, float(m.get("roe_pct") or 16.0)) / 100.0
             a_type = str(m.get("asset_type", "STOCK")).upper()
             growth_multiplier = 0.55 if a_type == "BOND" else 1.35
-            growth_scores[i] = (cagr ** 1.5) * sharpe * (1.0 + 0.6 * min(1.0, roe)) * growth_multiplier
+            growth_scores[i] = (
+                (cagr**1.5) * sharpe * (1.0 + 0.6 * min(1.0, roe)) * growth_multiplier
+            )
 
         tan_norm = tangency / np.sum(tangency)
         gro_norm = growth_scores / np.sum(growth_scores)
@@ -138,7 +141,9 @@ def compute_10y_optimal_strategy_weights(
     return resolved, weights_map, meta_list
 
 
-@router.post("/{id}/rebalance", response_model=RebalancePlanResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/{id}/rebalance", response_model=RebalancePlanResponse, status_code=status.HTTP_200_OK
+)
 async def generate_portfolio_rebalance(
     id: str,
     payload: RebalanceRequest,
@@ -172,12 +177,16 @@ async def generate_portfolio_rebalance(
         strategy_used, weights_map, _ = compute_10y_optimal_strategy_weights(
             tickers=holdings_tickers,
             strategy_code=payload.strategy or "AUTO",
-            investor_profile=getattr(portfolio_model, "investor_profile", None) or current_user.investor_profile or "MODERATE",
+            investor_profile=getattr(portfolio_model, "investor_profile", None)
+            or current_user.investor_profile
+            or "MODERATE",
         )
-        domain_targets: List[TargetAllocation] = [
+        domain_targets: list[TargetAllocation] = [
             TargetAllocation(
                 ticker=t_sym,
-                target_weight=weights_map.get(t_sym, round(100.0 / max(1, len(holdings_tickers)), 2)),
+                target_weight=weights_map.get(
+                    t_sym, round(100.0 / max(1, len(holdings_tickers)), 2)
+                ),
                 tolerance_band=payload.tolerance_band,
             )
             for t_sym in holdings_tickers
@@ -188,7 +197,9 @@ async def generate_portfolio_rebalance(
             TargetAllocation(
                 ticker=t.ticker,
                 target_weight=t.target_weight,
-                tolerance_band=t.tolerance_band if t.tolerance_band is not None else payload.tolerance_band,
+                tolerance_band=t.tolerance_band
+                if t.tolerance_band is not None
+                else payload.tolerance_band,
             )
             for t in (payload.targets or [])
         ]
@@ -217,7 +228,7 @@ async def generate_portfolio_rebalance(
 
     target_map = {t.ticker: float(t.target_weight) for t in domain_targets}
     total_val_ars = 0.0
-    holding_vals_ars: Dict[str, float] = {}
+    holding_vals_ars: dict[str, float] = {}
     for h in domain_portfolio.holdings:
         t_sym = h.asset.ticker
         px = (payload.custom_prices or {}).get(t_sym, h.current_price)
@@ -227,11 +238,15 @@ async def generate_portfolio_rebalance(
         holding_vals_ars[t_sym] = val
         total_val_ars += val
 
-    enriched_metrics: List[Dict[str, Any]] = []
+    enriched_metrics: list[dict[str, Any]] = []
     for h in domain_portfolio.holdings:
         t_sym = h.asset.ticker
         m_info = dict(meta_by_ticker.get(t_sym) or {})
-        curr_w = round((holding_vals_ars.get(t_sym, 0.0) / total_val_ars) * 100.0, 2) if total_val_ars > 0 else 0.0
+        curr_w = (
+            round((holding_vals_ars.get(t_sym, 0.0) / total_val_ars) * 100.0, 2)
+            if total_val_ars > 0
+            else 0.0
+        )
         m_info["current_weight"] = curr_w
         m_info["target_weight"] = round(target_map.get(t_sym, curr_w), 2)
         enriched_metrics.append(m_info)
@@ -248,7 +263,9 @@ async def generate_portfolio_rebalance(
                 estimated_shares=order.estimated_shares,
                 price_used=order.price_used,
                 status="PENDING",
-                justification=f"[{strategy_used}] {order.justification}" if use_quant_strategy else order.justification,
+                justification=f"[{strategy_used}] {order.justification}"
+                if use_quant_strategy
+                else order.justification,
             )
             db.add(order_model)
 
@@ -268,7 +285,9 @@ async def generate_portfolio_rebalance(
                 delta_amount=o.delta_amount,
                 estimated_shares=o.estimated_shares,
                 price_used=o.price_used,
-                justification=f"[{strategy_used}] {o.justification}" if use_quant_strategy else o.justification,
+                justification=f"[{strategy_used}] {o.justification}"
+                if use_quant_strategy
+                else o.justification,
             )
             for o in plan.orders
         ],

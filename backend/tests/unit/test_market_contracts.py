@@ -4,13 +4,12 @@ Verifica inmutabilidad, sanitización de frontera (extra='forbid'), integridad g
 hardening de zona horaria UTC (offset 0), redondeo ROUND_HALF_UP (4 decimales rate, 2 decimales spread_pct)
 y robustez adversarial frente a cotizaciones cero, negativas o corruptas.
 """
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+
 import unittest
-from pydantic import ValidationError
+from datetime import UTC, datetime, timedelta, timezone
+from decimal import Decimal
 
 from app.domain.services.fx_calculator import (
-    FXCalculatorError,
     InvalidMarketPriceError,
     ZeroPriceDivisionError,
     calculate_ccl_rate,
@@ -21,15 +20,15 @@ from app.schemas.market_data import (
     FXType,
     MarketBarDTO,
     MarketQuoteDTO,
-    Timeframe,
 )
+from pydantic import ValidationError
 
 
 class TestMarketDataSchemas(unittest.TestCase):
     """Pruebas de invariantes para los DTOs de mercado y series temporales."""
 
     def setUp(self):
-        self.now_utc = datetime(2026, 10, 8, 15, 30, 0, tzinfo=timezone.utc)
+        self.now_utc = datetime(2026, 10, 8, 15, 30, 0, tzinfo=UTC)
 
     def test_market_quote_immutability_and_extra_forbid(self):
         """Valida que MarketQuoteDTO sea inmutable (frozen) y rechace campos extra."""
@@ -103,7 +102,9 @@ class TestMarketDataSchemas(unittest.TestCase):
                 price=Decimal("100.0"),
                 timestamp=naive_dt,
             )
-        self.assertIn("Timestamp must include UTC timezone information (offset 0)", str(ctx.exception))
+        self.assertIn(
+            "Timestamp must include UTC timezone information (offset 0)", str(ctx.exception)
+        )
 
         # Timestamp con timezone no UTC (offset != 0) debe fallar
         non_utc_dt = datetime(2026, 10, 8, 15, 30, 0, tzinfo=timezone(timedelta(hours=-3)))
@@ -113,7 +114,9 @@ class TestMarketDataSchemas(unittest.TestCase):
                 price=Decimal("100.0"),
                 timestamp=non_utc_dt,
             )
-        self.assertIn("Timestamp must include UTC timezone information (offset 0)", str(ctx.exception))
+        self.assertIn(
+            "Timestamp must include UTC timezone information (offset 0)", str(ctx.exception)
+        )
 
         # MarketBarDTO con timezone no UTC también debe fallar
         with self.assertRaises(ValidationError) as ctx:
@@ -125,7 +128,9 @@ class TestMarketDataSchemas(unittest.TestCase):
                 close=Decimal("105.0"),
                 volume=Decimal("1000"),
             )
-        self.assertIn("Timestamp must include UTC timezone information (offset 0)", str(ctx.exception))
+        self.assertIn(
+            "Timestamp must include UTC timezone information (offset 0)", str(ctx.exception)
+        )
 
     def test_market_bar_immutability_and_extra_forbid(self):
         """Valida inmutabilidad y extra='forbid' en MarketBarDTO."""
@@ -246,7 +251,7 @@ class TestFXCalculatorService(unittest.TestCase):
     """Pruebas unitarias para el servicio cuantitativo fx_calculator."""
 
     def setUp(self):
-        self.now_utc = datetime(2026, 10, 8, 16, 0, 0, tzinfo=timezone.utc)
+        self.now_utc = datetime(2026, 10, 8, 16, 0, 0, tzinfo=UTC)
 
     def test_calculate_mep_rate_normal_scenario(self):
         """Valida el cálculo de Dólar MEP con AL30 en ARS vs AL30D en USD con escala estricta."""
@@ -348,7 +353,7 @@ class TestFXCalculatorService(unittest.TestCase):
             price = Decimal("128000.00")
             bid = Decimal("0.0")
             ask = Decimal("128500.00")
-            timestamp = datetime(2026, 10, 8, 16, 0, 0, tzinfo=timezone.utc)
+            timestamp = datetime(2026, 10, 8, 16, 0, 0, tzinfo=UTC)
 
         res3 = calculate_mep_rate(MockZeroBidQuote(), usd_full)
         self.assertEqual(res3.rate, Decimal("1280.0000"))
@@ -417,7 +422,7 @@ class TestFXCalculatorService(unittest.TestCase):
             price = Decimal("0.0")
             bid = None
             ask = None
-            timestamp = datetime(2026, 10, 8, 16, 0, 0, tzinfo=timezone.utc)
+            timestamp = datetime(2026, 10, 8, 16, 0, 0, tzinfo=UTC)
 
         corrupt_zero = CorruptQuote()
 

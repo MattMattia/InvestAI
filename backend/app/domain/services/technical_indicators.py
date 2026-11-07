@@ -7,12 +7,13 @@ and Wilder's Average True Range (ATR) in pure arbitrary-precision `Decimal`
 arithmetic with zero heavy external dependencies and deterministic 4-decimal
 (`ROUND_HALF_UP`) quantization.
 """
+
 from __future__ import annotations
 
-from collections.abc import Sequence
-from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
 import math
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation, localcontext
 from typing import Any, TypeVar
 
 from pydantic import Field, field_validator, model_validator
@@ -85,9 +86,7 @@ def _coerce_finite_decimal_field(value: Any, field_name: str) -> Decimal:
         except InvalidOperation as exc:
             raise ValueError(f"Invalid Decimal string for '{field_name}'") from exc
     else:
-        raise ValueError(
-            f"Unsupported type '{type(value).__name__}' for '{field_name}'"
-        )
+        raise ValueError(f"Unsupported type '{type(value).__name__}' for '{field_name}'")
 
     if not dec.is_finite():
         raise ValueError(f"Non-finite Decimal is not permitted for '{field_name}'")
@@ -97,8 +96,8 @@ def _coerce_finite_decimal_field(value: Any, field_name: str) -> Decimal:
 def _normalize_timestamp_for_sort(ts: datetime) -> datetime:
     """Normalize a timestamp to UTC for deterministic chronological comparison."""
     if ts.tzinfo is None or ts.utcoffset() is None:
-        return ts.replace(tzinfo=timezone.utc)
-    return ts.astimezone(timezone.utc)
+        return ts.replace(tzinfo=UTC)
+    return ts.astimezone(UTC)
 
 
 # ============================================================================
@@ -173,9 +172,7 @@ class TechnicalIndicatorsSnapshot(BaseSchema):
     ema_26: Decimal | None = None
     prev_ema_26: Decimal | None = None
     rsi_14: Decimal | None = Field(default=None, ge=Decimal("0"), le=Decimal("100"))
-    prev_rsi_14: Decimal | None = Field(
-        default=None, ge=Decimal("0"), le=Decimal("100")
-    )
+    prev_rsi_14: Decimal | None = Field(default=None, ge=Decimal("0"), le=Decimal("100"))
     bollinger_20_2: BollingerBandsPoint | None = None
     prev_bollinger_20_2: BollingerBandsPoint | None = None
     atr_14: Decimal | None = Field(default=None, ge=Decimal("0"))
@@ -342,15 +339,13 @@ class TechnicalIndicatorsService:
             )
         return dec
 
-    def validate_and_sort_bars(
-        self, bars: Sequence[MarketBarDTO]
-    ) -> list[MarketBarDTO]:
+    def validate_and_sort_bars(self, bars: Sequence[MarketBarDTO]) -> list[MarketBarDTO]:
         """
         Validate OHLCV invariants on every bar (including instances built via
         `model_construct`), sort chronologically ascending by timestamp, and
         reject duplicate timestamps.
         """
-        if isinstance(bars, (str, bytes)) or not isinstance(bars, Sequence):
+        if isinstance(bars, str | bytes) or not isinstance(bars, Sequence):
             raise InvalidMarketBarSequenceError(
                 "bars must be a sequence of MarketBarDTO instances."
             )
@@ -371,9 +366,7 @@ class TechnicalIndicatorsService:
                 )
             ts = getattr(bar, "timestamp", None)
             if not isinstance(ts, datetime) or isinstance(ts, bool):
-                raise InvalidMarketBarSequenceError(
-                    f"Bar at index {idx} has an invalid timestamp."
-                )
+                raise InvalidMarketBarSequenceError(f"Bar at index {idx} has an invalid timestamp.")
 
             open_p = self._to_positive_decimal(getattr(bar, "open", None), "open")
             high_p = self._to_positive_decimal(getattr(bar, "high", None), "high")
@@ -415,7 +408,7 @@ class TechnicalIndicatorsService:
         Extract validated positive `Decimal` close prices and optional timestamps
         from either a `MarketBarDTO` sequence or a scalar numeric sequence.
         """
-        if isinstance(series, (str, bytes)) or not isinstance(series, Sequence):
+        if isinstance(series, str | bytes) or not isinstance(series, Sequence):
             raise InvalidMarketBarSequenceError(
                 "Input series must be a sequence of MarketBarDTO or numeric values."
             )
@@ -423,16 +416,13 @@ class TechnicalIndicatorsService:
             raise InsufficientMarketDataError("Input price series cannot be empty.")
         if len(series) > MAX_BARS_SERIES_LENGTH:
             raise InvalidIndicatorParameterError(
-                f"Series length ({len(series)}) exceeds maximum limit "
-                f"({MAX_BARS_SERIES_LENGTH})."
+                f"Series length ({len(series)}) exceeds maximum limit ({MAX_BARS_SERIES_LENGTH})."
             )
 
         first = series[0]
         if isinstance(first, MarketBarDTO):
             sorted_bars = self.validate_and_sort_bars(series)  # type: ignore[arg-type]
-            closes = [
-                self._to_positive_decimal(b.close, "close") for b in sorted_bars
-            ]
+            closes = [self._to_positive_decimal(b.close, "close") for b in sorted_bars]
             timestamps: list[datetime | None] = [b.timestamp for b in sorted_bars]
             return closes, timestamps
 
@@ -461,8 +451,7 @@ class TechnicalIndicatorsService:
 
         if len(closes) < period:
             raise InsufficientMarketDataError(
-                f"SMA({period}) requires at least {period} observations, "
-                f"got {len(closes)}."
+                f"SMA({period}) requires at least {period} observations, got {len(closes)}."
             )
 
         with localcontext() as ctx:
@@ -493,8 +482,7 @@ class TechnicalIndicatorsService:
 
         if len(closes) < period:
             raise InsufficientMarketDataError(
-                f"EMA({period}) requires at least {period} observations, "
-                f"got {len(closes)}."
+                f"EMA({period}) requires at least {period} observations, got {len(closes)}."
             )
 
         with localcontext() as ctx:
@@ -537,24 +525,18 @@ class TechnicalIndicatorsService:
 
         with localcontext() as ctx:
             ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
-            deltas: list[Decimal] = [
-                closes[i] - closes[i - 1] for i in range(1, len(closes))
-            ]
+            deltas: list[Decimal] = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
             period_dec = Decimal(period)
             prev_weight = Decimal(period - 1)
 
             avg_gain = (
-                sum((max(d, Decimal("0")) for d in deltas[:period]), Decimal("0"))
-                / period_dec
+                sum((max(d, Decimal("0")) for d in deltas[:period]), Decimal("0")) / period_dec
             )
             avg_loss = (
-                sum((max(-d, Decimal("0")) for d in deltas[:period]), Decimal("0"))
-                / period_dec
+                sum((max(-d, Decimal("0")) for d in deltas[:period]), Decimal("0")) / period_dec
             )
 
-            rsi_values: list[Decimal] = [
-                self._compute_rsi_from_averages(avg_gain, avg_loss)
-            ]
+            rsi_values: list[Decimal] = [self._compute_rsi_from_averages(avg_gain, avg_loss)]
 
             for delta in deltas[period:]:
                 gain = max(delta, Decimal("0"))
@@ -566,9 +548,7 @@ class TechnicalIndicatorsService:
         return rsi_values
 
     @classmethod
-    def _compute_rsi_from_averages(
-        cls, avg_gain: Decimal, avg_loss: Decimal
-    ) -> Decimal:
+    def _compute_rsi_from_averages(cls, avg_gain: Decimal, avg_loss: Decimal) -> Decimal:
         """Evaluate Wilder RSI from smoothed average gain and average loss."""
         if avg_loss == Decimal("0") and avg_gain == Decimal("0"):
             return Decimal("50.0000")
@@ -612,18 +592,14 @@ class TechnicalIndicatorsService:
             )
 
         if isinstance(num_std_dev, bool) or num_std_dev is None:
-            raise InvalidIndicatorParameterError(
-                "num_std_dev cannot be a boolean or None."
-            )
+            raise InvalidIndicatorParameterError("num_std_dev cannot be a boolean or None.")
         if isinstance(num_std_dev, Decimal):
             k_mult = num_std_dev
         elif isinstance(num_std_dev, int):
             k_mult = Decimal(num_std_dev)
         elif isinstance(num_std_dev, float):
             if not math.isfinite(num_std_dev):
-                raise InvalidIndicatorParameterError(
-                    "num_std_dev must be a finite number."
-                )
+                raise InvalidIndicatorParameterError("num_std_dev must be a finite number.")
             k_mult = Decimal(str(num_std_dev))
         else:
             raise InvalidIndicatorParameterError(
@@ -631,9 +607,7 @@ class TechnicalIndicatorsService:
             )
 
         if not k_mult.is_finite() or k_mult <= Decimal("0") or k_mult > Decimal("100"):
-            raise InvalidIndicatorParameterError(
-                f"num_std_dev must be in (0, 100], got {k_mult}."
-            )
+            raise InvalidIndicatorParameterError(f"num_std_dev must be in (0, 100], got {k_mult}.")
 
         closes, timestamps = self._extract_closes_and_timestamps(series)
         if len(closes) < period:
@@ -652,9 +626,7 @@ class TechnicalIndicatorsService:
                 end_idx = start_idx + period - 1
                 window = closes[start_idx : start_idx + period]
                 mean = sum(window, Decimal("0")) / period_dec
-                variance = (
-                    sum(((x - mean) ** 2 for x in window), Decimal("0")) / denom_dec
-                )
+                variance = sum(((x - mean) ** 2 for x in window), Decimal("0")) / denom_dec
                 std_dev = variance.sqrt()
 
                 middle_band = self._quantize(mean)
@@ -707,8 +679,7 @@ class TechnicalIndicatorsService:
 
         if len(sorted_bars) < period:
             raise InsufficientMarketDataError(
-                f"ATR({period}) requires at least {period} bars, "
-                f"got {len(sorted_bars)}."
+                f"ATR({period}) requires at least {period} bars, got {len(sorted_bars)}."
             )
 
         with localcontext() as ctx:
@@ -767,13 +738,9 @@ class TechnicalIndicatorsService:
         n_bars = len(sorted_bars)
 
         latest_bar = sorted_bars[-1]
-        latest_close = self._quantize(
-            self._to_positive_decimal(latest_bar.close, "close")
-        )
+        latest_close = self._quantize(self._to_positive_decimal(latest_bar.close, "close"))
         prev_close = (
-            self._quantize(
-                self._to_positive_decimal(sorted_bars[-2].close, "close")
-            )
+            self._quantize(self._to_positive_decimal(sorted_bars[-2].close, "close"))
             if n_bars >= 2
             else None
         )
@@ -838,4 +805,3 @@ class TechnicalIndicatorsService:
             atr_14=atr_14,
             prev_atr_14=prev_atr_14,
         )
-

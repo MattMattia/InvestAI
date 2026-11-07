@@ -1,11 +1,12 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+
 from app.domain.models.asset import Asset, AssetType, Currency, Sector
 
 
 class InvestorProfile(str, Enum):
     """Risk tolerance profile capturing investor preferences (F1.2)."""
+
     CONSERVATIVE = "CONSERVATIVE"
     MODERATE = "MODERATE"
     AGGRESSIVE = "AGGRESSIVE"
@@ -16,12 +17,13 @@ class Holding:
     """
     Representation of an individual asset position inside a portfolio.
     """
+
     asset: Asset
     quantity: float
     average_buy_price: float
     current_price: float
     currency: Currency = Currency.ARS
-    target_weight_pct: Optional[float] = None
+    target_weight_pct: float | None = None
 
     @property
     def total_cost(self) -> float:
@@ -52,10 +54,11 @@ class Portfolio:
     Pure domain representation of an investment portfolio.
     Provides deterministic aggregation and weight calculations.
     """
-    id: Optional[str] = None
+
+    id: str | None = None
     name: str = "Portafolio Principal"
     investor_profile: InvestorProfile = InvestorProfile.MODERATE
-    holdings: List[Holding] = field(default_factory=list)
+    holdings: list[Holding] = field(default_factory=list)
     cash_balance_ars: float = 0.0
     cash_balance_usd: float = 0.0
 
@@ -81,7 +84,7 @@ class Portfolio:
             return 0.0
         return round(total_ars / fx_ccl, 2)
 
-    def get_holding_weights(self, fx_ccl: float = 1.0) -> Dict[str, float]:
+    def get_holding_weights(self, fx_ccl: float = 1.0) -> dict[str, float]:
         """
         Calculates the percentage weight (%) of each holding relative to total portfolio value.
         """
@@ -89,7 +92,7 @@ class Portfolio:
         if tot_ars <= 0:
             return {h.asset.ticker: 0.0 for h in self.holdings}
 
-        weights: Dict[str, float] = {}
+        weights: dict[str, float] = {}
         for h in self.holdings:
             val_ars = h.market_value
             if h.currency in {Currency.USD, Currency.USD_CCL, Currency.USD_MEP}:
@@ -99,7 +102,7 @@ class Portfolio:
 
         return weights
 
-    def get_sector_allocation(self, fx_ccl: float = 1.0) -> Dict[Sector, float]:
+    def get_sector_allocation(self, fx_ccl: float = 1.0) -> dict[Sector, float]:
         """
         Calculates percentage allocation by economic sector.
         """
@@ -107,7 +110,7 @@ class Portfolio:
         if tot_ars <= 0:
             return {}
 
-        sector_totals: Dict[Sector, float] = {}
+        sector_totals: dict[Sector, float] = {}
         for h in self.holdings:
             val_ars = h.market_value
             if h.currency in {Currency.USD, Currency.USD_CCL, Currency.USD_MEP}:
@@ -115,12 +118,9 @@ class Portfolio:
             sec = h.asset.sector
             sector_totals[sec] = sector_totals.get(sec, 0.0) + val_ars
 
-        return {
-            sec: round((val / tot_ars) * 100.0, 2)
-            for sec, val in sector_totals.items()
-        }
+        return {sec: round((val / tot_ars) * 100.0, 2) for sec, val in sector_totals.items()}
 
-    def get_asset_type_allocation(self, fx_ccl: float = 1.0) -> Dict[AssetType, float]:
+    def get_asset_type_allocation(self, fx_ccl: float = 1.0) -> dict[AssetType, float]:
         """
         Calculates percentage allocation by asset type (Equity, CEDEAR, Bonds, etc.).
         """
@@ -128,7 +128,7 @@ class Portfolio:
         if tot_ars <= 0:
             return {}
 
-        type_totals: Dict[AssetType, float] = {}
+        type_totals: dict[AssetType, float] = {}
         for h in self.holdings:
             val_ars = h.market_value
             if h.currency in {Currency.USD, Currency.USD_CCL, Currency.USD_MEP}:
@@ -136,10 +136,7 @@ class Portfolio:
             t = h.asset.asset_type
             type_totals[t] = type_totals.get(t, 0.0) + val_ars
 
-        return {
-            t: round((val / tot_ars) * 100.0, 2)
-            for t, val in type_totals.items()
-        }
+        return {t: round((val / tot_ars) * 100.0, 2) for t, val in type_totals.items()}
 
     @property
     def fixed_income_weight_pct(self) -> float:
@@ -160,4 +157,3 @@ class Portfolio:
             alloc.get(AssetType.EQUITY, 0.0) + alloc.get(AssetType.CEDEAR, 0.0),
             2,
         )
-

@@ -1,5 +1,5 @@
 import unittest
-from pydantic import ValidationError
+
 from app.domain.models.asset import Asset, AssetType, Currency, Sector
 from app.domain.models.portfolio import Holding, InvestorProfile, Portfolio
 from app.domain.models.valuation import ValuationMetrics, ValuationStatus
@@ -7,6 +7,7 @@ from app.domain.rules.base import BaseRiskRule, RuleResult, Severity
 from app.domain.rules.engine import ComplianceStatus, RiskEngine
 from app.schemas.backtest import BacktestRunRequest
 from app.schemas.portfolio import PortfolioCreate
+from pydantic import ValidationError
 
 
 class MockConcentrationRule(BaseRiskRule):
@@ -99,11 +100,27 @@ class TestDomainModels(unittest.TestCase):
         self.assertIsNone(val_zero.pe_ratio)
 
     def test_portfolio_weights_and_allocations(self):
-        aapl = Asset("AAPL", "Apple CEDEAR", AssetType.CEDEAR, Currency.ARS, Sector.TECHNOLOGY, "US", 10.0)
-        al30 = Asset("AL30", "Bono AL30", AssetType.BOND_SOVEREIGN, Currency.ARS, Sector.GOVERNMENT, "AR")
+        aapl = Asset(
+            "AAPL", "Apple CEDEAR", AssetType.CEDEAR, Currency.ARS, Sector.TECHNOLOGY, "US", 10.0
+        )
+        al30 = Asset(
+            "AL30", "Bono AL30", AssetType.BOND_SOVEREIGN, Currency.ARS, Sector.GOVERNMENT, "AR"
+        )
 
-        h1 = Holding(asset=aapl, quantity=10, average_buy_price=1000.0, current_price=1200.0, currency=Currency.ARS)
-        h2 = Holding(asset=al30, quantity=100, average_buy_price=200.0, current_price=280.0, currency=Currency.ARS)
+        h1 = Holding(
+            asset=aapl,
+            quantity=10,
+            average_buy_price=1000.0,
+            current_price=1200.0,
+            currency=Currency.ARS,
+        )
+        h2 = Holding(
+            asset=al30,
+            quantity=100,
+            average_buy_price=200.0,
+            current_price=280.0,
+            currency=Currency.ARS,
+        )
 
         portfolio = Portfolio(
             id="port-01",
@@ -128,8 +145,12 @@ class TestDomainModels(unittest.TestCase):
         self.assertEqual(portfolio.equity_weight_pct, 30.0)
 
     def test_risk_engine_execution(self):
-        aapl = Asset("AAPL", "Apple CEDEAR", AssetType.CEDEAR, Currency.ARS, Sector.TECHNOLOGY, "US", 10.0)
-        al30 = Asset("AL30", "Bono AL30", AssetType.BOND_SOVEREIGN, Currency.ARS, Sector.GOVERNMENT, "AR")
+        aapl = Asset(
+            "AAPL", "Apple CEDEAR", AssetType.CEDEAR, Currency.ARS, Sector.TECHNOLOGY, "US", 10.0
+        )
+        al30 = Asset(
+            "AL30", "Bono AL30", AssetType.BOND_SOVEREIGN, Currency.ARS, Sector.GOVERNMENT, "AR"
+        )
 
         h1 = Holding(asset=aapl, quantity=10, average_buy_price=1000.0, current_price=1200.0)
         h2 = Holding(asset=al30, quantity=100, average_buy_price=200.0, current_price=280.0)

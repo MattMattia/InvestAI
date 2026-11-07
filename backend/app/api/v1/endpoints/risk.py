@@ -1,4 +1,5 @@
-from typing import Annotated, List
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +28,9 @@ from app.services.portfolio_service import (
 router = APIRouter()
 
 
-@router.get("/{id}/evaluate", response_model=RiskAssessmentReportResponse, status_code=status.HTTP_200_OK)
+@router.get(
+    "/{id}/evaluate", response_model=RiskAssessmentReportResponse, status_code=status.HTTP_200_OK
+)
 async def evaluate_portfolio_risk(
     id: str,
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
@@ -123,12 +126,16 @@ async def evaluate_portfolio_risk(
     )
 
 
-@router.get("/{id}/snapshots", response_model=List[RiskAuditSnapshotResponse], status_code=status.HTTP_200_OK)
+@router.get(
+    "/{id}/snapshots",
+    response_model=list[RiskAuditSnapshotResponse],
+    status_code=status.HTTP_200_OK,
+)
 async def list_portfolio_risk_snapshots(
     id: str,
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-) -> List[RiskAuditSnapshotResponse]:
+) -> list[RiskAuditSnapshotResponse]:
     """
     Retrieves immutable historical risk audit snapshots for a given portfolio.
     Enforces authentication and tenant isolation.

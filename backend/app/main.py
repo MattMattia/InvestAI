@@ -1,16 +1,17 @@
 import asyncio
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
-from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.deps import get_db_session
 from app.api.middleware.trace import RequestTraceMiddleware, get_current_request_id
@@ -68,13 +69,12 @@ app.add_middleware(
 )
 
 
-from starlette.exceptions import HTTPException as StarletteHTTPException
-
-
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     """Custom structured response conforming to APIErrorResponse for HTTP exceptions (ARQ-02, SEC-02, SEC-03)."""
-    request_id = get_current_request_id() or request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    request_id = (
+        get_current_request_id() or request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    )
     if exc.status_code >= status.HTTP_500_INTERNAL_SERVER_ERROR:
         logger.error(
             f"HTTP {exc.status_code} internal error [req_id={request_id}] on {request.method} {request.url.path}: {exc.detail}"
@@ -111,11 +111,14 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     )
 
 
-
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     """Custom structured response conforming to APIErrorResponse for Pydantic validation errors (ARQ-02)."""
-    request_id = get_current_request_id() or request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    request_id = (
+        get_current_request_id() or request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    )
     sub_errors = [
         SubErrorDetail(
             field=".".join(str(loc) for loc in err.get("loc", [])) if err.get("loc") else None,
@@ -141,8 +144,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Unhandled internal server errors with internal logging, sanitized client output and APIErrorResponse envelope (SEC-02, ARQ-02)."""
-    request_id = get_current_request_id() or request.headers.get("X-Request-ID") or str(uuid.uuid4())
-    logger.exception(f"Unhandled server error [req_id={request_id}] on {request.method} {request.url.path}: {exc}")
+    request_id = (
+        get_current_request_id() or request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    )
+    logger.exception(
+        f"Unhandled server error [req_id={request_id}] on {request.method} {request.url.path}: {exc}"
+    )
     error_payload = APIErrorResponse(
         success=False,
         error=ErrorDetail(
@@ -193,7 +200,7 @@ async def readiness_probe(
                     "status": "up",
                     "latency_ms": latency_ms,
                 },
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "environment": settings.ENVIRONMENT,
             },
         )
@@ -209,7 +216,7 @@ async def readiness_probe(
                     "latency_ms": latency_ms,
                     "error": "Database connectivity check failed or timed out.",
                 },
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "environment": settings.ENVIRONMENT,
             },
         )
@@ -230,7 +237,7 @@ async def health_check(
                 "status": "healthy",
                 "database": "connected",
                 "latency_ms": latency_ms,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "environment": settings.ENVIRONMENT,
             },
         )
@@ -241,7 +248,7 @@ async def health_check(
             content={
                 "status": "unhealthy",
                 "database": "disconnected",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "environment": settings.ENVIRONMENT,
             },
         )

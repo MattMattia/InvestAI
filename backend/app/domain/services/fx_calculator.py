@@ -2,24 +2,27 @@
 Calculadora cuantitativa y determinista de tipos de cambio financieros implícitos (MEP y CCL).
 Implementa precisión monetaria estricta vía Decimal y programación defensiva frente a anomalías de mercado.
 """
-from decimal import Decimal, DivisionByZero, InvalidOperation, ROUND_HALF_UP
-from typing import Union
+
+from decimal import ROUND_HALF_UP, Decimal, DivisionByZero, InvalidOperation
 
 from app.schemas.market_data import FXRateDTO, FXType, MarketQuoteDTO
 
 
 class FXCalculatorError(ValueError):
     """Excepción base para fallos numéricos o de consistencia en el cálculo de FX implícito."""
+
     pass
 
 
 class InvalidMarketPriceError(FXCalculatorError):
     """Lanzada cuando un precio de mercado o ratio es nulo, negativo o inconsistente."""
+
     pass
 
 
 class ZeroPriceDivisionError(FXCalculatorError):
     """Lanzada ante un intento de división por cero en las cotizaciones divisorias."""
+
     pass
 
 
@@ -101,7 +104,7 @@ def calculate_mep_rate(
 def calculate_ccl_rate(
     local_quote: MarketQuoteDTO,
     adr_quote: MarketQuoteDTO,
-    conversion_ratio: Union[Decimal, float, int, str],
+    conversion_ratio: Decimal | float | int | str,
 ) -> FXRateDTO:
     """
     Calcula el tipo de cambio implícito Contado con Liquidación (CCL) a partir de un activo

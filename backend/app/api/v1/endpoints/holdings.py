@@ -1,4 +1,5 @@
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,9 +36,8 @@ async def add_or_update_holding(
     )
 
     # Check if position already exists in this portfolio
-    stmt = (
-        select(HoldingModel)
-        .where(HoldingModel.portfolio_id == portfolio.id, HoldingModel.asset_ticker == asset.ticker)
+    stmt = select(HoldingModel).where(
+        HoldingModel.portfolio_id == portfolio.id, HoldingModel.asset_ticker == asset.ticker
     )
     result = await db.execute(stmt)
     holding = result.scalar_one_or_none()

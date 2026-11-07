@@ -3,6 +3,7 @@ Domain ingestion services, format strategies, schema detection, data cleaning
 pipeline, accounting integrity, and portfolio reconciliation exports
 (Modules 6.1, 6.2 & 6.3).
 """
+
 from app.domain.services.accounting_integrity import (
     MAX_COMPUTABLE_RATIO,
     MAX_RATIONAL_PE,
@@ -145,6 +146,3 @@ def __getattr__(name: str):
 
         return IngestionReportSummary
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-

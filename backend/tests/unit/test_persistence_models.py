@@ -1,16 +1,16 @@
 import unittest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
 from app.models import (
-    UserModel,
     AssetModel,
-    PortfolioModel,
     HoldingModel,
-    RiskAuditSnapshotModel,
+    PortfolioModel,
     RebalanceOrderModel,
+    RiskAuditSnapshotModel,
+    UserModel,
 )
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 
 class TestPersistenceModels(unittest.TestCase):
@@ -54,7 +54,9 @@ class TestPersistenceModels(unittest.TestCase):
         self.session.add(user)
         self.session.commit()
 
-        queried_user = self.session.query(UserModel).filter_by(email="investor@investai.com").first()
+        queried_user = (
+            self.session.query(UserModel).filter_by(email="investor@investai.com").first()
+        )
         self.assertIsNotNone(queried_user)
         self.assertEqual(queried_user.investor_profile, "AGGRESSIVE")
         self.assertEqual(len(queried_user.portfolios), 0)

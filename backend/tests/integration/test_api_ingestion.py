@@ -10,22 +10,19 @@ in-memory persistence:
   RBAC (`TRADER`/`ADMIN` vs `VIEWER`), Anti-IDOR isolation, and DoS/ZipBomb/XXE
   perimeter protections under Universal Envelope (`APIResponse` / `APIErrorResponse`).
 """
+
 from __future__ import annotations
 
-from decimal import Decimal
 import io
 import unittest
 import uuid
 import zipfile
+from decimal import Decimal
 
+import app.models  # noqa: F401 - register all SQLAlchemy declarative models
 import httpx
 import openpyxl
 import pytest
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
-
-import app.models  # noqa: F401 - register all SQLAlchemy declarative models
 from app.api.deps import get_db, get_db_session
 from app.core.database import Base
 from app.core.security import create_access_token, get_password_hash
@@ -36,6 +33,9 @@ from app.models.holding import HoldingModel
 from app.models.portfolio import PortfolioModel
 from app.models.user import UserModel
 from app.schemas.user import UserRole
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 
 @pytest.mark.integration
@@ -206,9 +206,7 @@ class TestAPIIngestion(unittest.IsolatedAsyncioTestCase):
         fastapi_app.dependency_overrides[get_db_session] = _override_get_db
 
         self.transport = httpx.ASGITransport(app=fastapi_app)
-        self.client = httpx.AsyncClient(
-            transport=self.transport, base_url="http://testserver"
-        )
+        self.client = httpx.AsyncClient(transport=self.transport, base_url="http://testserver")
 
     async def asyncTearDown(self) -> None:
         if hasattr(self, "client") and self.client is not None:
@@ -309,11 +307,11 @@ class TestAPIIngestion(unittest.IsolatedAsyncioTestCase):
 
         # Immediate re-upload of the consolidated state -> 100% idempotent (UNCHANGED)
         reupload_csv = (
-            "Ticker,Cantidad,PPC,Moneda\n"
-            "GGAL,250,1380.00,ARS\n"
-            "YPFD,80,21000.00,ARS\n"
-            "AL30,1000,850.00,ARS\n"
-        ).encode("utf-8")
+            b"Ticker,Cantidad,PPC,Moneda\n"
+            b"GGAL,250,1380.00,ARS\n"
+            b"YPFD,80,21000.00,ARS\n"
+            b"AL30,1000,850.00,ARS\n"
+        )
 
         res_idem = await self.client.post(
             "/api/v1/ingestion/upload-report",
@@ -435,9 +433,7 @@ class TestAPIIngestion(unittest.IsolatedAsyncioTestCase):
 
         # Confirm other_trader_user's portfolio in DB was not modified
         async with self.SessionLocal() as session:
-            stmt = select(HoldingModel).where(
-                HoldingModel.portfolio_id == self.other_portfolio_id
-            )
+            stmt = select(HoldingModel).where(HoldingModel.portfolio_id == self.other_portfolio_id)
             rows = (await session.execute(stmt)).scalars().all()
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0].asset_ticker, "PAMP")
@@ -514,7 +510,7 @@ class TestAPIIngestion(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res_no_pid.status_code, 422)
 
         res_ctrl_pid = await self.client.post(
-            f"/api/v1/ingestion/upload-report?portfolio_id=bad%00id",
+            "/api/v1/ingestion/upload-report?portfolio_id=bad%00id",
             headers=self._auth_headers(),
             files={"file": ("tenencias.csv", valid_csv, "text/csv")},
         )
@@ -574,11 +570,7 @@ class TestAPIIngestion(unittest.IsolatedAsyncioTestCase):
         - Case B: Uploading the same report with allow_empty_snapshot='true' in
           SNAPSHOT mode succeeds (200 OK) and liquidates all 3 holdings (total_holdings_after=0).
         """
-        all_invalid_csv = (
-            "Ticker,Cantidad,Precio\n"
-            "GGAL,-50,1200\n"
-            "YPFD,0,20000\n"
-        ).encode("utf-8")
+        all_invalid_csv = b"Ticker,Cantidad,Precio\nGGAL,-50,1200\nYPFD,0,20000\n"
 
         # Case A: allow_empty_snapshot="false" -> 422 & DB untouched
         res_reject = await self.client.post(
@@ -594,9 +586,7 @@ class TestAPIIngestion(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res_reject.status_code, 422)
 
         async with self.SessionLocal() as session:
-            stmt = select(HoldingModel).where(
-                HoldingModel.portfolio_id == self.trader_portfolio_id
-            )
+            stmt = select(HoldingModel).where(HoldingModel.portfolio_id == self.trader_portfolio_id)
             holdings_before = (await session.execute(stmt)).scalars().all()
             self.assertEqual(len(holdings_before), 3)
 
@@ -619,9 +609,7 @@ class TestAPIIngestion(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["reconciliation"]["total_holdings_after"], 0)
 
         async with self.SessionLocal() as session:
-            stmt = select(HoldingModel).where(
-                HoldingModel.portfolio_id == self.trader_portfolio_id
-            )
+            stmt = select(HoldingModel).where(HoldingModel.portfolio_id == self.trader_portfolio_id)
             holdings_after = (await session.execute(stmt)).scalars().all()
             self.assertEqual(len(holdings_after), 0)
 
@@ -710,11 +698,11 @@ class TestAPIIngestion(unittest.IsolatedAsyncioTestCase):
         """
         # 1. Sub-pip quantity and sub-pip average price + formula prefix '- =AL30.BA'
         sub_pip_csv = (
-            "Ticker;Cantidad;PPC;Moneda\n"
-            "SPY;0,00004;500,00;USD\n"
-            "- =AL30.BA;200;0,00004;ARS\n"
-            "AL30;300;850,00;ARS\n"
-        ).encode("utf-8")
+            b"Ticker;Cantidad;PPC;Moneda\n"
+            b"SPY;0,00004;500,00;USD\n"
+            b"- =AL30.BA;200;0,00004;ARS\n"
+            b"AL30;300;850,00;ARS\n"
+        )
         res_sub_pip = await self.client.post(
             "/api/v1/ingestion/upload-report",
             headers=self._auth_headers(),
@@ -725,9 +713,7 @@ class TestAPIIngestion(unittest.IsolatedAsyncioTestCase):
         payload = res_sub_pip.json()["data"]
         self.assertEqual(payload["valid_records_count"], 2)
         self.assertEqual(payload["invalid_records_count"], 1)
-        self.assertEqual(
-            payload["invalid_records"][0]["error_code"], "ZERO_QUANTITY"
-        )
+        self.assertEqual(payload["invalid_records"][0]["error_code"], "ZERO_QUANTITY")
         self.assertEqual(payload["reconciliation"]["added_count"], 1)
         self.assertEqual(payload["reconciliation"]["events"][0]["ticker"], "AL30")
         self.assertEqual(
@@ -793,4 +779,3 @@ class TestAPIIngestion(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(res_entry_bomb.status_code, 413)
         self.assertEqual(res_entry_bomb.json()["error"]["code"], "PAYLOAD_TOO_LARGE")
-

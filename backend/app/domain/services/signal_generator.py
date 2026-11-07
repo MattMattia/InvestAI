@@ -6,13 +6,14 @@ Evaluates convergence and divergence across multi-factor technical indicators
 volatility-adjusted stop-loss and take-profit levels via Wilder's ATR, and
 emits structured `OrderFSMIntent` contracts for the transactional order FSM.
 """
+
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal, localcontext
 from enum import Enum
-import math
 from typing import Any, Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -92,12 +93,8 @@ class SignalGeneratorConfig(BaseSchema):
     breakout expansion, ATR risk-reward multipliers, and minimum conviction.
     """
 
-    rsi_oversold: Decimal = Field(
-        default=Decimal("30.0000"), gt=Decimal("0"), lt=Decimal("100")
-    )
-    rsi_overbought: Decimal = Field(
-        default=Decimal("70.0000"), gt=Decimal("0"), lt=Decimal("100")
-    )
+    rsi_oversold: Decimal = Field(default=Decimal("30.0000"), gt=Decimal("0"), lt=Decimal("100"))
+    rsi_overbought: Decimal = Field(default=Decimal("70.0000"), gt=Decimal("0"), lt=Decimal("100"))
     bollinger_lower_percent_b: Decimal = Field(default=Decimal("0.0500"))
     bollinger_upper_percent_b: Decimal = Field(default=Decimal("0.9500"))
     bollinger_breakout_expansion_ratio: Decimal = Field(
@@ -166,17 +163,11 @@ class SignalComponentEvaluation(BaseSchema):
         with localcontext() as ctx:
             ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
             if self.action == SignalAction.BUY and self.score <= Decimal("0"):
-                raise ValueError(
-                    f"BUY component requires score > 0 (got {self.score})."
-                )
+                raise ValueError(f"BUY component requires score > 0 (got {self.score}).")
             if self.action == SignalAction.SELL and self.score >= Decimal("0"):
-                raise ValueError(
-                    f"SELL component requires score < 0 (got {self.score})."
-                )
+                raise ValueError(f"SELL component requires score < 0 (got {self.score}).")
             if self.action == SignalAction.HOLD and self.score != Decimal("0"):
-                raise ValueError(
-                    f"HOLD component requires score == 0 (got {self.score})."
-                )
+                raise ValueError(f"HOLD component requires score == 0 (got {self.score}).")
         return self
 
 
@@ -268,18 +259,14 @@ class OrderFSMIntent(BaseSchema):
         for transactional order persistence in `PENDING` state.
         """
         if isinstance(quantity, bool) or quantity is None:
-            raise InvalidSignalParametersError(
-                "Order quantity cannot be a boolean or None."
-            )
+            raise InvalidSignalParametersError("Order quantity cannot be a boolean or None.")
         if isinstance(quantity, Decimal):
             raw_qty = quantity
         elif isinstance(quantity, int):
             raw_qty = Decimal(quantity)
         elif isinstance(quantity, float):
             if not math.isfinite(quantity):
-                raise InvalidSignalParametersError(
-                    "Order quantity must be a finite number."
-                )
+                raise InvalidSignalParametersError("Order quantity must be a finite number.")
             raw_qty = Decimal(str(quantity))
         else:
             raise InvalidSignalParametersError(
@@ -306,9 +293,7 @@ class OrderFSMIntent(BaseSchema):
         }
 
         if portfolio_id is not None:
-            if not isinstance(portfolio_id, str) or any(
-                ord(ch) < 32 for ch in portfolio_id
-            ):
+            if not isinstance(portfolio_id, str) or any(ord(ch) < 32 for ch in portfolio_id):
                 raise InvalidSignalParametersError(
                     "portfolio_id must be a valid string without control characters."
                 )
@@ -377,9 +362,7 @@ class TradingSignalReport(BaseSchema):
                     f"indicators.close ({self.indicators.close})."
                 )
             if self.as_of != self.indicators.as_of:
-                raise ValueError(
-                    "TradingSignalReport.as_of must match indicators.as_of."
-                )
+                raise ValueError("TradingSignalReport.as_of must match indicators.as_of.")
 
             if self.action == SignalAction.HOLD:
                 if (
@@ -396,18 +379,14 @@ class TradingSignalReport(BaseSchema):
                         f"BUY signal requires composite_score > 0 (got {self.composite_score})."
                     )
                 if self.order_intent is None or self.order_intent.side != "BUY":
-                    raise ValueError(
-                        "BUY signal requires an OrderFSMIntent with side='BUY'."
-                    )
+                    raise ValueError("BUY signal requires an OrderFSMIntent with side='BUY'.")
             elif self.action == SignalAction.SELL:
                 if self.composite_score >= Decimal("0"):
                     raise ValueError(
                         f"SELL signal requires composite_score < 0 (got {self.composite_score})."
                     )
                 if self.order_intent is None or self.order_intent.side != "SELL":
-                    raise ValueError(
-                        "SELL signal requires an OrderFSMIntent with side='SELL'."
-                    )
+                    raise ValueError("SELL signal requires an OrderFSMIntent with side='SELL'.")
 
             if self.order_intent is not None:
                 if self.order_intent.ticker != self.ticker:
@@ -425,9 +404,7 @@ class TradingSignalReport(BaseSchema):
                         "order_intent.suggested_take_profit must match report take_profit_price."
                     )
                 if self.order_intent.signal_conviction != self.conviction:
-                    raise ValueError(
-                        "order_intent.signal_conviction must match report conviction."
-                    )
+                    raise ValueError("order_intent.signal_conviction must match report conviction.")
 
         return self
 
@@ -475,9 +452,7 @@ class SignalGeneratorService:
                 "A valid non-empty ticker string is required to generate a signal."
             )
         if any(ord(ch) < 32 for ch in ticker):
-            raise InvalidSignalParametersError(
-                "Control characters are not permitted in ticker."
-            )
+            raise InvalidSignalParametersError("Control characters are not permitted in ticker.")
         cleaned = ticker.strip().upper()
         if not cleaned or len(cleaned) > 20:
             raise InvalidSignalParametersError(
@@ -499,9 +474,7 @@ class SignalGeneratorService:
                 "snapshot must be a TechnicalIndicatorsSnapshot instance."
             )
 
-        effective_ticker = self._validate_ticker(
-            ticker if ticker is not None else snapshot.ticker
-        )
+        effective_ticker = self._validate_ticker(ticker if ticker is not None else snapshot.ticker)
 
         components: list[SignalComponentEvaluation] = []
 
@@ -525,9 +498,7 @@ class SignalGeneratorService:
             ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
             if components:
                 total_weight = sum((c.weight for c in components), Decimal("0"))
-                weighted_sum = sum(
-                    (c.score * c.weight for c in components), Decimal("0")
-                )
+                weighted_sum = sum((c.score * c.weight for c in components), Decimal("0"))
                 raw_score = weighted_sum / total_weight
             else:
                 raw_score = Decimal("0.0000")
@@ -591,9 +562,7 @@ class SignalGeneratorService:
         multi-factor trading signal in a single pipeline call.
         """
         valid_ticker = self._validate_ticker(ticker)
-        snapshot = self._indicators_service.compute_snapshot(
-            bars=bars, ticker=valid_ticker
-        )
+        snapshot = self._indicators_service.compute_snapshot(bars=bars, ticker=valid_ticker)
         return self.evaluate_from_snapshot(snapshot=snapshot, ticker=valid_ticker)
 
     # ========================================================================
@@ -641,9 +610,7 @@ class SignalGeneratorService:
                 action=SignalAction.BUY,
                 score=Decimal("0.4000"),
                 weight=WEIGHT_EMA_CROSSOVER,
-                rationale=(
-                    f"Positive short-term momentum: EMA12 ({ema_12}) > EMA26 ({ema_26})."
-                ),
+                rationale=(f"Positive short-term momentum: EMA12 ({ema_12}) > EMA26 ({ema_26})."),
             )
         if ema_12 < ema_26:
             return SignalComponentEvaluation(
@@ -651,9 +618,7 @@ class SignalGeneratorService:
                 action=SignalAction.SELL,
                 score=Decimal("-0.4000"),
                 weight=WEIGHT_EMA_CROSSOVER,
-                rationale=(
-                    f"Negative short-term momentum: EMA12 ({ema_12}) < EMA26 ({ema_26})."
-                ),
+                rationale=(f"Negative short-term momentum: EMA12 ({ema_12}) < EMA26 ({ema_26})."),
             )
 
         return SignalComponentEvaluation(
@@ -731,8 +696,7 @@ class SignalGeneratorService:
                 score=Decimal("0.0000"),
                 weight=WEIGHT_SMA_TREND,
                 rationale=(
-                    f"Mixed SMA(20/50) structure: Close={close}, SMA20={sma_20}, "
-                    f"SMA50={sma_50}."
+                    f"Mixed SMA(20/50) structure: Close={close}, SMA20={sma_20}, SMA50={sma_50}."
                 ),
             )
 
@@ -777,8 +741,7 @@ class SignalGeneratorService:
                 score=Decimal("1.0000"),
                 weight=WEIGHT_RSI_REGIME,
                 rationale=(
-                    f"Wilder RSI(14) oversold regime: {rsi} <= "
-                    f"{self._config.rsi_oversold}."
+                    f"Wilder RSI(14) oversold regime: {rsi} <= {self._config.rsi_oversold}."
                 ),
             )
         if rsi >= self._config.rsi_overbought:
@@ -788,8 +751,7 @@ class SignalGeneratorService:
                 score=Decimal("-1.0000"),
                 weight=WEIGHT_RSI_REGIME,
                 rationale=(
-                    f"Wilder RSI(14) overbought regime: {rsi} >= "
-                    f"{self._config.rsi_overbought}."
+                    f"Wilder RSI(14) overbought regime: {rsi} >= {self._config.rsi_overbought}."
                 ),
             )
 
@@ -933,4 +895,3 @@ class SignalGeneratorService:
                 return stop_loss, take_profit
 
         return None, None
-

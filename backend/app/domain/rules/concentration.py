@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from app.domain.models.portfolio import InvestorProfile, Portfolio
 from app.domain.rules.base import BaseRiskRule, RuleResult, Severity
 
@@ -8,27 +9,30 @@ class MaxAssetConcentrationRule(BaseRiskRule):
     Deterministic rule evaluating that no single asset exceeds the maximum concentration limit.
     Thresholds can be customized via context or derived from the investor profile.
     """
+
     rule_id = "RULE_CONC_001"
     rule_name = "Concentración Máxima por Activo"
-    description = "Evalúa que la ponderación individual de cada activo no supere el umbral máximo de riesgo."
+    description = (
+        "Evalúa que la ponderación individual de cada activo no supere el umbral máximo de riesgo."
+    )
 
-    PROFILE_LIMITS: Dict[InvestorProfile, float] = {
-        InvestorProfile.CONSERVATIVE: 10.0,   # Máximo 10% por activo
-        InvestorProfile.MODERATE: 20.0,       # Máximo 20% por activo
-        InvestorProfile.AGGRESSIVE: 35.0,     # Máximo 35% por activo
+    PROFILE_LIMITS: dict[InvestorProfile, float] = {
+        InvestorProfile.CONSERVATIVE: 10.0,  # Máximo 10% por activo
+        InvestorProfile.MODERATE: 20.0,  # Máximo 20% por activo
+        InvestorProfile.AGGRESSIVE: 35.0,  # Máximo 35% por activo
     }
 
-    def __init__(self, default_max_pct: Optional[float] = None) -> None:
+    def __init__(self, default_max_pct: float | None = None) -> None:
         self.default_max_pct = default_max_pct
 
     def evaluate(
         self,
         portfolio: Portfolio,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> List[RuleResult]:
+        context: dict[str, Any] | None = None,
+    ) -> list[RuleResult]:
         ctx = context or {}
         fx_ccl = ctx.get("fx_ccl", 1.0)
-        
+
         # Determine limit: context override > default_max_pct > profile limit > fallback 20%
         limit_pct = ctx.get(
             "max_asset_concentration_pct",
@@ -36,7 +40,7 @@ class MaxAssetConcentrationRule(BaseRiskRule):
         )
 
         weights = portfolio.get_holding_weights(fx_ccl=fx_ccl)
-        results: List[RuleResult] = []
+        results: list[RuleResult] = []
 
         if not weights:
             results.append(
@@ -97,24 +101,25 @@ class MaxSectorConcentrationRule(BaseRiskRule):
     """
     Deterministic rule evaluating that no economic sector exceeds the maximum concentration limit.
     """
+
     rule_id = "RULE_CONC_002"
     rule_name = "Concentración Máxima por Sector"
     description = "Evalúa que la exposición agrupada por sector económico no sobrepase el umbral de diversificación."
 
-    PROFILE_LIMITS: Dict[InvestorProfile, float] = {
-        InvestorProfile.CONSERVATIVE: 25.0,   # Máximo 25% por sector
-        InvestorProfile.MODERATE: 40.0,       # Máximo 40% por sector
-        InvestorProfile.AGGRESSIVE: 60.0,     # Máximo 60% por sector
+    PROFILE_LIMITS: dict[InvestorProfile, float] = {
+        InvestorProfile.CONSERVATIVE: 25.0,  # Máximo 25% por sector
+        InvestorProfile.MODERATE: 40.0,  # Máximo 40% por sector
+        InvestorProfile.AGGRESSIVE: 60.0,  # Máximo 60% por sector
     }
 
-    def __init__(self, default_max_pct: Optional[float] = None) -> None:
+    def __init__(self, default_max_pct: float | None = None) -> None:
         self.default_max_pct = default_max_pct
 
     def evaluate(
         self,
         portfolio: Portfolio,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> List[RuleResult]:
+        context: dict[str, Any] | None = None,
+    ) -> list[RuleResult]:
         ctx = context or {}
         fx_ccl = ctx.get("fx_ccl", 1.0)
 
@@ -124,7 +129,7 @@ class MaxSectorConcentrationRule(BaseRiskRule):
         )
 
         allocations = portfolio.get_sector_allocation(fx_ccl=fx_ccl)
-        results: List[RuleResult] = []
+        results: list[RuleResult] = []
 
         if not allocations:
             results.append(

@@ -2,10 +2,11 @@
 Contratos canónicos de mercado e ingesta en vivo (Módulo 6 - Fase 1 & Fase II 10Y Quant).
 DTOs inmutables basados en Pydantic v2 con validación defensiva estricta y precisión Decimal.
 """
-from datetime import datetime, timezone
+
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import List, Optional
+
 from pydantic import Field, field_validator, model_validator
 
 from app.schemas.envelope import BaseSchema
@@ -37,10 +38,14 @@ class MarketQuoteDTO(BaseSchema):
 
     ticker: str = Field(description="Símbolo o especie del activo (normalizado a mayúsculas)")
     price: Decimal = Field(description="Último precio operado o precio de referencia")
-    bid: Optional[Decimal] = Field(default=None, description="Mejor precio de compra (punta compradora)")
-    ask: Optional[Decimal] = Field(default=None, description="Mejor precio de venta (punta vendedora)")
+    bid: Decimal | None = Field(
+        default=None, description="Mejor precio de compra (punta compradora)"
+    )
+    ask: Decimal | None = Field(default=None, description="Mejor precio de venta (punta vendedora)")
     volume: Decimal = Field(default=Decimal("0"), description="Volumen nominal u operado acumulado")
-    timestamp: datetime = Field(description="Marca temporal de la cotización con zona horaria UTC obligatoria")
+    timestamp: datetime = Field(
+        description="Marca temporal de la cotización con zona horaria UTC obligatoria"
+    )
 
     @field_validator("ticker")
     @classmethod
@@ -59,9 +64,11 @@ class MarketQuoteDTO(BaseSchema):
 
     @field_validator("bid", "ask")
     @classmethod
-    def validate_quotes_positive(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+    def validate_quotes_positive(cls, v: Decimal | None) -> Decimal | None:
         if v is not None and v <= Decimal("0"):
-            raise ValueError("Las puntas de mercado (bid/ask) deben ser estrictamente positivas (> 0).")
+            raise ValueError(
+                "Las puntas de mercado (bid/ask) deben ser estrictamente positivas (> 0)."
+            )
         return v
 
     @field_validator("volume")
@@ -85,13 +92,17 @@ class MarketBarDTO(BaseSchema):
     Implementa validaciones defensivas cruzadas para garantizar integridad geométrica de la barra.
     """
 
-    timestamp: datetime = Field(description="Marca temporal de apertura o cierre de la barra en UTC")
+    timestamp: datetime = Field(
+        description="Marca temporal de apertura o cierre de la barra en UTC"
+    )
     open: Decimal = Field(description="Precio de apertura")
     high: Decimal = Field(description="Precio máximo")
     low: Decimal = Field(description="Precio mínimo")
     close: Decimal = Field(description="Precio de cierre")
     volume: Decimal = Field(description="Volumen negociado durante el período")
-    vwap: Optional[Decimal] = Field(default=None, description="Precio promedio ponderado por volumen (VWAP)")
+    vwap: Decimal | None = Field(
+        default=None, description="Precio promedio ponderado por volumen (VWAP)"
+    )
 
     @field_validator("timestamp")
     @classmethod
@@ -104,7 +115,9 @@ class MarketBarDTO(BaseSchema):
     @classmethod
     def validate_positive_prices(cls, v: Decimal) -> Decimal:
         if v <= Decimal("0"):
-            raise ValueError("Los precios de la barra OHLCV deben ser estrictamente positivos (> 0).")
+            raise ValueError(
+                "Los precios de la barra OHLCV deben ser estrictamente positivos (> 0)."
+            )
         return v
 
     @field_validator("volume")
@@ -148,9 +161,15 @@ class FXRateDTO(BaseSchema):
     fx_type: FXType = Field(description="Clasificación del tipo de cambio financiero (MEP o CCL)")
     rate: Decimal = Field(description="Tipo de cambio implícito en ARS/USD")
     base_ticker: str = Field(description="Ticker en moneda local / activo subyacente (ej. AL30)")
-    quote_ticker: str = Field(description="Ticker en dólares / cable o ADR de referencia (ej. AL30D)")
-    spread_pct: Optional[Decimal] = Field(default=None, description="Spread bid-ask implícito porcentual si está disponible")
-    timestamp: datetime = Field(description="Marca temporal de determinación del tipo de cambio (UTC)")
+    quote_ticker: str = Field(
+        description="Ticker en dólares / cable o ADR de referencia (ej. AL30D)"
+    )
+    spread_pct: Decimal | None = Field(
+        default=None, description="Spread bid-ask implícito porcentual si está disponible"
+    )
+    timestamp: datetime = Field(
+        description="Marca temporal de determinación del tipo de cambio (UTC)"
+    )
 
     @field_validator("base_ticker", "quote_ticker")
     @classmethod
@@ -198,26 +217,26 @@ class AssetFundamentalQuantMetricsDTO(BaseSchema):
     beta_market: float
     var_95_daily: float
     composite_quant_return: float
-    pe_ratio: Optional[float] = None
-    pb_ratio: Optional[float] = None
-    roe_pct: Optional[float] = None
-    debt_to_equity: Optional[float] = None
-    dividend_yield_pct: Optional[float] = None
-    market_cap_usd: Optional[float] = None
-    ytm_tir_pct: Optional[float] = None
-    modified_duration: Optional[float] = None
-    parity_pct: Optional[float] = None
-    cedear_ratio: Optional[float] = None
-    underlying_ticker: Optional[str] = None
-    yahoo_symbol: Optional[str] = None
-    adr_symbol: Optional[str] = None
+    pe_ratio: float | None = None
+    pb_ratio: float | None = None
+    roe_pct: float | None = None
+    debt_to_equity: float | None = None
+    dividend_yield_pct: float | None = None
+    market_cap_usd: float | None = None
+    ytm_tir_pct: float | None = None
+    modified_duration: float | None = None
+    parity_pct: float | None = None
+    cedear_ratio: float | None = None
+    underlying_ticker: str | None = None
+    yahoo_symbol: str | None = None
+    adr_symbol: str | None = None
     data_source: str = "BYMA_CALIBRATED_10Y_ENGINE"
-    updated_at: Optional[str] = None
+    updated_at: str | None = None
 
 
 class MarketSyncMetricsResponseDTO(BaseSchema):
     """Respuesta de sincronización en lote de métricas cuantitativas de 10 años en la BD."""
 
     synced_count: int
-    tickers: List[str]
-    metrics: List[AssetFundamentalQuantMetricsDTO]
+    tickers: list[str]
+    metrics: list[AssetFundamentalQuantMetricsDTO]

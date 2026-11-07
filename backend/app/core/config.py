@@ -1,7 +1,8 @@
 import asyncio
+import concurrent.futures
 import logging
 import socket
-from typing import List, Optional, Union
+
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,7 +16,7 @@ def check_postgres_connection(
     try:
         with socket.create_connection((server, port), timeout=0.3):
             pass
-    except (socket.timeout, OSError):
+    except (TimeoutError, OSError):
         return False
 
     try:
@@ -53,12 +54,15 @@ class Settings(BaseSettings):
     Strictly validated using Pydantic v2 Settings.
     Features automatic fallback to local SQLite for zero-config local development.
     """
+
     # Environment & Project Details
     ENVIRONMENT: str = "development"
     PROJECT_NAME: str = "InvestAI Portfolio & Risk Platform"
     API_V1_STR: str = "/api/v1"
-    SECRET_KEY: str = "change_this_to_a_secure_random_secret_in_production_32_chars_min"
-    JWT_SECRET_KEY: SecretStr = SecretStr("investai-insecure-dev-secret-key-change-in-production-min-32-bytes-length-xyz")
+    SECRET_KEY: str = "change_this_to_a_secure_random_secret_in_production_32_chars_min"  # noqa: S105  # development-only placeholder default
+    JWT_SECRET_KEY: SecretStr = SecretStr(
+        "investai-insecure-dev-secret-key-change-in-production-min-32-bytes-length-xyz"
+    )
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -86,12 +90,11 @@ class Settings(BaseSettings):
             raise ValueError("REFRESH_TOKEN_EXPIRE_DAYS must be between 1 and 90")
         return v
 
-
     # PostgreSQL Database Connection
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "postgres"
+    POSTGRES_PASSWORD: str = "postgres"  # noqa: S105  # local development default
     POSTGRES_DB: str = "investai_db"
 
     # SQLite fallback for local development without Docker
@@ -99,10 +102,10 @@ class Settings(BaseSettings):
     SQLITE_DB_PATH: str = "investai_dev.db"
 
     # Explicit override if desired
-    DATABASE_URL: Optional[str] = None
+    DATABASE_URL: str | None = None
 
     # CORS Origins
-    BACKEND_CORS_ORIGINS: List[str] = [
+    BACKEND_CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
@@ -111,10 +114,10 @@ class Settings(BaseSettings):
 
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
-    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+    def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:
         if isinstance(v, str) and not v.startswith("["):
             return [i.strip() for i in v.split(",") if i.strip()]
-        elif isinstance(v, (list, str)):
+        elif isinstance(v, list | str):
             return v
         raise ValueError(v)
 
@@ -130,7 +133,7 @@ class Settings(BaseSettings):
     MARKET_DATA_BASE_URL: str = "https://api.investai.market"
 
     # Observability & Metrics Scrape Authentication (Módulo 8.3)
-    METRICS_SCRAPE_TOKEN: Optional[str] = None
+    METRICS_SCRAPE_TOKEN: str | None = None
 
     @property
     def is_postgres_available(self) -> bool:

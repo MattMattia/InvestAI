@@ -2,8 +2,8 @@
 Caché en memoria para cotizaciones de mercado en tiempo real (Módulo 6 - Fase 3).
 Utiliza time.monotonic() para evitar anomalías ante saltos del reloj del sistema y soporta TTL configurable.
 """
+
 import time
-from typing import Dict, Optional, Tuple
 
 from app.schemas.market_data import MarketQuoteDTO
 
@@ -15,12 +15,12 @@ class InMemoryQuoteCache:
 
     def __init__(self, ttl_seconds: float = 30.0):
         self.ttl_seconds = float(ttl_seconds)
-        self._cache: Dict[str, Tuple[MarketQuoteDTO, float]] = {}
+        self._cache: dict[str, tuple[MarketQuoteDTO, float]] = {}
 
     def _normalize_key(self, ticker: str) -> str:
         return ticker.strip().upper()
 
-    async def get(self, ticker: str) -> Optional[MarketQuoteDTO]:
+    async def get(self, ticker: str) -> MarketQuoteDTO | None:
         """
         Recupera la cotización si existe y aún no ha expirado su TTL.
         Retorna None si la clave no existe o si ya expiró.
@@ -51,4 +51,3 @@ class InMemoryQuoteCache:
         Limpia todas las entradas almacenadas en el caché.
         """
         self._cache.clear()
-

@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from app.domain.models.portfolio import InvestorProfile, Portfolio
 from app.domain.rules.base import BaseRiskRule, RuleResult, Severity
 
@@ -8,34 +9,38 @@ class MinFixedIncomeAllocationRule(BaseRiskRule):
     Deterministic rule evaluating that the portfolio maintains a minimum allocation floor in Fixed Income
     instruments (Bonds, Sovereign debt, Corporate ONs, Treasury bills) according to the investor's risk profile (F1.6).
     """
+
     rule_id = "RULE_FI_001"
     rule_name = "Piso Mínimo de Asignación en Renta Fija"
     description = "Verifica que la cartera mantenga el porcentaje mínimo exigido en instrumentos de renta fija según el perfil de tolerancia al riesgo."
 
-    PROFILE_MIN_FLOOR: Dict[InvestorProfile, float] = {
-        InvestorProfile.CONSERVATIVE: 60.0,   # Mínimo 60% en renta fija
-        InvestorProfile.MODERATE: 25.0,       # Mínimo 25% en renta fija
-        InvestorProfile.AGGRESSIVE: 0.0,      # Sin piso obligatorio (0%)
+    PROFILE_MIN_FLOOR: dict[InvestorProfile, float] = {
+        InvestorProfile.CONSERVATIVE: 60.0,  # Mínimo 60% en renta fija
+        InvestorProfile.MODERATE: 25.0,  # Mínimo 25% en renta fija
+        InvestorProfile.AGGRESSIVE: 0.0,  # Sin piso obligatorio (0%)
     }
 
-    def __init__(self, default_min_pct: Optional[float] = None) -> None:
+    def __init__(self, default_min_pct: float | None = None) -> None:
         self.default_min_pct = default_min_pct
 
     def evaluate(
         self,
         portfolio: Portfolio,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> List[RuleResult]:
+        context: dict[str, Any] | None = None,
+    ) -> list[RuleResult]:
         ctx = context or {}
         fx_ccl = ctx.get("fx_ccl", 1.0)
 
         min_required_pct = ctx.get(
             "min_fixed_income_pct",
-            self.default_min_pct if self.default_min_pct is not None else self.PROFILE_MIN_FLOOR.get(portfolio.investor_profile, 25.0),
+            self.default_min_pct
+            if self.default_min_pct is not None
+            else self.PROFILE_MIN_FLOOR.get(portfolio.investor_profile, 25.0),
         )
 
         allocations = portfolio.get_asset_type_allocation(fx_ccl=fx_ccl)
         from app.domain.models.asset import AssetType
+
         current_fi_pct = round(
             allocations.get(AssetType.BOND_SOVEREIGN, 0.0)
             + allocations.get(AssetType.BOND_CORPORATE, 0.0)

@@ -1,6 +1,6 @@
-from datetime import datetime
 import math
-from typing import List, Optional
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -13,8 +13,8 @@ class AssetResponse(BaseModel):
     currency: str
     sector: str
     market: str
-    cedear_ratio: Optional[float] = None
-    underlying_ticker: Optional[str] = None
+    cedear_ratio: float | None = None
+    underlying_ticker: str | None = None
 
 
 class HoldingCreate(BaseModel):
@@ -25,9 +25,9 @@ class HoldingCreate(BaseModel):
     average_buy_price: float = Field(default=0.0, description="Precio de compra promedio")
     current_price: float = Field(default=0.0, description="Cotización actual de mercado")
     currency: str = Field(default="ARS", description="Moneda (ARS o USD)")
-    market: Optional[str] = Field(default="BYMA", description="Plaza bursátil")
-    asset_type: Optional[str] = Field(default=None, description="Tipo de activo")
-    sector: Optional[str] = Field(default="OTHER", description="Sector económico")
+    market: str | None = Field(default="BYMA", description="Plaza bursátil")
+    asset_type: str | None = Field(default=None, description="Tipo de activo")
+    sector: str | None = Field(default="OTHER", description="Sector económico")
 
     @field_validator("ticker")
     @classmethod
@@ -64,18 +64,20 @@ class HoldingResponse(BaseModel):
     market_value: float = 0.0
     unrealized_pnl: float = 0.0
     unrealized_pnl_pct: float = 0.0
-    weight_pct: Optional[float] = None
-    asset: Optional[AssetResponse] = None
+    weight_pct: float | None = None
+    asset: AssetResponse | None = None
 
 
 class PortfolioCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     name: str = Field(default="Mi Cartera Principal", min_length=1, max_length=255)
-    investor_profile: str = Field(default="MODERATE", description="Perfil del inversor: CONSERVATIVE, MODERATE, AGGRESSIVE")
+    investor_profile: str = Field(
+        default="MODERATE", description="Perfil del inversor: CONSERVATIVE, MODERATE, AGGRESSIVE"
+    )
     cash_balance_ars: float = Field(default=0.0, ge=0.0)
     cash_balance_usd: float = Field(default=0.0, ge=0.0)
-    holdings: Optional[List[HoldingCreate]] = None
+    holdings: list[HoldingCreate] | None = None
 
     @field_validator("investor_profile")
     @classmethod
@@ -89,14 +91,16 @@ class PortfolioCreate(BaseModel):
 class PortfolioUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    investor_profile: Optional[str] = Field(default=None, description="Perfil del inversor: CONSERVATIVE, MODERATE, AGGRESSIVE")
-    cash_balance_ars: Optional[float] = Field(default=None, ge=0.0)
-    cash_balance_usd: Optional[float] = Field(default=None, ge=0.0)
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    investor_profile: str | None = Field(
+        default=None, description="Perfil del inversor: CONSERVATIVE, MODERATE, AGGRESSIVE"
+    )
+    cash_balance_ars: float | None = Field(default=None, ge=0.0)
+    cash_balance_usd: float | None = Field(default=None, ge=0.0)
 
     @field_validator("investor_profile")
     @classmethod
-    def validate_investor_profile(cls, v: Optional[str]) -> Optional[str]:
+    def validate_investor_profile(cls, v: str | None) -> str | None:
         if v is None:
             return None
         v_upper = v.strip().upper()
@@ -131,5 +135,5 @@ class PortfolioResponse(BaseModel):
     total_market_value_ars: float
     total_market_value_usd: float
     holdings_count: int
-    holdings: List[HoldingResponse]
+    holdings: list[HoldingResponse]
     updated_at: datetime

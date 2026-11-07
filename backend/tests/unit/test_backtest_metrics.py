@@ -1,8 +1,7 @@
 import unittest
 from datetime import date
-import numpy as np
-from pydantic import ValidationError
 
+import numpy as np
 from app.domain.services.backtest_metrics import (
     calculate_annualized_volatility,
     calculate_cagr,
@@ -17,12 +16,12 @@ from app.domain.services.backtest_metrics import (
 )
 from app.schemas.backtest import (
     BacktestConfig,
-    BacktestFrictionConfig,
     BacktestPerformanceMetrics,
     BacktestResult,
     DailySnapshot,
     RebalanceFrequency,
 )
+from pydantic import ValidationError
 
 
 class TestBacktestSchemas(unittest.TestCase):

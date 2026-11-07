@@ -2,12 +2,13 @@
 Script Semilla de Demostración de Alta Velocidad para InvestAI Enterprise.
 Crea o actualiza el usuario demo, catálogo BYMA calibrado y cartera institucional en < 0.3s.
 """
+
 import asyncio
-from datetime import datetime, timezone
 import logging
 import os
 import sys
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -28,32 +29,266 @@ DEMO_PASSWORD = "InvestAI2026!"
 DEMO_PORTFOLIO_NAME = "Cartera Institucional Alfa"
 
 DEMO_ASSETS = [
-    {"ticker": "GGAL", "name": "Grupo Financiero Galicia S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Financials", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "YPFD", "name": "YPF S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Energy", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "PAMP", "name": "Pampa Energía S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Energy", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "BMA", "name": "Banco Macro S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Financials", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "ALUA", "name": "Aluar Aluminio Argentino S.A.I.C.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Materials", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "TXAR", "name": "Ternium Argentina S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Materials", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "COME", "name": "Sociedad Comercial del Plata S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Conglomerates", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "CEPU", "name": "Central Puerto S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Utilities", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "EDN", "name": "Edenor S.A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Utilities", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "CRES", "name": "Cresud S.A.C.I.F. y A.", "asset_type": "EQUITY", "currency": "ARS", "sector": "Real Estate & Agro", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "AAPL", "name": "Apple Inc. (CEDEAR 10:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Technology", "market": "BYMA", "cedear_ratio": 10.0, "underlying_ticker": "AAPL"},
-    {"ticker": "NVDA", "name": "NVIDIA Corp. (CEDEAR 24:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Technology", "market": "BYMA", "cedear_ratio": 24.0, "underlying_ticker": "NVDA"},
-    {"ticker": "MSFT", "name": "Microsoft Corp. (CEDEAR 30:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Technology", "market": "BYMA", "cedear_ratio": 30.0, "underlying_ticker": "MSFT"},
-    {"ticker": "SPY", "name": "SPDR S&P 500 ETF Trust (CEDEAR 20:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Index ETF", "market": "BYMA", "cedear_ratio": 20.0, "underlying_ticker": "SPY"},
-    {"ticker": "QQQ", "name": "Invesco QQQ Trust (CEDEAR 20:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Index ETF", "market": "BYMA", "cedear_ratio": 20.0, "underlying_ticker": "QQQ"},
-    {"ticker": "MELI", "name": "MercadoLibre Inc. (CEDEAR 60:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Consumer Discretionary", "market": "BYMA", "cedear_ratio": 60.0, "underlying_ticker": "MELI"},
-    {"ticker": "KO", "name": "The Coca-Cola Co. (CEDEAR 5:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Consumer Staples", "market": "BYMA", "cedear_ratio": 5.0, "underlying_ticker": "KO"},
-    {"ticker": "TSLA", "name": "Tesla Inc. (CEDEAR 15:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Automotive", "market": "BYMA", "cedear_ratio": 15.0, "underlying_ticker": "TSLA"},
-    {"ticker": "AMZN", "name": "Amazon.com Inc. (CEDEAR 144:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Technology", "market": "BYMA", "cedear_ratio": 144.0, "underlying_ticker": "AMZN"},
-    {"ticker": "GOOGL", "name": "Alphabet Inc. (CEDEAR 58:1)", "asset_type": "CEDEAR", "currency": "ARS", "sector": "Technology", "market": "BYMA", "cedear_ratio": 58.0, "underlying_ticker": "GOOGL"},
-    {"ticker": "AL30", "name": "Bono Rep. Argentina USD Step-Up 2030 (ARS)", "asset_type": "BOND", "currency": "ARS", "sector": "Sovereign", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "AL30D", "name": "Bono Rep. Argentina USD Step-Up 2030 (USD MEP)", "asset_type": "BOND", "currency": "USD", "sector": "Sovereign", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "GD30", "name": "Bono Global Rep. Argentina USD 2030 (ARS)", "asset_type": "BOND", "currency": "ARS", "sector": "Sovereign", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "GD30D", "name": "Bono Global Rep. Argentina USD 2030 (USD MEP)", "asset_type": "BOND", "currency": "USD", "sector": "Sovereign", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "AE38", "name": "Bono Rep. Argentina USD 2038 (ARS)", "asset_type": "BOND", "currency": "ARS", "sector": "Sovereign", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
-    {"ticker": "AE38D", "name": "Bono Rep. Argentina USD 2038 (USD MEP)", "asset_type": "BOND", "currency": "USD", "sector": "Sovereign", "market": "BYMA", "cedear_ratio": None, "underlying_ticker": None},
+    {
+        "ticker": "GGAL",
+        "name": "Grupo Financiero Galicia S.A.",
+        "asset_type": "EQUITY",
+        "currency": "ARS",
+        "sector": "Financials",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "YPFD",
+        "name": "YPF S.A.",
+        "asset_type": "EQUITY",
+        "currency": "ARS",
+        "sector": "Energy",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "PAMP",
+        "name": "Pampa Energía S.A.",
+        "asset_type": "EQUITY",
+        "currency": "ARS",
+        "sector": "Energy",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "BMA",
+        "name": "Banco Macro S.A.",
+        "asset_type": "EQUITY",
+        "currency": "ARS",
+        "sector": "Financials",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "ALUA",
+        "name": "Aluar Aluminio Argentino S.A.I.C.",
+        "asset_type": "EQUITY",
+        "currency": "ARS",
+        "sector": "Materials",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "TXAR",
+        "name": "Ternium Argentina S.A.",
+        "asset_type": "EQUITY",
+        "currency": "ARS",
+        "sector": "Materials",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "COME",
+        "name": "Sociedad Comercial del Plata S.A.",
+        "asset_type": "EQUITY",
+        "currency": "ARS",
+        "sector": "Conglomerates",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "CEPU",
+        "name": "Central Puerto S.A.",
+        "asset_type": "EQUITY",
+        "currency": "ARS",
+        "sector": "Utilities",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "EDN",
+        "name": "Edenor S.A.",
+        "asset_type": "EQUITY",
+        "currency": "ARS",
+        "sector": "Utilities",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "CRES",
+        "name": "Cresud S.A.C.I.F. y A.",
+        "asset_type": "EQUITY",
+        "currency": "ARS",
+        "sector": "Real Estate & Agro",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "AAPL",
+        "name": "Apple Inc. (CEDEAR 10:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "sector": "Technology",
+        "market": "BYMA",
+        "cedear_ratio": 10.0,
+        "underlying_ticker": "AAPL",
+    },
+    {
+        "ticker": "NVDA",
+        "name": "NVIDIA Corp. (CEDEAR 24:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "sector": "Technology",
+        "market": "BYMA",
+        "cedear_ratio": 24.0,
+        "underlying_ticker": "NVDA",
+    },
+    {
+        "ticker": "MSFT",
+        "name": "Microsoft Corp. (CEDEAR 30:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "sector": "Technology",
+        "market": "BYMA",
+        "cedear_ratio": 30.0,
+        "underlying_ticker": "MSFT",
+    },
+    {
+        "ticker": "SPY",
+        "name": "SPDR S&P 500 ETF Trust (CEDEAR 20:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "sector": "Index ETF",
+        "market": "BYMA",
+        "cedear_ratio": 20.0,
+        "underlying_ticker": "SPY",
+    },
+    {
+        "ticker": "QQQ",
+        "name": "Invesco QQQ Trust (CEDEAR 20:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "sector": "Index ETF",
+        "market": "BYMA",
+        "cedear_ratio": 20.0,
+        "underlying_ticker": "QQQ",
+    },
+    {
+        "ticker": "MELI",
+        "name": "MercadoLibre Inc. (CEDEAR 60:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "sector": "Consumer Discretionary",
+        "market": "BYMA",
+        "cedear_ratio": 60.0,
+        "underlying_ticker": "MELI",
+    },
+    {
+        "ticker": "KO",
+        "name": "The Coca-Cola Co. (CEDEAR 5:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "sector": "Consumer Staples",
+        "market": "BYMA",
+        "cedear_ratio": 5.0,
+        "underlying_ticker": "KO",
+    },
+    {
+        "ticker": "TSLA",
+        "name": "Tesla Inc. (CEDEAR 15:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "sector": "Automotive",
+        "market": "BYMA",
+        "cedear_ratio": 15.0,
+        "underlying_ticker": "TSLA",
+    },
+    {
+        "ticker": "AMZN",
+        "name": "Amazon.com Inc. (CEDEAR 144:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "sector": "Technology",
+        "market": "BYMA",
+        "cedear_ratio": 144.0,
+        "underlying_ticker": "AMZN",
+    },
+    {
+        "ticker": "GOOGL",
+        "name": "Alphabet Inc. (CEDEAR 58:1)",
+        "asset_type": "CEDEAR",
+        "currency": "ARS",
+        "sector": "Technology",
+        "market": "BYMA",
+        "cedear_ratio": 58.0,
+        "underlying_ticker": "GOOGL",
+    },
+    {
+        "ticker": "AL30",
+        "name": "Bono Rep. Argentina USD Step-Up 2030 (ARS)",
+        "asset_type": "BOND",
+        "currency": "ARS",
+        "sector": "Sovereign",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "AL30D",
+        "name": "Bono Rep. Argentina USD Step-Up 2030 (USD MEP)",
+        "asset_type": "BOND",
+        "currency": "USD",
+        "sector": "Sovereign",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "GD30",
+        "name": "Bono Global Rep. Argentina USD 2030 (ARS)",
+        "asset_type": "BOND",
+        "currency": "ARS",
+        "sector": "Sovereign",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "GD30D",
+        "name": "Bono Global Rep. Argentina USD 2030 (USD MEP)",
+        "asset_type": "BOND",
+        "currency": "USD",
+        "sector": "Sovereign",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "AE38",
+        "name": "Bono Rep. Argentina USD 2038 (ARS)",
+        "asset_type": "BOND",
+        "currency": "ARS",
+        "sector": "Sovereign",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
+    {
+        "ticker": "AE38D",
+        "name": "Bono Rep. Argentina USD 2038 (USD MEP)",
+        "asset_type": "BOND",
+        "currency": "USD",
+        "sector": "Sovereign",
+        "market": "BYMA",
+        "cedear_ratio": None,
+        "underlying_ticker": None,
+    },
 ]
 
 DEMO_HOLDINGS = [
@@ -89,6 +324,7 @@ async def seed_demo_data() -> None:
 
     if is_sqlite:
         async with async_engine.begin() as conn:
+
             def _migrate_sqlite_schema(sync_conn):
                 user_res = sync_conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()
                 user_cols = [r[1] for r in user_res]
@@ -109,6 +345,7 @@ async def seed_demo_data() -> None:
                         sync_conn.exec_driver_sql(
                             "ALTER TABLE users ADD COLUMN updated_at DATETIME"
                         )
+
             await conn.run_sync(_migrate_sqlite_schema)
 
     async with AsyncSessionLocal() as session:
@@ -167,8 +404,8 @@ async def seed_demo_data() -> None:
                 is_active=True,
                 role=UserRole.TRADER.value,
                 investor_profile="MODERATE",
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             session.add(user)
             await session.commit()
@@ -197,7 +434,7 @@ async def seed_demo_data() -> None:
                 investor_profile="MODERATE",
                 cash_balance_ars=2500000.0,
                 cash_balance_usd=15000.0,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
             session.add(portfolio)
             await session.commit()

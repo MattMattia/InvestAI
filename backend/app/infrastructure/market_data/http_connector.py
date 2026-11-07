@@ -3,17 +3,18 @@ Conector HTTP asíncrono para ingesta de cotizaciones y series de mercado (Módu
 Implementa cliente httpx con blindaje anti-SSRF, reintentos con backoff exponencial,
 desactivación de redirecciones y mapeo estricto a DTOs canónicos de dominio.
 """
+
 import asyncio
-from datetime import date, datetime, timezone
+from collections.abc import Callable
+from datetime import date
 from decimal import Decimal
-from typing import Callable, List, Optional, Union
+
 import httpx
 
 from app.domain.services.market_connector import (
     BaseMarketConnector,
     MarketDataConnectorError,
     RateLimitExceededError,
-    SecuritySSRFViolationError,
     TickerNotFoundError,
 )
 from app.infrastructure.market_data.ssrf_guard import validate_url_against_ssrf
@@ -29,12 +30,12 @@ class HttpMarketConnector(BaseMarketConnector):
     def __init__(
         self,
         base_url: str,
-        api_key: Optional[str] = None,
-        timeout: Optional[httpx.Timeout] = None,
+        api_key: str | None = None,
+        timeout: httpx.Timeout | None = None,
         max_retries: int = 3,
         backoff_factor: float = 1.0,
-        dns_resolver: Optional[Callable[[str], List[str]]] = None,
-        transport: Optional[httpx.AsyncBaseTransport] = None,
+        dns_resolver: Callable[[str], list[str]] | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
     ):
         """
         Inicializa y valida el conector HTTP.
@@ -95,8 +96,8 @@ class HttpMarketConnector(BaseMarketConnector):
         self,
         method: str,
         endpoint: str,
-        params: Optional[dict] = None,
-    ) -> Union[dict, list]:
+        params: dict | None = None,
+    ) -> dict | list:
         """
         Ejecuta la solicitud HTTP con verificación SSRF previa y reintentos exponenciales.
         """
@@ -201,7 +202,7 @@ class HttpMarketConnector(BaseMarketConnector):
         start_date: date,
         end_date: date,
         timeframe: Timeframe = Timeframe.D1,
-    ) -> List[MarketBarDTO]:
+    ) -> list[MarketBarDTO]:
         """
         Consulta y deserializa la serie de velas OHLCV para el rango temporal solicitado.
         """
@@ -228,7 +229,7 @@ class HttpMarketConnector(BaseMarketConnector):
                 f"Formato inesperado para barras históricas de {ticker}."
             )
 
-        parsed_bars: List[MarketBarDTO] = []
+        parsed_bars: list[MarketBarDTO] = []
         for idx, bar_item in enumerate(bars_list):
             try:
                 parsed_bars.append(
@@ -239,7 +240,9 @@ class HttpMarketConnector(BaseMarketConnector):
                         low=Decimal(str(bar_item["low"])),
                         close=Decimal(str(bar_item["close"])),
                         volume=Decimal(str(bar_item.get("volume", 0))),
-                        vwap=Decimal(str(bar_item["vwap"])) if bar_item.get("vwap") is not None else None,
+                        vwap=Decimal(str(bar_item["vwap"]))
+                        if bar_item.get("vwap") is not None
+                        else None,
                     )
                 )
             except (KeyError, ValueError) as err:
@@ -248,4 +251,3 @@ class HttpMarketConnector(BaseMarketConnector):
                 ) from err
 
         return parsed_bars
-

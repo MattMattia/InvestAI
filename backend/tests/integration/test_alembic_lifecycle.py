@@ -3,23 +3,25 @@ Integration tests for Alembic migration lifecycle, referential integrity (CASCAD
 compound unique constraints, transactional rollback atomicity, and schema roundtrip
 (Module 8.1 - Phase 3: `backend/tests/integration/test_alembic_lifecycle.py`).
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from decimal import Decimal
 import json
-from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
 import uuid
+from datetime import UTC, datetime
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
+from unittest.mock import patch
 
+import pytest
+import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-import pytest
-import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
@@ -186,7 +188,7 @@ class TestAlembicLifecycleIntegration(unittest.TestCase):
                     conn.exec_driver_sql("PRAGMA foreign_keys=ON")
 
                     user_id = str(uuid.uuid4())
-                    now_iso = datetime.now(timezone.utc).isoformat()
+                    now_iso = datetime.now(UTC).isoformat()
 
                     # Insert valid User and Asset
                     conn.execute(
@@ -271,7 +273,7 @@ class TestAlembicLifecycleIntegration(unittest.TestCase):
             engine = sa.create_engine(db_url)
             try:
                 with engine.connect() as conn:
-                    now_iso = datetime.now(timezone.utc).isoformat()
+                    now_iso = datetime.now(UTC).isoformat()
                     u1_id = str(uuid.uuid4())
                     u2_id = str(uuid.uuid4())
 
@@ -364,15 +366,11 @@ class TestAlembicLifecycleIntegration(unittest.TestCase):
                     conn.commit()
 
                     raw_payload = conn.execute(
-                        sa.text(
-                            "SELECT report_payload FROM risk_audit_snapshots WHERE id = :id"
-                        ),
+                        sa.text("SELECT report_payload FROM risk_audit_snapshots WHERE id = :id"),
                         {"id": snapshot_id},
                     ).scalar()
                     recovered = (
-                        json.loads(raw_payload)
-                        if isinstance(raw_payload, str)
-                        else raw_payload
+                        json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
                     )
                     self.assertEqual(recovered["summary"]["status"], "APPROVED")
                     self.assertEqual(len(recovered["rules_evaluated"]), 2)
@@ -413,9 +411,7 @@ class TestAlembicLifecycleIntegration(unittest.TestCase):
                 ctx_self._migrations_fn = failing_migrations_wrapper
                 return orig_run_migrations(ctx_self, **kw)
 
-            with patch.object(
-                MigrationContext, "run_migrations", faulty_run_migrations
-            ):
+            with patch.object(MigrationContext, "run_migrations", faulty_run_migrations):
                 with self.assertRaises(RuntimeError):
                     command.upgrade(cfg, "head")
 
@@ -446,4 +442,3 @@ class TestAlembicLifecycleIntegration(unittest.TestCase):
                         self.assertEqual(row_count, 0)
             finally:
                 engine.dispose()
-

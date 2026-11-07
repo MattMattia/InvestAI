@@ -3,17 +3,18 @@ Servicio de simulación estocástica de mercados financieros.
 Implementa trayectorias de precios sintéticos utilizando Movimiento Browniano Geométrico (GBM)
 multivariado bajo la formulación SDE de Black-Scholes con correlación sistémica.
 """
+
 import datetime as dt
-from typing import Dict, List
+
 import numpy as np
 
 
 def generate_gbm_market_prices(
-    tickers: List[str],
+    tickers: list[str],
     start_date: dt.date,
     end_date: dt.date,
     seed: int = 42,
-) -> Dict[str, Dict[dt.date, float]]:
+) -> dict[str, dict[dt.date, float]]:
     """
     Genera trayectorias deterministas y realistas de precios diarios mediante
     Movimiento Browniano Geométrico (GBM) multivariado con correlación de mercado.
@@ -30,7 +31,7 @@ def generate_gbm_market_prices(
     Dict[str, Dict[dt.date, float]]: Mapeo de ticker -> {fecha: precio}.
     """
     # 1. Extraer días hábiles de negociación (lunes a viernes)
-    trading_dates: List[dt.date] = []
+    trading_dates: list[dt.date] = []
     curr = start_date
     while curr <= end_date:
         if curr.weekday() < 5:
@@ -44,9 +45,9 @@ def generate_gbm_market_prices(
     rng = np.random.default_rng(seed=seed)
 
     # 2. Calibración empírica según especie / clase de activo
-    initial_prices: List[float] = []
-    annual_drifts: List[float] = []
-    annual_vols: List[float] = []
+    initial_prices: list[float] = []
+    annual_drifts: list[float] = []
+    annual_vols: list[float] = []
 
     for t in tickers:
         t_up = t.upper()
@@ -72,7 +73,7 @@ def generate_gbm_market_prices(
     rho = 0.35
     market_shocks = rng.standard_normal(n_days)
 
-    prices_dict: Dict[str, Dict[dt.date, float]] = {t: {} for t in tickers}
+    prices_dict: dict[str, dict[dt.date, float]] = {t: {} for t in tickers}
 
     for i, t in enumerate(tickers):
         p0 = initial_prices[i]
@@ -83,7 +84,7 @@ def generate_gbm_market_prices(
         z = np.sqrt(rho) * market_shocks + np.sqrt(1.0 - rho) * idiosyncratic_shocks
 
         # SDE de Black-Scholes: dS_t = mu*S_t*dt + sigma*S_t*dW_t
-        log_drift = (mu - 0.5 * (sigma ** 2)) * dt_step
+        log_drift = (mu - 0.5 * (sigma**2)) * dt_step
         log_shock = sigma * np.sqrt(dt_step) * z
         log_returns = log_drift + log_shock
 
@@ -94,4 +95,3 @@ def generate_gbm_market_prices(
             prices_dict[t][d] = round(float(price_trajectory[day_idx]), 2)
 
     return prices_dict
-

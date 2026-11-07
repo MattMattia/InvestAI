@@ -3,17 +3,14 @@ Pruebas unitarias herméticas para dependencias de seguridad y control RBAC (Mó
 Verifica extracción de Bearer Tokens, resolución y coerción de UserModel, validación de estado activo
 y jerarquía de autorización RBAC (VIEWER, TRADER, ADMIN).
 """
-from datetime import datetime, timedelta, timezone
+
 import unittest
-from unittest.mock import AsyncMock, MagicMock
 import uuid
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
-from fastapi import HTTPException, status
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.deps import (
-    RoleChecker,
     get_current_active_user,
     get_current_token_payload,
     get_current_user,
@@ -24,6 +21,8 @@ from app.core.security import create_access_token, create_refresh_token
 from app.models.user import UserModel
 from app.schemas.token import TokenPayload, TokenType
 from app.schemas.user import UserRole
+from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.mark.unit
@@ -113,8 +112,8 @@ class TestSecurityDependenciesUnit(unittest.IsolatedAsyncioTestCase):
             sub=str(user_uuid),
             role=UserRole.TRADER,
             type=TokenType.ACCESS,
-            exp=datetime.now(timezone.utc) + timedelta(minutes=15),
-            iat=datetime.now(timezone.utc),
+            exp=datetime.now(UTC) + timedelta(minutes=15),
+            iat=datetime.now(UTC),
             jti=str(uuid.uuid4()),
             email="trader@investai.internal",
         )
@@ -143,8 +142,8 @@ class TestSecurityDependenciesUnit(unittest.IsolatedAsyncioTestCase):
             sub=legacy_sub,
             role=UserRole.VIEWER,
             type=TokenType.ACCESS,
-            exp=datetime.now(timezone.utc) + timedelta(minutes=15),
-            iat=datetime.now(timezone.utc),
+            exp=datetime.now(UTC) + timedelta(minutes=15),
+            iat=datetime.now(UTC),
             jti=str(uuid.uuid4()),
         )
 
@@ -171,8 +170,8 @@ class TestSecurityDependenciesUnit(unittest.IsolatedAsyncioTestCase):
             sub=str(non_existent_uuid),
             role=UserRole.TRADER,
             type=TokenType.ACCESS,
-            exp=datetime.now(timezone.utc) + timedelta(minutes=15),
-            iat=datetime.now(timezone.utc),
+            exp=datetime.now(UTC) + timedelta(minutes=15),
+            iat=datetime.now(UTC),
             jti=str(uuid.uuid4()),
         )
 
@@ -297,4 +296,3 @@ class TestSecurityDependenciesUnit(unittest.IsolatedAsyncioTestCase):
             ctx_viewer.exception.detail,
             "Operation not permitted. Insufficient permissions",
         )
-

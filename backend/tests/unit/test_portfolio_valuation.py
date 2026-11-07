@@ -3,16 +3,15 @@ Unit test suite for Module 7.2 (Phases 1 & 2):
 Dynamic Mark-to-Market Bimonetary Portfolio Valuation, TWR/MWR Attribution &
 Historical Valuation Curve Engine (`backend/app/domain/services/portfolio_valuation_service.py`).
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 import unittest
-
-from pydantic import ValidationError
-import pytest
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import app.domain.services as domain_services_pkg
+import pytest
 from app.domain.services.ingestion.data_cleaning_pipeline import CleanHoldingRecord
 from app.domain.services.portfolio_valuation_service import (
     MAX_VALUATION_SLICES,
@@ -31,6 +30,7 @@ from app.domain.services.portfolio_valuation_service import (
     ValuationCurvePoint,
     ValuedPositionBreakdown,
 )
+from pydantic import ValidationError
 
 
 @pytest.mark.unit
@@ -39,7 +39,7 @@ class TestPortfolioValuation(unittest.TestCase):
 
     def setUp(self) -> None:
         self.service = PortfolioValuationService()
-        self.as_of = datetime(2026, 10, 24, 18, 0, tzinfo=timezone.utc)
+        self.as_of = datetime(2026, 10, 24, 18, 0, tzinfo=UTC)
 
     def test_mark_to_market_bimonetary_and_exact_weight_sum_invariant(self) -> None:
         """
@@ -400,9 +400,7 @@ class TestPortfolioValuation(unittest.TestCase):
         with self.assertRaises(InvalidFXRateError):
             self.service.evaluate_performance_metrics(
                 slices=[
-                    SubPeriodValuationSlice(
-                        start_value=Decimal("100"), end_value=Decimal("110")
-                    )
+                    SubPeriodValuationSlice(start_value=Decimal("100"), end_value=Decimal("110"))
                 ],
                 start_value=Decimal("100"),
                 end_value=Decimal("110"),
@@ -507,15 +505,15 @@ class TestPortfolioValuation(unittest.TestCase):
                 ticker="GGAL",
                 quantity=Decimal("100"),
                 avg_cost_price=Decimal("1000"),  # 100,000 ARS -> 100 USD at FX 1000
-                market_price=Decimal("1500"),    # 150,000 ARS -> 125 USD at FX 1200
+                market_price=Decimal("1500"),  # 150,000 ARS -> 125 USD at FX 1200
                 currency="ARS",
                 entry_fx_rate=Decimal("1000"),
             ),
             PositionValuationInput(
                 ticker="AAPL",
                 quantity=Decimal("10"),
-                avg_cost_price=Decimal("10"),    # 100 USD -> 110,000 ARS at FX 1100
-                market_price=Decimal("12"),      # 120 USD -> 144,000 ARS at FX 1200
+                avg_cost_price=Decimal("10"),  # 100 USD -> 110,000 ARS at FX 1100
+                market_price=Decimal("12"),  # 120 USD -> 144,000 ARS at FX 1200
                 currency="USD",
                 entry_fx_rate=Decimal("1100"),
             ),
@@ -617,9 +615,9 @@ class TestPortfolioValuation(unittest.TestCase):
         nominal ARS reaches an all-time high (+80%, 0% drawdown) while real USD
         suffers a -28.00% drawdown from peak ($1250 -> $900) and -10.00% total TWR.
         """
-        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-        t1 = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
-        t2 = datetime(2026, 12, 31, 12, 0, tzinfo=timezone.utc)
+        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+        t1 = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
+        t2 = datetime(2026, 12, 31, 12, 0, tzinfo=UTC)
 
         snapshots = [
             HistoricalValuationSnapshot(
@@ -705,7 +703,7 @@ class TestPortfolioValuation(unittest.TestCase):
         matches `points[-1].cumulative_twr_ars == curve.performance_ars.twr`, and
         handles sub-24-hour intervals (`total_days == 1`) without `ZeroDivisionError`.
         """
-        t0 = datetime(2026, 5, 10, 10, 0, tzinfo=timezone.utc)
+        t0 = datetime(2026, 5, 10, 10, 0, tzinfo=UTC)
         t1 = t0 + timedelta(hours=6)
         t2 = t0 + timedelta(hours=12)
 
@@ -753,7 +751,7 @@ class TestPortfolioValuation(unittest.TestCase):
         Verify Phase 2 validation guards (`< 2` snapshots, duplicate timestamps,
         naive/aware datetime mixing) and re-exports in `app.domain.services`.
         """
-        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
         snap0 = HistoricalValuationSnapshot(
             as_of=t0,
             net_worth_ars=Decimal("100000"),
@@ -789,20 +787,23 @@ class TestPortfolioValuation(unittest.TestCase):
                 f"Expected '{symbol}' to be re-exported in app.domain.services",
             )
         self.assertEqual(MAX_VALUATION_SLICES, 10_000)
-        self.assertIsInstance(curve_pt := ValuationCurvePoint(
-            as_of=t0,
-            fx_rate_ars_per_usd=Decimal("1000"),
-            net_worth_ars=Decimal("100000"),
-            net_worth_usd=Decimal("100"),
-            period_return_ars=Decimal("0"),
-            period_return_usd=Decimal("0"),
-            cumulative_twr_ars=Decimal("0"),
-            cumulative_twr_usd=Decimal("0"),
-            high_water_mark_ars=Decimal("100000"),
-            high_water_mark_usd=Decimal("100"),
-            drawdown_ars=Decimal("0"),
-            drawdown_usd=Decimal("0"),
-        ), ValuationCurvePoint)
+        self.assertIsInstance(
+            curve_pt := ValuationCurvePoint(
+                as_of=t0,
+                fx_rate_ars_per_usd=Decimal("1000"),
+                net_worth_ars=Decimal("100000"),
+                net_worth_usd=Decimal("100"),
+                period_return_ars=Decimal("0"),
+                period_return_usd=Decimal("0"),
+                cumulative_twr_ars=Decimal("0"),
+                cumulative_twr_usd=Decimal("0"),
+                high_water_mark_ars=Decimal("100000"),
+                high_water_mark_usd=Decimal("100"),
+                drawdown_ars=Decimal("0"),
+                drawdown_usd=Decimal("0"),
+            ),
+            ValuationCurvePoint,
+        )
         self.assertEqual(curve_pt.drawdown_ars, Decimal("0.0000"))
 
     def test_benchmark_cfa_gips_twr_positive_vs_mwr_negative_money_timing_divergence(
@@ -856,9 +857,9 @@ class TestPortfolioValuation(unittest.TestCase):
         FX-adjusted real USD TWR (`performance_ars.real_usd_twr`) across a 300%
         exchange rate devaluation shock (FX 1000 -> 4000 ARS/USD).
         """
-        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-        t1 = datetime(2026, 4, 1, 12, 0, tzinfo=timezone.utc)
-        t2 = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+        t1 = datetime(2026, 4, 1, 12, 0, tzinfo=UTC)
+        t2 = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 
         snapshots = [
             HistoricalValuationSnapshot(
@@ -1025,7 +1026,7 @@ class TestPortfolioValuation(unittest.TestCase):
         rally, mid-year USD drawdown, recovery to a closing all-time high, and monthly
         contributions, verifying exact 365-day annualization identity (`annualized == period`).
         """
-        base_dt = datetime(2025, 1, 1, 18, 0, tzinfo=timezone.utc)
+        base_dt = datetime(2025, 1, 1, 18, 0, tzinfo=UTC)
         snapshots: list[HistoricalValuationSnapshot] = []
         nw_usd = Decimal("10000")
         fx = Decimal("1000")
@@ -1114,9 +1115,9 @@ class TestPortfolioValuation(unittest.TestCase):
         )
 
         # 2. Curve starting at 0 with founding deposit at s_1 (cash_flow_timing="START")
-        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-        t1 = datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc)
-        t2 = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+        t1 = datetime(2026, 2, 1, 12, 0, tzinfo=UTC)
+        t2 = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 
         zero_start_snapshots = [
             HistoricalValuationSnapshot(
@@ -1192,7 +1193,9 @@ class TestPortfolioValuation(unittest.TestCase):
         self.assertEqual(p.unrealized_pnl_pct_ars, Decimal("0.2500"))
         self.assertEqual(p.unrealized_pnl_pct_usd, Decimal("0.2500"))
 
-    def test_audit_pv_03_mtm_severe_fx_devaluation_real_usd_loss_despite_nominal_ars_gain(self) -> None:
+    def test_audit_pv_03_mtm_severe_fx_devaluation_real_usd_loss_despite_nominal_ars_gain(
+        self,
+    ) -> None:
         """Verify severe FX devaluation (FX_0=1000 -> FX_1=5000) reveals real USD loss despite +100% nominal ARS gain."""
         pos = PositionValuationInput(
             ticker="PAMP",
@@ -1217,7 +1220,9 @@ class TestPortfolioValuation(unittest.TestCase):
             p.unrealized_pnl_pct_ars,
         )
 
-    def test_audit_pv_04_usd_native_asset_under_ars_devaluation_karnosky_singer_identity(self) -> None:
+    def test_audit_pv_04_usd_native_asset_under_ars_devaluation_karnosky_singer_identity(
+        self,
+    ) -> None:
         """Verify USD-native asset attribution under ARS devaluation preserves exact Karnosky-Singer closure."""
         pos = PositionValuationInput(
             ticker="AAPL",
@@ -1392,7 +1397,9 @@ class TestPortfolioValuation(unittest.TestCase):
             Decimal("1.0000"),
         )
 
-    def test_audit_pv_13_multi_lot_consolidation_3_lots_same_currency_different_entry_fx(self) -> None:
+    def test_audit_pv_13_multi_lot_consolidation_3_lots_same_currency_different_entry_fx(
+        self,
+    ) -> None:
         """Verify multi-lot consolidation across 3 lots of the same ticker with distinct entry FX rates."""
         lots = [
             PositionValuationInput(
@@ -1500,7 +1507,9 @@ class TestPortfolioValuation(unittest.TestCase):
         self.assertEqual(rep.positions[0].quantity, Decimal("50.0000"))
         self.assertEqual(rep.positions[0].market_value_usd, Decimal("25000.0000"))
 
-    def test_audit_pv_16_value_holdings_from_quotes_cleaned_holding_records_and_ba_suffixes(self) -> None:
+    def test_audit_pv_16_value_holdings_from_quotes_cleaned_holding_records_and_ba_suffixes(
+        self,
+    ) -> None:
         """Verify value_holdings_from_quotes resolves .BA suffixes in both holdings and market_quotes."""
         holdings = [
             CleanedHoldingRecord(
@@ -1724,7 +1733,11 @@ class TestPortfolioValuation(unittest.TestCase):
         )
         self.assertGreater(irr, Decimal("5.0000"))
         u = Decimal("1") + irr
-        npv = Decimal("1000") * u + Decimal("1000") * (Decimal("0.5") * u.ln()).exp() - Decimal("9000")
+        npv = (
+            Decimal("1000") * u
+            + Decimal("1000") * (Decimal("0.5") * u.ln()).exp()
+            - Decimal("9000")
+        )
         self.assertLess(abs(npv), Decimal("1.0"))
 
     def test_audit_pv_32_mwr_irr_extreme_hyperinflationary_return_over_1500_pct(self) -> None:
@@ -1738,7 +1751,11 @@ class TestPortfolioValuation(unittest.TestCase):
         )
         self.assertGreater(irr, Decimal("15.0000"))
         u = Decimal("1") + irr
-        npv = Decimal("1000") * u + Decimal("500") * (Decimal("0.5") * u.ln()).exp() - Decimal("22000")
+        npv = (
+            Decimal("1000") * u
+            + Decimal("500") * (Decimal("0.5") * u.ln()).exp()
+            - Decimal("22000")
+        )
         self.assertLess(abs(npv), Decimal("2.0"))
 
     def test_audit_pv_33_mwr_irr_extreme_15000_pct_with_late_outflow(self) -> None:
@@ -1811,10 +1828,12 @@ class TestPortfolioValuation(unittest.TestCase):
         self.assertEqual(perf.twr, Decimal("-1.0000"))
         self.assertEqual(perf.annualized_twr, Decimal("-1.0000"))
 
-    def test_audit_pv_39_valuation_curve_sub_day_intraday_snapshots_minimum_1_day_floor(self) -> None:
+    def test_audit_pv_39_valuation_curve_sub_day_intraday_snapshots_minimum_1_day_floor(
+        self,
+    ) -> None:
         """Verify evaluate_valuation_curve handles intraday snapshots (< 24h apart) using total_days >= 1 floor."""
-        t0 = datetime(2026, 5, 1, 10, 0, tzinfo=timezone.utc)
-        t1 = datetime(2026, 5, 1, 16, 0, tzinfo=timezone.utc)
+        t0 = datetime(2026, 5, 1, 10, 0, tzinfo=UTC)
+        t1 = datetime(2026, 5, 1, 16, 0, tzinfo=UTC)
         snaps = [
             HistoricalValuationSnapshot(
                 as_of=t0, net_worth_ars=Decimal("100000"), fx_rate_ars_per_usd=Decimal("1000")
@@ -1827,11 +1846,13 @@ class TestPortfolioValuation(unittest.TestCase):
         self.assertEqual(curve.total_days, 1)
         self.assertEqual(curve.performance_ars.twr, Decimal("0.0100"))
 
-    def test_audit_pv_40_valuation_curve_out_of_order_snapshots_sorted_chronologically(self) -> None:
+    def test_audit_pv_40_valuation_curve_out_of_order_snapshots_sorted_chronologically(
+        self,
+    ) -> None:
         """Verify evaluate_valuation_curve sorts out-of-order snapshots chronologically before evaluation."""
-        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-        t1 = datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc)
-        t2 = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+        t1 = datetime(2026, 2, 1, 12, 0, tzinfo=UTC)
+        t2 = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
         snaps = [
             HistoricalValuationSnapshot(
                 as_of=t2, net_worth_ars=Decimal("121000"), fx_rate_ars_per_usd=Decimal("1000")
@@ -1849,8 +1870,8 @@ class TestPortfolioValuation(unittest.TestCase):
 
     def test_audit_pv_41_valuation_curve_dual_currency_drawdown_divergence(self) -> None:
         """Verify valuation curve captures zero ARS drawdown alongside deep USD drawdown during devaluation."""
-        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-        t1 = datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc)
+        t0 = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+        t1 = datetime(2026, 2, 1, 12, 0, tzinfo=UTC)
         snaps = [
             HistoricalValuationSnapshot(
                 as_of=t0, net_worth_ars=Decimal("1000000"), fx_rate_ars_per_usd=Decimal("1000")
@@ -1959,7 +1980,9 @@ class TestPortfolioValuation(unittest.TestCase):
                 as_of=self.as_of,
             )
 
-    def test_audit_pv_50_valued_position_breakdown_model_validator_rejects_tampered_quadrature(self) -> None:
+    def test_audit_pv_50_valued_position_breakdown_model_validator_rejects_tampered_quadrature(
+        self,
+    ) -> None:
         """Verify ValuedPositionBreakdown model validator rejects tampered horizontal accounting or Karnosky-Singer sum."""
         with self.assertRaises(ValidationError):
             ValuedPositionBreakdown(
@@ -2002,5 +2025,3 @@ class TestPortfolioValuation(unittest.TestCase):
                 net_cash_flow=Decimal("-1000"),
                 cash_flow_timing="START",
             )
-
-

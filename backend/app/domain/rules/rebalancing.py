@@ -1,11 +1,12 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional
+
 from app.domain.models.portfolio import InvestorProfile, Portfolio
 
 
 class OrderSide(str, Enum):
     """Trading action suggested by the rebalancer."""
+
     BUY = "BUY"
     SELL = "SELL"
     HOLD = "HOLD"
@@ -18,15 +19,22 @@ class TargetAllocation:
     Weights are expressed in percentage terms (0.0 to 100.0).
     If tolerance_band is None, it defaults to the profile's tolerance band (3%, 5%, 8%).
     """
+
     ticker: str
-    target_weight: float                  # Desired weight % (e.g. 25.0 = 25%)
-    tolerance_band: Optional[float] = None # Permitted +/- drift (e.g. 5.0 or 0.05). If None, inferred from profile.
+    target_weight: float  # Desired weight % (e.g. 25.0 = 25%)
+    tolerance_band: float | None = (
+        None  # Permitted +/- drift (e.g. 5.0 or 0.05). If None, inferred from profile.
+    )
 
     def __post_init__(self) -> None:
         if self.target_weight < 0.0 or self.target_weight > 100.0:
-            raise ValueError(f"target_weight debe estar entre 0.0 y 100.0. Recibido: {self.target_weight}")
+            raise ValueError(
+                f"target_weight debe estar entre 0.0 y 100.0. Recibido: {self.target_weight}"
+            )
         if self.tolerance_band is not None and self.tolerance_band < 0.0:
-            raise ValueError(f"tolerance_band debe ser no negativa. Recibido: {self.tolerance_band}")
+            raise ValueError(
+                f"tolerance_band debe ser no negativa. Recibido: {self.tolerance_band}"
+            )
 
 
 @dataclass(frozen=True)
@@ -34,15 +42,16 @@ class RebalanceOrder:
     """
     Actionable rebalancing order generated deterministically by the ToleranceBandRebalancer.
     """
+
     ticker: str
     side: OrderSide
-    current_weight: float       # Current portfolio weight %
-    target_weight: float        # Desired target weight %
-    delta_weight: float         # Difference: target_weight - current_weight
-    delta_amount: float         # Nominal cash amount to adjust in base currency
-    estimated_shares: int       # Truncated integer shares to trade
-    price_used: float           # Price per share used for computation
-    justification: str          # Deterministic audit rationale
+    current_weight: float  # Current portfolio weight %
+    target_weight: float  # Desired target weight %
+    delta_weight: float  # Difference: target_weight - current_weight
+    delta_amount: float  # Nominal cash amount to adjust in base currency
+    estimated_shares: int  # Truncated integer shares to trade
+    price_used: float  # Price per share used for computation
+    justification: str  # Deterministic audit rationale
 
 
 @dataclass(frozen=True)
@@ -50,13 +59,14 @@ class RebalancePlan:
     """
     Consolidated rebalance execution plan including liquidity validation.
     """
-    orders: List[RebalanceOrder]
+
+    orders: list[RebalanceOrder]
     total_buy_amount: float
     total_sell_amount: float
-    net_cash_flow: float        # total_sell_amount - total_buy_amount
+    net_cash_flow: float  # total_sell_amount - total_buy_amount
     available_cash: float
     is_liquidity_sufficient: bool
-    liquidity_warning: Optional[str] = None
+    liquidity_warning: str | None = None
 
 
 class ToleranceBandRebalancer:
@@ -71,13 +81,13 @@ class ToleranceBandRebalancer:
         - AGGRESSIVE: ±8% (0.08)
     """
 
-    PROFILE_DEFAULT_BANDS: Dict[InvestorProfile, float] = {
+    PROFILE_DEFAULT_BANDS: dict[InvestorProfile, float] = {
         InvestorProfile.CONSERVATIVE: 3.0,
         InvestorProfile.MODERATE: 5.0,
         InvestorProfile.AGGRESSIVE: 8.0,
     }
 
-    PROFILE_DEFAULT_BANDS_DECIMAL: Dict[InvestorProfile, float] = {
+    PROFILE_DEFAULT_BANDS_DECIMAL: dict[InvestorProfile, float] = {
         InvestorProfile.CONSERVATIVE: 0.03,
         InvestorProfile.MODERATE: 0.05,
         InvestorProfile.AGGRESSIVE: 0.08,
@@ -93,11 +103,11 @@ class ToleranceBandRebalancer:
     def calculate_orders(
         cls,
         portfolio: Portfolio,
-        targets: List[TargetAllocation],
-        prices: Optional[Dict[str, float]] = None,
+        targets: list[TargetAllocation],
+        prices: dict[str, float] | None = None,
         fx_ccl: float = 1.0,
         include_hold: bool = False,
-    ) -> List[RebalanceOrder]:
+    ) -> list[RebalanceOrder]:
         plan = cls.generate_plan(
             portfolio=portfolio,
             targets=targets,
@@ -111,8 +121,8 @@ class ToleranceBandRebalancer:
     def generate_plan(
         cls,
         portfolio: Portfolio,
-        targets: List[TargetAllocation],
-        prices: Optional[Dict[str, float]] = None,
+        targets: list[TargetAllocation],
+        prices: dict[str, float] | None = None,
         fx_ccl: float = 1.0,
         include_hold: bool = False,
     ) -> RebalancePlan:
@@ -131,7 +141,7 @@ class ToleranceBandRebalancer:
 
         holdings_by_ticker = {h.asset.ticker: h for h in portfolio.holdings}
 
-        orders: List[RebalanceOrder] = []
+        orders: list[RebalanceOrder] = []
         total_buy_val = 0.0
         total_sell_val = 0.0
 
@@ -212,7 +222,7 @@ class ToleranceBandRebalancer:
         total_liquidity_available = available_cash + total_sell_val
         is_sufficient = total_buy_val <= (total_liquidity_available + 1e-4)
 
-        warning_msg: Optional[str] = None
+        warning_msg: str | None = None
         if not is_sufficient:
             deficit = round(total_buy_val - total_liquidity_available, 2)
             warning_msg = (

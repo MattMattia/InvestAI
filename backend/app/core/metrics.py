@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional, Union
 
 from fastapi import Request, Response
 from prometheus_client import (
@@ -24,38 +23,79 @@ logger = logging.getLogger("investai.metrics")
 
 # Optimized geometric buckets for HTTP duration (in seconds)
 HTTP_DURATION_BUCKETS: tuple[float, ...] = (
-    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
 )
 
 # Buckets for scheduler job duration (in seconds)
 SCHEDULER_DURATION_BUCKETS: tuple[float, ...] = (
-    0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
+    30.0,
+    60.0,
 )
 
 # Buckets for quantitative solver latency (in seconds, capturing sub-millisecond to multi-second)
 QUANT_SOLVER_DURATION_BUCKETS: tuple[float, ...] = (
-    0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
+    0.0005,
+    0.001,
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
 )
 
 # Buckets for solver iteration count
 QUANT_SOLVER_ITERATION_BUCKETS: tuple[float, ...] = (
-    5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0
+    5.0,
+    10.0,
+    25.0,
+    50.0,
+    100.0,
+    250.0,
+    500.0,
+    1000.0,
 )
 
 # Canonical catalog of fallback reasons preventing cardinality explosion
-KNOWN_FALLBACK_REASONS: frozenset[str] = frozenset({
-    "max_iter_exceeded",
-    "non_positive_definite",
-    "singular_matrix",
-    "tolerance_not_reached",
-    "numerical_instability",
-})
+KNOWN_FALLBACK_REASONS: frozenset[str] = frozenset(
+    {
+        "max_iter_exceeded",
+        "non_positive_definite",
+        "singular_matrix",
+        "tolerance_not_reached",
+        "numerical_instability",
+    }
+)
 
 # Canonical catalog of market data cache tiers
-KNOWN_CACHE_TIERS: frozenset[str] = frozenset({
-    "memory",
-    "redis",
-})
+KNOWN_CACHE_TIERS: frozenset[str] = frozenset(
+    {
+        "memory",
+        "redis",
+    }
+)
 
 
 def normalize_route_path(request: Request) -> str:
@@ -79,7 +119,7 @@ def normalize_route_path(request: Request) -> str:
                     match, _ = r.matches(request.scope)
                     if match == Match.FULL and hasattr(r, "path"):
                         return str(r.path)
-                except Exception:
+                except Exception:  # noqa: S112  # unmatched route must not break normalization
                     continue
 
             # Second pass: check for partial match (path matches, method differs e.g. 405)
@@ -88,7 +128,7 @@ def normalize_route_path(request: Request) -> str:
                     match, _ = r.matches(request.scope)
                     if match == Match.PARTIAL and hasattr(r, "path"):
                         return str(r.path)
-                except Exception:
+                except Exception:  # noqa: S112  # unmatched route must not break normalization
                     continue
     except Exception as exc:
         logger.debug("Error while normalizing route path: %s", exc)
@@ -102,7 +142,7 @@ class InvestAIMetrics:
     Tracks RED HTTP metrics (Rate, Errors, Duration) and business/scheduler execution telemetry.
     """
 
-    def __init__(self, registry: Optional[CollectorRegistry] = None) -> None:
+    def __init__(self, registry: CollectorRegistry | None = None) -> None:
         self.registry: CollectorRegistry = (
             registry if registry is not None else CollectorRegistry(auto_describe=True)
         )
@@ -203,7 +243,7 @@ class InvestAIMetrics:
         self,
         method: str,
         path: str,
-        status_code: Union[int, str],
+        status_code: int | str,
         duration_seconds: float,
     ) -> None:
         """Records an HTTP request completion with latency and status code."""
@@ -273,7 +313,7 @@ class InvestAIMetrics:
         solver_name: str,
         objective: str,
         duration_seconds: float,
-        iterations: Optional[int] = None,
+        iterations: int | None = None,
     ) -> None:
         """
         Records a quantitative optimization solver run latency and optional iteration count.
@@ -339,7 +379,7 @@ def record_solver_run(
     solver_name: str,
     objective: str,
     duration_seconds: float,
-    iterations: Optional[int] = None,
+    iterations: int | None = None,
 ) -> None:
     """Convenience wrapper delegating to default_metrics.record_solver_run."""
     default_metrics.record_solver_run(solver_name, objective, duration_seconds, iterations)
@@ -366,7 +406,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
     Guarantees cardinality defense by normalizing path templates and isolating exceptions.
     """
 
-    def __init__(self, app, metrics: Optional[InvestAIMetrics] = None) -> None:
+    def __init__(self, app, metrics: InvestAIMetrics | None = None) -> None:
         super().__init__(app)
         self.metrics: InvestAIMetrics = metrics or default_metrics
 
@@ -398,4 +438,3 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 exception_type=exception_type,
             )
             raise
-

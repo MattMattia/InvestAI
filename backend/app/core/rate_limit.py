@@ -3,9 +3,10 @@ Motor de Rate Limiting Defensivo en Memoria por Ventana Deslizante (Módulo 5.4 
 Mitiga ataques de fuerza bruta, credential stuffing y password spraying en los endpoints de autenticación,
 garantizando seguridad multihilo (threading.Lock) e higiene de memoria acotada anti-DoS.
 """
-from math import ceil
+
 import threading
 import time
+from math import ceil
 
 __all__ = [
     "SlidingWindowRateLimiter",
@@ -66,7 +67,6 @@ class SlidingWindowRateLimiter:
             remaining = max(0, max_requests - len(valid_timestamps))
             return (False, 0, remaining)
 
-
     def reset(self) -> None:
         """Limpia la totalidad del estado en memoria de manera thread-safe."""
         with self._lock:
@@ -75,4 +75,3 @@ class SlidingWindowRateLimiter:
 
 # Instancia singleton global para protección de endpoints de identidad (/api/v1/auth/*)
 auth_rate_limiter = SlidingWindowRateLimiter()
-

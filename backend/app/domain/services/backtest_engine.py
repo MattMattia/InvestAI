@@ -1,5 +1,6 @@
 import datetime as dt
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any
+
 import numpy as np
 
 from app.domain.models.calendar import MarketExchange
@@ -21,7 +22,7 @@ from app.schemas.backtest import (
 from app.schemas.market_data import MarketBarDTO
 
 
-def _parse_date(d: Union[dt.date, dt.datetime, str]) -> dt.date:
+def _parse_date(d: dt.date | dt.datetime | str) -> dt.date:
     """Convierte de forma segura strings, datetimes o dates a datetime.date."""
     if isinstance(d, dt.datetime):
         return d.date()
@@ -33,7 +34,7 @@ def _parse_date(d: Union[dt.date, dt.datetime, str]) -> dt.date:
 class BacktestEngine:
     """
     Motor institucional de simulación y backtesting histórico de carteras.
-    
+
     Integra de forma determinista:
     - Sincronización y control de calendario bursátil (Módulo 1).
     - Optimización cuantitativa con contracción de covarianza Ledoit-Wolf (Módulo 2).
@@ -45,21 +46,21 @@ class BacktestEngine:
     def __init__(
         self,
         config: BacktestConfig,
-        calendar_service: Optional[MarketCalendarService] = None,
+        calendar_service: MarketCalendarService | None = None,
     ) -> None:
         self.config = config
         self.calendar_service = calendar_service or MarketCalendarService()
 
     def run(
         self,
-        prices_data: Dict[str, Dict[Union[dt.date, str], float]],
+        prices_data: dict[str, dict[dt.date | str, float]],
     ) -> BacktestResult:
         """
         Ejecuta la simulación temporal día a día sobre el universo de precios provisto.
 
         Parámetros:
             prices_data: Mapeo de Ticker -> {Fecha: Precio_Ajustado}.
-        
+
         Retorna:
             BacktestResult con snapshots diarios, historial de órdenes y métricas consolidadas.
         """
@@ -67,10 +68,12 @@ class BacktestEngine:
         end_date = _parse_date(self.config.end_date)
 
         if start_date > end_date:
-            raise ValueError(f"start_date ({start_date}) no puede ser posterior a end_date ({end_date}).")
+            raise ValueError(
+                f"start_date ({start_date}) no puede ser posterior a end_date ({end_date})."
+            )
 
         # 1. Normalización del diccionario de precios
-        normalized_prices: Dict[str, Dict[dt.date, float]] = {}
+        normalized_prices: dict[str, dict[dt.date, float]] = {}
         for ticker, series in prices_data.items():
             t_norm = ticker.strip().upper()
             normalized_prices[t_norm] = {
@@ -80,16 +83,15 @@ class BacktestEngine:
             }
 
         # 2. Extracción de días hábiles de cotización dentro del rango
-        candidate_dates: Set[dt.date] = set()
+        candidate_dates: set[dt.date] = set()
         for t in self.config.tickers:
             if t in normalized_prices:
                 candidate_dates.update(normalized_prices[t].keys())
 
         # Filtrar fechas dentro del rango [start_date, end_date] y días hábiles (lunes a viernes)
-        trading_dates = sorted([
-            d for d in candidate_dates
-            if start_date <= d <= end_date and d.weekday() < 5
-        ])
+        trading_dates = sorted(
+            [d for d in candidate_dates if start_date <= d <= end_date and d.weekday() < 5]
+        )
 
         # Si no hay fechas en el diccionario de precios, generar días hábiles de calendario
         if not trading_dates:
@@ -101,18 +103,18 @@ class BacktestEngine:
 
         # 3. Inicialización del estado de la cartera
         cash: float = float(self.config.initial_capital)
-        holdings: Dict[str, float] = {t: 0.0 for t in self.config.tickers}
-        latest_prices: Dict[str, float] = {}
+        holdings: dict[str, float] = {t: 0.0 for t in self.config.tickers}
+        latest_prices: dict[str, float] = {}
         total_frictions: float = 0.0
-        orders_history: List[Dict[str, Any]] = []
-        snapshots: List[DailySnapshot] = []
+        orders_history: list[dict[str, Any]] = []
+        snapshots: list[DailySnapshot] = []
 
         peak_nav: float = cash
         prev_portfolio_value: float = cash
-        prev_date: Optional[dt.date] = None
+        prev_date: dt.date | None = None
 
         # Historial de precios observados por fecha para cálculo de retornos en rebalanceo
-        price_history: Dict[str, Dict[dt.date, float]] = {t: {} for t in self.config.tickers}
+        price_history: dict[str, dict[dt.date, float]] = {t: {} for t in self.config.tickers}
 
         # 4. Bucle temporal día a día
         for idx, current_date in enumerate(trading_dates):
@@ -133,7 +135,9 @@ class BacktestEngine:
             )
 
             # 4.3 Ejecutar rebalanceo si corresponde y hay precios disponibles
-            priced_tickers = [t for t in self.config.tickers if t in latest_prices and latest_prices[t] > 0.0]
+            priced_tickers = [
+                t for t in self.config.tickers if t in latest_prices and latest_prices[t] > 0.0
+            ]
             if should_rebalance and priced_tickers:
                 target_weights = self._calculate_target_weights(
                     tickers=priced_tickers,
@@ -156,7 +160,9 @@ class BacktestEngine:
                 orders_history.extend(executed_orders)
 
             # 4.4 Computar NAV del día
-            portfolio_value = cash + sum(holdings[t] * latest_prices[t] for t in self.config.tickers if t in latest_prices)
+            portfolio_value = cash + sum(
+                holdings[t] * latest_prices[t] for t in self.config.tickers if t in latest_prices
+            )
             peak_nav = max(peak_nav, portfolio_value)
 
             # Drawdown acumulado respecto al pico histórico (<= 0.0)
@@ -164,9 +170,17 @@ class BacktestEngine:
 
             # Retorno diario respecto a la jornada anterior
             if idx == 0:
-                daily_return = (portfolio_value - self.config.initial_capital) / self.config.initial_capital if self.config.initial_capital > 0.0 else 0.0
+                daily_return = (
+                    (portfolio_value - self.config.initial_capital) / self.config.initial_capital
+                    if self.config.initial_capital > 0.0
+                    else 0.0
+                )
             else:
-                daily_return = (portfolio_value - prev_portfolio_value) / prev_portfolio_value if prev_portfolio_value > 0.0 else 0.0
+                daily_return = (
+                    (portfolio_value - prev_portfolio_value) / prev_portfolio_value
+                    if prev_portfolio_value > 0.0
+                    else 0.0
+                )
 
             # Registrar snapshot diario inmutable
             snapshot = DailySnapshot(
@@ -204,7 +218,7 @@ class BacktestEngine:
     def _should_rebalance(
         self,
         current_date: dt.date,
-        prev_date: Optional[dt.date],
+        prev_date: dt.date | None,
         is_first_day: bool,
         frequency: RebalanceFrequency,
     ) -> bool:
@@ -230,12 +244,12 @@ class BacktestEngine:
 
     def _calculate_target_weights(
         self,
-        tickers: List[str],
-        price_history: Dict[str, Dict[dt.date, float]],
+        tickers: list[str],
+        price_history: dict[str, dict[dt.date, float]],
         current_date: dt.date,
         lookback_window: int = 60,
         min_observations: int = 15,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """
         Calcula las ponderaciones óptimas de la cartera mediante los algoritmos del Módulo 2.
         Aplica fallback determinista a equiponderación (1/N) si el historial es insuficiente.
@@ -248,7 +262,7 @@ class BacktestEngine:
 
         # [DEFENSE: NUM-03] Extract union of all observed trading dates across tickers
         # to prevent a newly listed asset with short history from collapsing the lookback window of mature assets.
-        all_dates_set: Set[dt.date] = set()
+        all_dates_set: set[dt.date] = set()
         for t in tickers:
             all_dates_set.update(price_history[t].keys())
 
@@ -268,7 +282,9 @@ class BacktestEngine:
 
         for col_idx, t in enumerate(tickers):
             history_t = price_history[t]
-            t_dates = sorted([d for d in history_t.keys() if d in all_dates_set and d <= current_date])
+            t_dates = sorted(
+                [d for d in history_t.keys() if d in all_dates_set and d <= current_date]
+            )
             first_known_price = history_t[t_dates[0]] if t_dates else 100.0
             last_price = first_known_price
 
@@ -289,7 +305,10 @@ class BacktestEngine:
         )
 
         # Validar estabilidad numérica de los retornos
-        if not np.all(np.isfinite(returns_matrix)) or returns_matrix.shape[0] < min_observations - 1:
+        if (
+            not np.all(np.isfinite(returns_matrix))
+            or returns_matrix.shape[0] < min_observations - 1
+        ):
             return {t: 1.0 / n_assets for t in tickers}
 
         try:
@@ -304,7 +323,7 @@ class BacktestEngine:
             else:
                 weights = minimum_variance_portfolio(cov)
 
-            return {t: float(w) for t, w in zip(tickers, weights)}
+            return {t: float(w) for t, w in zip(tickers, weights, strict=False)}
         except Exception:
             # Fallback seguro ante singularidades numéricas
             return {t: 1.0 / n_assets for t in tickers}
@@ -313,21 +332,21 @@ class BacktestEngine:
         self,
         current_nav: float,
         cash: float,
-        holdings: Dict[str, float],
-        latest_prices: Dict[str, float],
-        target_weights: Dict[str, float],
+        holdings: dict[str, float],
+        latest_prices: dict[str, float],
+        target_weights: dict[str, float],
         total_frictions: float,
-    ) -> tuple[float, Dict[str, float], float, List[Dict[str, Any]]]:
+    ) -> tuple[float, dict[str, float], float, list[dict[str, Any]]]:
         """
         Ejecuta las operaciones de compra y venta requeridas para alcanzar las ponderaciones objetivo,
         gestionando el ciclo de órdenes con la FSM y aplicando fricciones de mercado.
         """
         frictions = self.config.friction_config
-        executed_orders: List[Dict[str, Any]] = []
+        executed_orders: list[dict[str, Any]] = []
         updated_holdings = dict(holdings)
 
         # 1. Calcular delta de unidades nominales enteras por activo
-        deltas: Dict[str, float] = {}
+        deltas: dict[str, float] = {}
         for t, weight in target_weights.items():
             price = latest_prices.get(t, 0.0)
             if price <= 0.0:
@@ -392,9 +411,13 @@ class BacktestEngine:
 
             # Estimar costo unitario por acción incluyendo comisiones e impacto
             unit_cost = price * (
-                1.0 + frictions.slippage_rate +
-                (frictions.alyc_commission_rate * (1.0 + (frictions.vat_rate if frictions.include_vat else 0.0))) +
-                frictions.market_fee_rate
+                1.0
+                + frictions.slippage_rate
+                + (
+                    frictions.alyc_commission_rate
+                    * (1.0 + (frictions.vat_rate if frictions.include_vat else 0.0))
+                )
+                + frictions.market_fee_rate
             )
 
             if unit_cost <= 0.0 or cash <= 0.0:
@@ -445,8 +468,8 @@ class BacktestEngine:
 
 
 def bars_to_price_history(
-    bars_by_ticker: Dict[str, List[MarketBarDTO]],
-) -> Dict[str, Dict[dt.date, float]]:
+    bars_by_ticker: dict[str, list[MarketBarDTO]],
+) -> dict[str, dict[dt.date, float]]:
     """
     Convierte series históricas de barras canónicas (MarketBarDTO) a la estructura
     matricial de precios de cierre requerida por el motor de backtesting (BacktestEngine.run).
@@ -459,10 +482,10 @@ def bars_to_price_history(
     --------
     Dict[str, Dict[dt.date, float]]: Estructura {ticker: {fecha: precio_cierre_float}}.
     """
-    price_history: Dict[str, Dict[dt.date, float]] = {}
+    price_history: dict[str, dict[dt.date, float]] = {}
     for raw_ticker, bars in bars_by_ticker.items():
         ticker = raw_ticker.strip().upper()
-        ticker_prices: Dict[dt.date, float] = {}
+        ticker_prices: dict[dt.date, float] = {}
         for bar in bars:
             d = bar.timestamp.date() if hasattr(bar.timestamp, "date") else bar.timestamp
             ticker_prices[d] = float(bar.close)

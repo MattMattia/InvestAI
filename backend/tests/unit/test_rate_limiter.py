@@ -4,12 +4,12 @@ Valida el algoritmo de ventana deslizante (SlidingWindowRateLimiter), cálculo d
 expiración temporal, higiene de claves huérfanas, cota máxima de memoria (_max_tracked_keys),
 reset de estado y seguridad multihilo con ThreadPoolExecutor.
 """
-from concurrent.futures import ThreadPoolExecutor
+
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 import pytest
-
 from app.core.rate_limit import SlidingWindowRateLimiter
 
 
@@ -206,5 +206,3 @@ class TestSlidingWindowRateLimiter(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-

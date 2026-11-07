@@ -1,5 +1,6 @@
 import math
-from typing import Annotated, List, Optional, Tuple
+from typing import Annotated
+
 import numpy as np
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,8 +34,8 @@ router = APIRouter()
 
 
 def _generate_synthetic_returns(
-    tickers: List[str],
-    asset_types: List[str],
+    tickers: list[str],
+    asset_types: list[str],
     t_obs: int = 60,
     seed: int = 42,
 ) -> np.ndarray:
@@ -84,8 +85,8 @@ def _generate_synthetic_returns(
 
 def _prepare_quantitative_inputs(
     portfolio: PortfolioModel,
-    request: Optional[OptimizationRequest],
-) -> Tuple[List[str], np.ndarray, np.ndarray, np.ndarray]:
+    request: OptimizationRequest | None,
+) -> tuple[list[str], np.ndarray, np.ndarray, np.ndarray]:
     """
     Prepares tickers, current portfolio weights, return series, and covariance matrix.
     Returns:
@@ -174,8 +175,12 @@ def _compute_tail_metrics(
     return TailRiskMetrics(
         skewness=calculate_skewness(portfolio_returns),
         kurtosis=calculate_kurtosis(portfolio_returns),
-        var_historical=calculate_var(portfolio_returns, alpha=confidence_level, method="historical"),
-        var_parametric=calculate_var(portfolio_returns, alpha=confidence_level, method="parametric"),
+        var_historical=calculate_var(
+            portfolio_returns, alpha=confidence_level, method="historical"
+        ),
+        var_parametric=calculate_var(
+            portfolio_returns, alpha=confidence_level, method="parametric"
+        ),
         cvar_historical=calculate_cvar(portfolio_returns, alpha=confidence_level),
         confidence_level=confidence_level,
     )
@@ -190,7 +195,7 @@ async def optimize_minimum_variance(
     id: str,
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    request: Optional[OptimizationRequest] = Body(default=None),
+    request: OptimizationRequest | None = Body(default=None),
 ) -> OptimizationResult:
     """
     Computes optimal asset allocation using the Global Minimum Variance (GMV) algorithm.
@@ -259,7 +264,7 @@ async def optimize_risk_parity(
     id: str,
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    request: Optional[OptimizationRequest] = Body(default=None),
+    request: OptimizationRequest | None = Body(default=None),
 ) -> OptimizationResult:
     """
     Computes Equal Risk Contribution (Risk Parity) optimal portfolio weights.
@@ -328,7 +333,7 @@ async def evaluate_tail_risk(
     id: str,
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    request: Optional[OptimizationRequest] = Body(default=None),
+    request: OptimizationRequest | None = Body(default=None),
 ) -> TailRiskMetrics:
     """
     Evaluates distribution moments (Skewness, Kurtosis) and tail losses

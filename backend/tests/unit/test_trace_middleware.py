@@ -2,6 +2,7 @@
 Pruebas unitarias para el Middleware de Trazabilidad y Correlación (OBS-01).
 Valida ContextVar, aislamiento entre tareas asíncronas y resolución de request_id.
 """
+
 import asyncio
 import unittest
 
@@ -22,6 +23,7 @@ class TestTraceMiddlewareUnit(unittest.TestCase):
 
     def test_async_task_context_isolation(self):
         """Valida que el ContextVar no se contamine entre corrutinas concurrentes."""
+
         async def task_worker(task_id: str):
             token = request_id_ctx.set(task_id)
             await asyncio.sleep(0.01)
@@ -44,4 +46,3 @@ class TestTraceMiddlewareUnit(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

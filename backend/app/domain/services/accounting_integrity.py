@@ -6,12 +6,13 @@ Implements deterministic labeling of pathological financial multiples
 (EPS <= 0, negative book value, currency mismatches, delisted assets, and
 micro-denominator overflows) as `INDETERMINATE` without division-by-zero traps.
 """
+
 from __future__ import annotations
 
-from collections.abc import Sequence
-from decimal import Decimal, DivisionByZero, InvalidOperation, ROUND_HALF_UP
-from enum import Enum
 import math
+from collections.abc import Sequence
+from decimal import ROUND_HALF_UP, Decimal, DivisionByZero, InvalidOperation
+from enum import Enum
 from typing import Any
 
 from pydantic import Field, field_validator, model_validator
@@ -112,9 +113,7 @@ class RatioValue(BaseSchema):
                 )
         else:
             if self.value is not None:
-                raise ValueError(
-                    f"RatioValue with status={self.status.value} must have value=None"
-                )
+                raise ValueError(f"RatioValue with status={self.status.value} must have value=None")
         return self
 
 
@@ -140,9 +139,7 @@ def _coerce_finite_decimal(value: Any, field_name: str) -> Decimal | None:
         except InvalidOperation as exc:
             raise ValueError(f"Invalid Decimal string for '{field_name}'") from exc
     else:
-        raise ValueError(
-            f"Unsupported type '{type(value).__name__}' for '{field_name}'"
-        )
+        raise ValueError(f"Unsupported type '{type(value).__name__}' for '{field_name}'")
 
     if not dec.is_finite():
         raise ValueError(f"Non-finite Decimal is not permitted for '{field_name}'")
@@ -233,9 +230,7 @@ class AccountingIntegrityService:
     """
 
     @staticmethod
-    def _safe_quantize_ratio(
-        numerator: Decimal, denominator: Decimal
-    ) -> Decimal | None:
+    def _safe_quantize_ratio(numerator: Decimal, denominator: Decimal) -> Decimal | None:
         """
         Safely divide `numerator / denominator` and quantize to 4 decimal places.
         Returns `None` if denominator is zero, result is non-finite, or magnitude
@@ -265,11 +260,7 @@ class AccountingIntegrityService:
         Validate market price, apply ADR/CEDEAR `conversion_ratio`, and homogenize
         into `financials_currency` using `fx_rate` when currencies differ.
         """
-        if (
-            inputs.is_delisted
-            or inputs.price is None
-            or inputs.price <= Decimal("0")
-        ):
+        if inputs.is_delisted or inputs.price is None or inputs.price <= Decimal("0"):
             return (
                 None,
                 "Asset is delisted or has a non-positive market price",
@@ -579,18 +570,14 @@ class AccountingIntegrityService:
             flags,
         )
 
-    def evaluate_company_metrics(
-        self, inputs: FundamentalInputs
-    ) -> FinancialMetricsReport:
+    def evaluate_company_metrics(self, inputs: FundamentalInputs) -> FinancialMetricsReport:
         """
         Evaluate all fundamental ratios for a company and consolidate risk flags
         and warnings deterministically.
         """
         collected_flags: list[AccountingRiskFlag] = []
 
-        effective_price, price_error_reason, price_flags = (
-            self._resolve_effective_price(inputs)
-        )
+        effective_price, price_error_reason, price_flags = self._resolve_effective_price(inputs)
         collected_flags.extend(price_flags)
 
         if effective_price is None:
@@ -619,9 +606,7 @@ class AccountingIntegrityService:
             pb_ratio, pb_flags = self.calculate_pb_ratio(effective_price, inputs.bvps)
             collected_flags.extend(pb_flags)
 
-            peg_ratio, peg_flags = self.calculate_peg_ratio(
-                pe_ratio, inputs.eps_growth_pct
-            )
+            peg_ratio, peg_flags = self.calculate_peg_ratio(pe_ratio, inputs.eps_growth_pct)
             collected_flags.extend(peg_flags)
 
             dividend_yield, div_flags = self.calculate_dividend_yield(
@@ -629,15 +614,12 @@ class AccountingIntegrityService:
             )
             collected_flags.extend(div_flags)
 
-        roe, roe_flags = self.calculate_roe(
-            inputs.net_income, inputs.shareholders_equity
-        )
+        roe, roe_flags = self.calculate_roe(inputs.net_income, inputs.shareholders_equity)
         collected_flags.extend(roe_flags)
 
         deduped_flags: list[AccountingRiskFlag] = list(dict.fromkeys(collected_flags))
         warnings: list[str] = [
-            f"{inputs.ticker}: {_RISK_FLAG_WARNING_MESSAGES[flag]}"
-            for flag in deduped_flags
+            f"{inputs.ticker}: {_RISK_FLAG_WARNING_MESSAGES[flag]}" for flag in deduped_flags
         ]
 
         return FinancialMetricsReport(
@@ -669,5 +651,3 @@ class AccountingIntegrityService:
             for report in reports
             if report.has_accounting_anomalies
         }
-
-

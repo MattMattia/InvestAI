@@ -17,18 +17,19 @@ Implements:
 - Direct integration with `PortfolioMarkToMarketReport` (Module 7.2) and
   idempotent two-phase Order FSM execution batching (`RebalanceFSMExecutionBatch`).
 """
+
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation, ROUND_FLOOR, ROUND_HALF_UP, localcontext
-from enum import Enum
 import hashlib
 import math
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidOperation, localcontext
+from enum import Enum
 from typing import Any, Literal
 
-from pydantic import Field, ValidationError, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.domain.services.portfolio_valuation_service import PortfolioMarkToMarketReport
 from app.domain.services.signal_generator import OrderFSMIntent
@@ -138,9 +139,7 @@ def _coerce_finite_decimal(value: Any, field_name: str) -> Decimal:
         except InvalidOperation as exc:
             raise ValueError(f"Invalid Decimal string for '{field_name}'.") from exc
     else:
-        raise ValueError(
-            f"Unsupported type '{type(value).__name__}' for '{field_name}'."
-        )
+        raise ValueError(f"Unsupported type '{type(value).__name__}' for '{field_name}'.")
 
     if not dec.is_finite():
         raise ValueError(f"Non-finite Decimal is not permitted for '{field_name}'.")
@@ -167,17 +166,15 @@ def _validate_clean_currency(value: Any) -> str:
         raise ValueError("base_currency must be a valid string.")
     cleaned = value.strip().upper()
     if cleaned not in ("ARS", "USD"):
-        raise ValueError(
-            f"Unsupported base_currency '{cleaned}': must be 'ARS' or 'USD'."
-        )
+        raise ValueError(f"Unsupported base_currency '{cleaned}': must be 'ARS' or 'USD'.")
     return cleaned
 
 
 def _normalize_dt_timestamp(dt: datetime) -> float:
     """Normalize a timezone-aware or naive datetime to a UTC POSIX timestamp."""
     if dt.tzinfo is None or dt.utcoffset() is None:
-        return dt.replace(tzinfo=timezone.utc).timestamp()
-    return dt.astimezone(timezone.utc).timestamp()
+        return dt.replace(tzinfo=UTC).timestamp()
+    return dt.astimezone(UTC).timestamp()
 
 
 def _allocate_largest_remainder_weights(
@@ -197,8 +194,7 @@ def _allocate_largest_remainder_weights(
         ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
         exact_weights = [max(Decimal("0"), v) / total for v in values]
         floored_weights = [
-            w.quantize(REBALANCE_QUANTIZE, rounding=ROUND_FLOOR)
-            for w in exact_weights
+            w.quantize(REBALANCE_QUANTIZE, rounding=ROUND_FLOOR) for w in exact_weights
         ]
         remainders = [exact_weights[i] - floored_weights[i] for i in range(n)]
         current_sum = sum(floored_weights, Decimal("0.0000"))
@@ -210,8 +206,7 @@ def _allocate_largest_remainder_weights(
         if deficit_steps > 0:
             candidate_limit = (
                 restrict_remainder_to_count
-                if restrict_remainder_to_count is not None
-                and 0 < restrict_remainder_to_count <= n
+                if restrict_remainder_to_count is not None and 0 < restrict_remainder_to_count <= n
                 else n
             )
             ordered_indices = sorted(
@@ -223,10 +218,7 @@ def _allocate_largest_remainder_weights(
                     floored_weights[idx_to_bump] + REBALANCE_QUANTIZE
                 )
 
-    return [
-        min(Decimal("1.0000"), max(Decimal("0.0000"), _quantize(w)))
-        for w in floored_weights
-    ]
+    return [min(Decimal("1.0000"), max(Decimal("0.0000"), _quantize(w))) for w in floored_weights]
 
 
 # ============================================================================
@@ -523,9 +515,7 @@ class RebalanceTradeOrder(BaseSchema):
                         f"-(gross_amount + estimated_commission) ({expected_impact})."
                     )
                 if self.estimated_realized_pnl is None:
-                    object.__setattr__(
-                        self, "estimated_realized_pnl", Decimal("0.0000")
-                    )
+                    object.__setattr__(self, "estimated_realized_pnl", Decimal("0.0000"))
                 elif self.estimated_realized_pnl != Decimal("0.0000"):
                     raise ValueError(
                         f"BUY order estimated_realized_pnl must be 0.0000 (got {self.estimated_realized_pnl})."
@@ -634,12 +624,8 @@ class ToleranceBandRebalanceReport(BaseSchema):
                         f"when projected_ending_cash is 0.0000."
                     )
 
-            expected_post_trade_val = (
-                self.total_portfolio_value - self.total_estimated_commissions
-            )
-            max_subpip_drift = Decimal("0.0005") * Decimal(
-                max(1, len(self.evaluations))
-            )
+            expected_post_trade_val = self.total_portfolio_value - self.total_estimated_commissions
+            max_subpip_drift = Decimal("0.0005") * Decimal(max(1, len(self.evaluations)))
             if (
                 abs(self.projected_post_trade_portfolio_value - expected_post_trade_val)
                 > max_subpip_drift
@@ -680,9 +666,7 @@ class ToleranceBandRebalanceReport(BaseSchema):
                         "breached_tickers must be empty when needs_rebalancing is False."
                     )
                 if self.orders:
-                    raise ValueError(
-                        "orders must be empty when needs_rebalancing is False."
-                    )
+                    raise ValueError("orders must be empty when needs_rebalancing is False.")
 
         return self
 
@@ -728,9 +712,7 @@ class RebalanceFSMOrderTicket(BaseSchema):
     def _normalize_ticker(cls, v: Any) -> str:
         return _validate_clean_ticker(v)
 
-    @field_validator(
-        "quantity", "execution_price", "estimated_commission", mode="before"
-    )
+    @field_validator("quantity", "execution_price", "estimated_commission", mode="before")
     @classmethod
     def _validate_decimals(cls, v: Any, info: Any) -> Decimal:
         return _coerce_finite_decimal(v, str(info.field_name))
@@ -747,22 +729,14 @@ class RebalanceFSMOrderTicket(BaseSchema):
         with localcontext() as ctx:
             ctx.prec = INTERMEDIATE_DECIMAL_PRECISION
             if self.side == "SELL" and self.execution_phase != "LIQUIDATION_SELL":
-                raise ValueError(
-                    "SELL ticket must have execution_phase == 'LIQUIDATION_SELL'."
-                )
+                raise ValueError("SELL ticket must have execution_phase == 'LIQUIDATION_SELL'.")
             if self.side == "BUY" and self.execution_phase != "ACQUISITION_BUY":
-                raise ValueError(
-                    "BUY ticket must have execution_phase == 'ACQUISITION_BUY'."
-                )
+                raise ValueError("BUY ticket must have execution_phase == 'ACQUISITION_BUY'.")
             if self.side == "BUY":
                 if self.estimated_realized_pnl is None:
-                    object.__setattr__(
-                        self, "estimated_realized_pnl", Decimal("0.0000")
-                    )
+                    object.__setattr__(self, "estimated_realized_pnl", Decimal("0.0000"))
                 elif self.estimated_realized_pnl != Decimal("0.0000"):
-                    raise ValueError(
-                        "BUY ticket estimated_realized_pnl must be 0.0000."
-                    )
+                    raise ValueError("BUY ticket estimated_realized_pnl must be 0.0000.")
         return self
 
 
@@ -798,9 +772,7 @@ class RebalanceFSMExecutionBatch(BaseSchema):
     def _normalize_base_currency(cls, v: Any) -> str:
         return _validate_clean_currency(v)
 
-    @field_validator(
-        "total_orders", "sell_orders_count", "buy_orders_count", mode="before"
-    )
+    @field_validator("total_orders", "sell_orders_count", "buy_orders_count", mode="before")
     @classmethod
     def _validate_strict_counts(cls, v: Any, info: Any) -> int:
         if isinstance(v, bool) or not isinstance(v, int):
@@ -826,9 +798,7 @@ class RebalanceFSMExecutionBatch(BaseSchema):
                 f"buy_orders_count ({self.buy_orders_count}) != actual BUY tickets ({actual_buys})."
             )
         if self.sell_orders_count + self.buy_orders_count != self.total_orders:
-            raise ValueError(
-                "sell_orders_count + buy_orders_count must equal total_orders."
-            )
+            raise ValueError("sell_orders_count + buy_orders_count must equal total_orders.")
 
         expected_seq = list(range(1, len(self.tickets) + 1))
         actual_seq = [t.sequence_number for t in self.tickets]
@@ -919,7 +889,7 @@ class ToleranceBandRebalancerService:
         clamped to `[min_multiplier, max_multiplier]`.
         """
         if (
-            isinstance(target_specs, (str, bytes))
+            isinstance(target_specs, str | bytes)
             or not isinstance(target_specs, Sequence)
             or len(target_specs) == 0
         ):
@@ -980,13 +950,9 @@ class ToleranceBandRebalancerService:
                         f"Element at index {idx} in target_specs is not an AssetTargetBandSpec instance."
                     )
                 alt_ticker = (
-                    spec.ticker[:-3]
-                    if spec.ticker.endswith(".BA")
-                    else f"{spec.ticker}.BA"
+                    spec.ticker[:-3] if spec.ticker.endswith(".BA") else f"{spec.ticker}.BA"
                 )
-                snap = normalized_snapshots.get(
-                    spec.ticker
-                ) or normalized_snapshots.get(alt_ticker)
+                snap = normalized_snapshots.get(spec.ticker) or normalized_snapshots.get(alt_ticker)
 
                 if snap is None:
                     calibrated_specs.append(spec)
@@ -1005,9 +971,7 @@ class ToleranceBandRebalancerService:
                 ):
                     atr_pct = snap.atr_14 / snap.close
                     raw_mult = atr_pct / dec_baseline
-                    clamped_mult = _quantize(
-                        min(dec_max_mult, max(dec_min_mult, raw_mult))
-                    )
+                    clamped_mult = _quantize(min(dec_max_mult, max(dec_min_mult, raw_mult)))
                     calibrated_specs.append(
                         AssetTargetBandSpec(
                             ticker=spec.ticker,
@@ -1032,9 +996,7 @@ class ToleranceBandRebalancerService:
 
         return calibrated_specs
 
-    def _compute_band_bounds(
-        self, spec: AssetTargetBandSpec
-    ) -> tuple[Decimal, Decimal]:
+    def _compute_band_bounds(self, spec: AssetTargetBandSpec) -> tuple[Decimal, Decimal]:
         """Compute quantized `(lower_band, upper_band)` for a target asset specification."""
         if spec.target_weight == Decimal("0"):
             return Decimal("0.0000"), Decimal("0.0000")
@@ -1075,9 +1037,7 @@ class ToleranceBandRebalancerService:
                 base_half = spec.target_weight * rel_tol
             raw_half = base_half * spec.volatility_multiplier
         else:
-            raise InvalidToleranceBandConfigError(
-                f"Unsupported band_type '{cfg.band_type}'."
-            )
+            raise InvalidToleranceBandConfigError(f"Unsupported band_type '{cfg.band_type}'.")
 
         clamped_half = min(
             cfg.max_band_half_width,
@@ -1104,9 +1064,7 @@ class ToleranceBandRebalancerService:
         elif alt_ticker in normalized_prices:
             raw_price = normalized_prices[alt_ticker]
         else:
-            raise MissingRebalancePriceError(
-                f"Missing market price for target ticker '{ticker}'."
-            )
+            raise MissingRebalancePriceError(f"Missing market price for target ticker '{ticker}'.")
 
         if isinstance(raw_price, bool) or raw_price is None:
             raise MissingRebalancePriceError(
@@ -1151,9 +1109,7 @@ class ToleranceBandRebalancerService:
             raise InvalidToleranceBandConfigError(str(exc)) from exc
 
         if isinstance(initial_cash, bool) or initial_cash is None:
-            raise InsufficientLiquidityForRebalanceError(
-                "initial_cash cannot be boolean or None."
-            )
+            raise InsufficientLiquidityForRebalanceError("initial_cash cannot be boolean or None.")
         try:
             clean_initial_cash = _coerce_finite_decimal(initial_cash, "initial_cash")
         except ValueError as exc:
@@ -1164,7 +1120,7 @@ class ToleranceBandRebalancerService:
             )
 
         if (
-            isinstance(target_specs, (str, bytes))
+            isinstance(target_specs, str | bytes)
             or not isinstance(target_specs, Sequence)
             or len(target_specs) == 0
         ):
@@ -1176,7 +1132,7 @@ class ToleranceBandRebalancerService:
                 f"target_specs count ({len(target_specs)}) exceeds maximum allowed ({MAX_REBALANCE_ASSETS})."
             )
 
-        if isinstance(positions, (str, bytes)) or not isinstance(positions, Sequence):
+        if isinstance(positions, str | bytes) or not isinstance(positions, Sequence):
             raise InvalidTargetAllocationError(
                 "positions must be a sequence of RebalancePositionInput instances."
             )
@@ -1185,13 +1141,9 @@ class ToleranceBandRebalancerService:
                 f"positions count ({len(positions)}) exceeds maximum allowed ({MAX_REBALANCE_ASSETS})."
             )
 
-        effective_as_of = as_of if as_of is not None else datetime.now(timezone.utc)
-        if not isinstance(effective_as_of, datetime) or isinstance(
-            effective_as_of, bool
-        ):
-            raise InvalidToleranceBandConfigError(
-                "as_of must be a valid datetime instance."
-            )
+        effective_as_of = as_of if as_of is not None else datetime.now(UTC)
+        if not isinstance(effective_as_of, datetime) or isinstance(effective_as_of, bool):
+            raise InvalidToleranceBandConfigError("as_of must be a valid datetime instance.")
         if portfolio_id is not None:
             if not isinstance(portfolio_id, str) or isinstance(portfolio_id, bool):
                 raise InvalidToleranceBandConfigError(
@@ -1215,9 +1167,7 @@ class ToleranceBandRebalancerService:
                 )
             for raw_k, raw_v in market_prices.items():
                 if not isinstance(raw_k, str) or isinstance(raw_k, bool):
-                    raise MissingRebalancePriceError(
-                        "market_prices keys must be valid strings."
-                    )
+                    raise MissingRebalancePriceError("market_prices keys must be valid strings.")
                 clean_k = raw_k.strip().upper()
                 if clean_k:
                     normalized_prices[clean_k] = raw_v
@@ -1233,9 +1183,7 @@ class ToleranceBandRebalancerService:
                         f"Element at index {idx} in target_specs is not an AssetTargetBandSpec instance."
                     )
                 alt_spec_ticker = (
-                    spec.ticker[:-3]
-                    if spec.ticker.endswith(".BA")
-                    else f"{spec.ticker}.BA"
+                    spec.ticker[:-3] if spec.ticker.endswith(".BA") else f"{spec.ticker}.BA"
                 )
                 if spec.ticker in target_map or alt_spec_ticker in target_map:
                     raise InvalidTargetAllocationError(
@@ -1309,11 +1257,7 @@ class ToleranceBandRebalancerService:
 
             q_initial_cash = _quantize(clean_initial_cash)
             total_positions_val = sum(
-                (
-                    _quantize(acc.raw_val)
-                    for acc in pos_map.values()
-                    if acc.raw_qty > Decimal("0")
-                ),
+                (_quantize(acc.raw_val) for acc in pos_map.values() if acc.raw_qty > Decimal("0")),
                 Decimal("0.0000"),
             )
             total_portfolio_value = _quantize(total_positions_val + q_initial_cash)
@@ -1351,9 +1295,7 @@ class ToleranceBandRebalancerService:
                     )
                 else:
                     curr_qty = Decimal("0.0000")
-                    mkt_price = self._resolve_external_price(
-                        ticker, spec, normalized_prices
-                    )
+                    mkt_price = self._resolve_external_price(ticker, spec, normalized_prices)
                     curr_val = Decimal("0.0000")
                     avg_cost = None
 
@@ -1419,17 +1361,13 @@ class ToleranceBandRebalancerService:
                 and self._config.deploy_excess_cash_when_inside_bands
                 and initial_cash_weight > excess_cash_threshold
             )
-            should_attempt_trades = (
-                len(breached_tickers) > 0 or triggered_by_excess_cash
-            )
+            should_attempt_trades = len(breached_tickers) > 0 or triggered_by_excess_cash
 
             has_upper_breach = any(
-                item["breach_direction"] == BandBreachDirection.UPPER
-                for item in prelim_evals
+                item["breach_direction"] == BandBreachDirection.UPPER for item in prelim_evals
             )
             has_lower_breach = any(
-                item["breach_direction"] == BandBreachDirection.LOWER
-                for item in prelim_evals
+                item["breach_direction"] == BandBreachDirection.LOWER for item in prelim_evals
             )
 
             for item in prelim_evals:
@@ -1472,14 +1410,10 @@ class ToleranceBandRebalancerService:
                 item["destination_weight"] = dest_weight
 
             if not should_attempt_trades:
-                joint_no_trade_vals = [
-                    item["current_value"] for item in prelim_evals
-                ] + [q_initial_cash]
-                restrict_cnt = (
-                    len(prelim_evals)
-                    if q_initial_cash == Decimal("0.0000")
-                    else None
-                )
+                joint_no_trade_vals = [item["current_value"] for item in prelim_evals] + [
+                    q_initial_cash
+                ]
+                restrict_cnt = len(prelim_evals) if q_initial_cash == Decimal("0.0000") else None
                 lr_weights = _allocate_largest_remainder_weights(
                     joint_no_trade_vals,
                     total_portfolio_value,
@@ -1531,11 +1465,7 @@ class ToleranceBandRebalancerService:
                 )
 
             # Self-Financing Liquidity Waterfall: Step 1 (SELL orders)
-            qty_step = (
-                REBALANCE_QUANTIZE
-                if self._config.allow_fractional_shares
-                else Decimal("1")
-            )
+            qty_step = REBALANCE_QUANTIZE if self._config.allow_fractional_shares else Decimal("1")
             comm_rate = self._config.commission_bps / Decimal("10000")
             sell_orders: list[RebalanceTradeOrder] = []
             buy_candidates: list[tuple[Decimal, dict[str, Any]]] = []
@@ -1552,14 +1482,10 @@ class ToleranceBandRebalancerService:
                         if self._config.allow_fractional_shares:
                             sell_qty = curr_qty
                         else:
-                            sell_qty = curr_qty.quantize(
-                                qty_step, rounding=ROUND_FLOOR
-                            )
+                            sell_qty = curr_qty.quantize(qty_step, rounding=ROUND_FLOOR)
                     else:
                         raw_sell_qty = (curr_val - dest_value) / mkt_price
-                        floored_qty = raw_sell_qty.quantize(
-                            qty_step, rounding=ROUND_FLOOR
-                        )
+                        floored_qty = raw_sell_qty.quantize(qty_step, rounding=ROUND_FLOOR)
                         sell_qty = min(curr_qty, floored_qty)
 
                     q_sell_qty = _quantize(sell_qty)
@@ -1614,18 +1540,14 @@ class ToleranceBandRebalancerService:
             sell_orders.sort(key=lambda o: (-o.gross_amount, o.ticker))
 
             # Step 2: Compute available cash pool for BUY orders after cash buffer reserve
-            net_sell_proceeds = sum(
-                (o.net_cash_impact for o in sell_orders), Decimal("0.0000")
-            )
+            net_sell_proceeds = sum((o.net_cash_impact for o in sell_orders), Decimal("0.0000"))
             total_cash_after_sells = _quantize(q_initial_cash + net_sell_proceeds)
             if total_cash_after_sells < Decimal("0.0000"):
                 raise InsufficientLiquidityForRebalanceError(
                     f"Projected cash after sells is negative ({total_cash_after_sells})."
                 )
 
-            target_cash_reserve = _quantize(
-                total_portfolio_value * q_cash_buffer_weight
-            )
+            target_cash_reserve = _quantize(total_portfolio_value * q_cash_buffer_weight)
             available_cash_for_buys = max(
                 Decimal("0.0000"),
                 total_cash_after_sells - target_cash_reserve,
@@ -1638,10 +1560,7 @@ class ToleranceBandRebalancerService:
                 Decimal("0"),
             )
 
-            if (
-                total_required_cash > Decimal("0")
-                and available_cash_for_buys > Decimal("0")
-            ):
+            if total_required_cash > Decimal("0") and available_cash_for_buys > Decimal("0"):
                 scale = min(
                     Decimal("1"),
                     available_cash_for_buys / total_required_cash,
@@ -1672,15 +1591,10 @@ class ToleranceBandRebalancerService:
                         commission = _quantize(gross * comm_rate)
                         if gross + commission <= remaining_cash:
                             break
-                        buy_qty = (buy_qty - qty_step).quantize(
-                            qty_step, rounding=ROUND_FLOOR
-                        )
+                        buy_qty = (buy_qty - qty_step).quantize(qty_step, rounding=ROUND_FLOOR)
 
                     q_buy_qty = _quantize(buy_qty)
-                    if (
-                        q_buy_qty > Decimal("0")
-                        and gross >= self._config.min_trade_notional
-                    ):
+                    if q_buy_qty > Decimal("0") and gross >= self._config.min_trade_notional:
                         total_outflow = _quantize(gross + commission)
                         remaining_cash = _quantize(remaining_cash - total_outflow)
                         conviction = min(
@@ -1714,22 +1628,14 @@ class ToleranceBandRebalancerService:
             buy_orders.sort(key=lambda o: (-o.gross_amount, o.ticker))
             all_orders = sell_orders + buy_orders
 
-            needs_rebalancing = (
-                True if len(breached_tickers) > 0 else (len(all_orders) > 0)
-            )
+            needs_rebalancing = True if len(breached_tickers) > 0 else (len(all_orders) > 0)
             if not needs_rebalancing:
                 for item in prelim_evals:
                     item["destination_weight"] = item["current_weight"]
 
-            total_sell_gross = sum(
-                (o.gross_amount for o in sell_orders), Decimal("0.0000")
-            )
-            total_buy_gross = sum(
-                (o.gross_amount for o in buy_orders), Decimal("0.0000")
-            )
-            total_commissions = sum(
-                (o.estimated_commission for o in all_orders), Decimal("0.0000")
-            )
+            total_sell_gross = sum((o.gross_amount for o in sell_orders), Decimal("0.0000"))
+            total_buy_gross = sum((o.gross_amount for o in buy_orders), Decimal("0.0000"))
+            total_commissions = sum((o.estimated_commission for o in all_orders), Decimal("0.0000"))
             total_estimated_realized_pnl = _quantize(
                 sum(
                     (
@@ -1741,14 +1647,10 @@ class ToleranceBandRebalancerService:
                 )
             )
             projected_ending_cash = _quantize(
-                q_initial_cash
-                + total_sell_gross
-                - total_buy_gross
-                - total_commissions
+                q_initial_cash + total_sell_gross - total_buy_gross - total_commissions
             )
             portfolio_turnover = _quantize(
-                (total_sell_gross + total_buy_gross)
-                / (Decimal("2") * total_portfolio_value)
+                (total_sell_gross + total_buy_gross) / (Decimal("2") * total_portfolio_value)
             )
 
             # Build per-asset post-trade evaluation snapshots & Largest-Remainder weights
@@ -1764,19 +1666,11 @@ class ToleranceBandRebalancerService:
 
                 sold_qty = s_ord.quantity if s_ord is not None else Decimal("0.0000")
                 bought_qty = b_ord.quantity if b_ord is not None else Decimal("0.0000")
-                sell_gross = (
-                    s_ord.gross_amount if s_ord is not None else Decimal("0.0000")
-                )
-                buy_gross = (
-                    b_ord.gross_amount if b_ord is not None else Decimal("0.0000")
-                )
+                sell_gross = s_ord.gross_amount if s_ord is not None else Decimal("0.0000")
+                buy_gross = b_ord.gross_amount if b_ord is not None else Decimal("0.0000")
 
-                post_qty = _quantize(
-                    item["current_quantity"] - sold_qty + bought_qty
-                )
-                post_val = _quantize(
-                    item["current_value"] - sell_gross + buy_gross
-                )
+                post_qty = _quantize(item["current_quantity"] - sold_qty + bought_qty)
+                post_val = _quantize(item["current_value"] - sell_gross + buy_gross)
                 post_qty_list.append(post_qty)
                 post_val_list.append(post_val)
 
@@ -1789,11 +1683,7 @@ class ToleranceBandRebalancerService:
                 )
 
             joint_post_values = post_val_list + [projected_ending_cash]
-            restrict_cnt = (
-                len(prelim_evals)
-                if projected_ending_cash == Decimal("0.0000")
-                else None
-            )
+            restrict_cnt = len(prelim_evals) if projected_ending_cash == Decimal("0.0000") else None
             post_weights = _allocate_largest_remainder_weights(
                 joint_post_values,
                 projected_post_trade_portfolio_value,
@@ -1941,33 +1831,23 @@ class ToleranceBandRebalancerService:
                 if pos.native_currency == clean_currency:
                     unit_price = _quantize(pos.market_price_native)
                 elif clean_currency == "USD":
-                    unit_price = _quantize(
-                        pos.market_price_native / mtm_report.fx_rate_ars_per_usd
-                    )
+                    unit_price = _quantize(pos.market_price_native / mtm_report.fx_rate_ars_per_usd)
                 else:
-                    unit_price = _quantize(
-                        pos.market_price_native * mtm_report.fx_rate_ars_per_usd
-                    )
+                    unit_price = _quantize(pos.market_price_native * mtm_report.fx_rate_ars_per_usd)
 
                 if clean_currency == "USD":
                     has_known_cost = (
-                        pos.unrealized_pnl_pct_usd is not None
-                        and pos.cost_basis_usd > Decimal("0")
+                        pos.unrealized_pnl_pct_usd is not None and pos.cost_basis_usd > Decimal("0")
                     )
                     unit_cost: Decimal | None = (
-                        _quantize(pos.cost_basis_usd / pos.quantity)
-                        if has_known_cost
-                        else None
+                        _quantize(pos.cost_basis_usd / pos.quantity) if has_known_cost else None
                     )
                 else:
                     has_known_cost = (
-                        pos.unrealized_pnl_pct_ars is not None
-                        and pos.cost_basis_ars > Decimal("0")
+                        pos.unrealized_pnl_pct_ars is not None and pos.cost_basis_ars > Decimal("0")
                     )
                     unit_cost = (
-                        _quantize(pos.cost_basis_ars / pos.quantity)
-                        if has_known_cost
-                        else None
+                        _quantize(pos.cost_basis_ars / pos.quantity) if has_known_cost else None
                     )
 
                 rebalance_positions.append(
@@ -2028,9 +1908,7 @@ class ToleranceBandRebalancerService:
                 )
             cleaned_pid = raw_pid.strip()
             if not cleaned_pid:
-                raise InvalidToleranceBandConfigError(
-                    "portfolio_id cannot be empty or whitespace."
-                )
+                raise InvalidToleranceBandConfigError("portfolio_id cannot be empty or whitespace.")
             effective_portfolio_id = cleaned_pid
 
         orders_fingerprint = "|".join(
@@ -2047,10 +1925,7 @@ class ToleranceBandRebalancerService:
             f"{len(report.orders)}|"
             f"{orders_fingerprint}"
         )
-        batch_id = (
-            "reb-batch-"
-            + hashlib.sha256(batch_seed.encode("utf-8")).hexdigest()[:32]
-        )
+        batch_id = "reb-batch-" + hashlib.sha256(batch_seed.encode("utf-8")).hexdigest()[:32]
 
         tickets: list[RebalanceFSMOrderTicket] = []
         for idx, order in enumerate(report.orders, start=1):
@@ -2062,8 +1937,7 @@ class ToleranceBandRebalancerService:
                 f"{order.quantity}:{order.execution_price}"
             )
             idempotency_key = (
-                "reb-ord-"
-                + hashlib.sha256(idem_seed.encode("utf-8")).hexdigest()[:32]
+                "reb-ord-" + hashlib.sha256(idem_seed.encode("utf-8")).hexdigest()[:32]
             )
             payload = order.order_intent.to_order_payload(
                 quantity=order.quantity,
@@ -2122,5 +1996,3 @@ __all__ = [
     "RebalanceFSMExecutionBatch",
     "ToleranceBandRebalancerService",
 ]
-
-

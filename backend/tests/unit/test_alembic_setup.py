@@ -2,36 +2,32 @@
 Unit tests for Alembic async configuration, naming conventions, and migration environment
 (Module 8.1 - Phase 1: `backend/alembic.ini`, `backend/alembic/env.py`, `backend/alembic/script.py.mako`).
 """
+
 from __future__ import annotations
 
 import asyncio
-from configparser import ConfigParser
 import importlib.util
-from pathlib import Path
 import sys
-from typing import Any
 import unittest
+from configparser import ConfigParser
+from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import app.models as domain_models
+import pytest
 from alembic import context
 from alembic.config import Config
-import pytest
-from sqlalchemy import MetaData, UniqueConstraint
-
 from app.core.config import settings
 from app.core.database import POSTGRES_NAMING_CONVENTION, Base
-import app.models as domain_models
 from app.models import (
-    AssetModel,
     AuditLogModel,
-    HoldingModel,
     MarketBarModel,
     OrderModel,
-    PortfolioModel,
     RebalanceOrderModel,
     RiskAuditSnapshotModel,
-    UserModel,
 )
+from sqlalchemy import UniqueConstraint
 
 # Dynamically import backend/alembic/env.py as a module for isolated unit testing
 _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
@@ -208,9 +204,11 @@ class TestAlembicSetup(unittest.TestCase):
         test_cfg = Config()
         test_cfg.set_main_option("sqlalchemy.url", "sqlite:///./offline_test.db")
 
-        with patch.object(context, "configure") as mock_configure, patch.object(
-            context, "begin_transaction"
-        ) as mock_begin_tx, patch.object(context, "run_migrations") as mock_run_mig:
+        with (
+            patch.object(context, "configure") as mock_configure,
+            patch.object(context, "begin_transaction") as mock_begin_tx,
+            patch.object(context, "run_migrations") as mock_run_mig,
+        ):
             mock_begin_tx.return_value.__enter__ = MagicMock()
             mock_begin_tx.return_value.__exit__ = MagicMock(return_value=None)
 
@@ -242,9 +240,11 @@ class TestAlembicSetup(unittest.TestCase):
         cfg_sqlite = Config()
         cfg_sqlite.attributes["connection"] = mock_sqlite_conn
 
-        with patch.object(context, "configure") as mock_configure, patch.object(
-            context, "begin_transaction"
-        ) as mock_begin_tx, patch.object(context, "run_migrations") as mock_run_mig:
+        with (
+            patch.object(context, "configure") as mock_configure,
+            patch.object(context, "begin_transaction") as mock_begin_tx,
+            patch.object(context, "run_migrations") as mock_run_mig,
+        ):
             mock_begin_tx.return_value.__enter__ = MagicMock()
             mock_begin_tx.return_value.__exit__ = MagicMock(return_value=None)
 
@@ -267,9 +267,11 @@ class TestAlembicSetup(unittest.TestCase):
         cfg_pg = Config()
         cfg_pg.attributes["connection"] = mock_pg_conn
 
-        with patch.object(context, "configure") as mock_configure, patch.object(
-            context, "begin_transaction"
-        ) as mock_begin_tx, patch.object(context, "run_migrations") as mock_run_mig:
+        with (
+            patch.object(context, "configure") as mock_configure,
+            patch.object(context, "begin_transaction") as mock_begin_tx,
+            patch.object(context, "run_migrations") as mock_run_mig,
+        ):
             mock_begin_tx.return_value.__enter__ = MagicMock()
             mock_begin_tx.return_value.__exit__ = MagicMock(return_value=None)
 

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
-import numpy as np
 
+import numpy as np
 from app.domain.services.portfolio_optimizer import (
     calculate_diversification_ratio,
     calculate_portfolio_volatility,
@@ -43,7 +43,9 @@ class TestQuantitativeRisk(unittest.TestCase):
         collinear_3 = base_returns[:, 3] + 0.0001 * np.random.randn(t_obs)
         collinear_4 = -base_returns[:, 0]
 
-        returns = np.column_stack([base_returns, collinear_1, collinear_2, collinear_3, collinear_4])
+        returns = np.column_stack(
+            [base_returns, collinear_1, collinear_2, collinear_3, collinear_4]
+        )
         self.assertEqual(returns.shape, (t_obs, n_assets))
 
         # Standard sample covariance would be singular / rank deficient (rank <= 4 < 8)
@@ -132,11 +134,13 @@ class TestPortfolioOptimizer(unittest.TestCase):
     def setUp(self) -> None:
         # 3 assets: Asset 0 has high volatility (40%), Asset 1 moderate (20%), Asset 2 low (10%)
         # Correlation matrix
-        corr = np.array([
-            [1.0, 0.3, 0.1],
-            [0.3, 1.0, 0.2],
-            [0.1, 0.2, 1.0],
-        ])
+        corr = np.array(
+            [
+                [1.0, 0.3, 0.1],
+                [0.3, 1.0, 0.2],
+                [0.1, 0.2, 1.0],
+            ]
+        )
         vols = np.array([0.40, 0.20, 0.10])
         # Covariance matrix = D * R * D
         self.cov = np.outer(vols, vols) * corr
@@ -196,11 +200,13 @@ class TestPortfolioOptimizer(unittest.TestCase):
     def test_risk_parity_with_zero_variance_asset(self) -> None:
         """[DEFENSE: NUM-01] Valida que activos de varianza cero se aíslen sin divergencia de gradiente -1/y."""
         # Matriz 3x3 donde el activo 2 tiene varianza nula (ej. efectivo sin riesgo)
-        cov_zero = np.array([
-            [0.04, 0.01, 0.0],
-            [0.01, 0.09, 0.0],
-            [0.0,  0.0,  0.0],
-        ])
+        cov_zero = np.array(
+            [
+                [0.04, 0.01, 0.0],
+                [0.01, 0.09, 0.0],
+                [0.0, 0.0, 0.0],
+            ]
+        )
         weights = risk_parity_portfolio(cov_zero)
         self.assertAlmostEqual(float(np.sum(weights)), 1.0, places=5)
         self.assertTrue(np.all(np.isfinite(weights)))
@@ -213,7 +219,7 @@ class TestPortfolioOptimizer(unittest.TestCase):
         cov_all_zero = np.zeros((3, 3))
         weights = risk_parity_portfolio(cov_all_zero)
         self.assertTrue(np.all(np.isfinite(weights)))
-        np.testing.assert_allclose(weights, [1/3, 1/3, 1/3], atol=1e-5)
+        np.testing.assert_allclose(weights, [1 / 3, 1 / 3, 1 / 3], atol=1e-5)
 
     def test_minimum_variance_solver_failure_fallback_on_nan(self) -> None:
         """[DEFENSE: NUM-02] Valida fallback a 1/N si el solver SLSQP devuelve NaNs o falla."""
@@ -224,7 +230,7 @@ class TestPortfolioOptimizer(unittest.TestCase):
         with patch("app.domain.services.portfolio_optimizer.minimize", return_value=fake_result):
             weights = minimum_variance_portfolio(self.cov)
             self.assertTrue(np.all(np.isfinite(weights)))
-            np.testing.assert_allclose(weights, [1/3, 1/3, 1/3], atol=1e-5)
+            np.testing.assert_allclose(weights, [1 / 3, 1 / 3, 1 / 3], atol=1e-5)
 
     def test_risk_parity_solver_failure_fallback_on_nan(self) -> None:
         """[DEFENSE: NUM-02] Valida fallback a volatilidad inversa si L-BFGS-B devuelve NaNs o falla."""

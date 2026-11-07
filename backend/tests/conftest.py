@@ -2,19 +2,25 @@
 Global pytest fixtures and test harness for InvestAI backend test suite.
 Provides asynchronous database engines, isolated sessions, and HTTP ASGI test clients.
 """
-from typing import AsyncGenerator
-import httpx
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+
+from collections.abc import AsyncGenerator
 
 import app.models  # Registers all declarative tables first
+import httpx
 from app.api.deps import get_db_session
 from app.core.database import Base
 from app.main import app
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.pool import StaticPool
 
 try:
     import pytest
-    import pytest_asyncio
+    import pytest_asyncio  # noqa: F401  # availability probe
 except ImportError:
     # Graceful fallback when running under pure unittest runner without pytest installed
     class _MockPytest:
@@ -22,9 +28,12 @@ except ImportError:
         def fixture(*args, **kwargs):
             if len(args) == 1 and callable(args[0]) and not kwargs:
                 return args[0]
+
             def decorator(func):
                 return func
+
             return decorator
+
     pytest = _MockPytest()
 
 

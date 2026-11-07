@@ -3,20 +3,19 @@ Pruebas unitarias para el conector HTTP de mercado y el guardián anti-SSRF (Mó
 Valida defensas perimetrales contra SSRF, reintentos asíncronos ante 429/503 y mapeo estricto
 hacia DTOs de dominio, garantizando aislamiento total (0 llamadas reales a internet).
 """
-from datetime import date, datetime, timezone
-from decimal import Decimal
-import unittest
-import httpx
 
+import unittest
+from datetime import UTC, date
+from decimal import Decimal
+
+import httpx
 from app.domain.services.market_connector import (
-    MarketDataConnectorError,
     RateLimitExceededError,
     SecuritySSRFViolationError,
     TickerNotFoundError,
 )
 from app.infrastructure.market_data.http_connector import HttpMarketConnector
 from app.infrastructure.market_data.ssrf_guard import (
-    validate_ip_address,
     validate_url_against_ssrf,
 )
 from app.schemas.market_data import MarketBarDTO, MarketQuoteDTO, Timeframe
@@ -99,9 +98,14 @@ class TestSSRFGuard(unittest.TestCase):
 
     def test_ssrf_detects_malicious_resolved_dns(self):
         """Valida que un hostname público cuya resolución apunte a una IP privada sea interceptado."""
-        mock_resolver_evil = lambda h: ["10.50.1.20"]
+
+        def mock_resolver_evil(h):
+            return ["10.50.1.20"]
+
         with self.assertRaises(SecuritySSRFViolationError):
-            validate_url_against_ssrf("https://evil-market-broker.com", dns_resolver=mock_resolver_evil)
+            validate_url_against_ssrf(
+                "https://evil-market-broker.com", dns_resolver=mock_resolver_evil
+            )
 
     def test_ssrf_allows_public_ip_and_dns(self):
         """Valida que URLs con IPs públicas o DNS públicos válidos sean autorizadas."""
@@ -111,8 +115,12 @@ class TestSSRFGuard(unittest.TestCase):
         self.assertEqual(res, valid_ip_url)
 
         # Hostname con resolución pública inyectada
-        mock_resolver_clean = lambda h: ["93.184.216.34"]
-        res_dns = validate_url_against_ssrf("https://api.marketdata.com", dns_resolver=mock_resolver_clean)
+        def mock_resolver_clean(h):
+            return ["93.184.216.34"]
+
+        res_dns = validate_url_against_ssrf(
+            "https://api.marketdata.com", dns_resolver=mock_resolver_clean
+        )
         self.assertEqual(res_dns, "https://api.marketdata.com")
 
 
@@ -130,6 +138,7 @@ class TestHttpMarketConnector(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_quote_success(self):
         """Valida la consulta exitosa y deserialización estricta hacia MarketQuoteDTO."""
+
         def mock_handler(request: httpx.Request) -> httpx.Response:
             self.assertEqual(request.url.path, "/quote/GGAL")
             payload = {
@@ -156,10 +165,11 @@ class TestHttpMarketConnector(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(quote.bid, Decimal("5495.00"))
         self.assertEqual(quote.ask, Decimal("5505.00"))
         self.assertEqual(quote.volume, Decimal("1200000"))
-        self.assertEqual(quote.timestamp.tzinfo, timezone.utc)
+        self.assertEqual(quote.timestamp.tzinfo, UTC)
 
     async def test_get_historical_bars_success(self):
         """Valida la consulta de barras históricas y mapeo a List[MarketBarDTO]."""
+
         def mock_handler(request: httpx.Request) -> httpx.Response:
             self.assertEqual(request.url.path, "/historical/AL30")
             bars_payload = [
@@ -206,6 +216,7 @@ class TestHttpMarketConnector(unittest.IsolatedAsyncioTestCase):
 
     async def test_ticker_not_found_404(self):
         """Valida que un error HTTP 404 sea mapeado a TickerNotFoundError."""
+
         def mock_handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(404, json={"detail": "Instrument not found"})
 
@@ -289,4 +300,3 @@ class TestHttpMarketConnector(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

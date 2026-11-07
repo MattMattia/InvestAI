@@ -4,8 +4,9 @@ Implementa autorización RBAC estricta (require_trader_or_admin para mutaciones,
 get_current_active_user para consultas), aislamiento anti-IDOR/BOLA sobre la cartera asociada
 y liquidación contable atómica sobre saldos de caja y tenencias al ejecutar órdenes.
 """
+
 from datetime import datetime
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -48,24 +49,32 @@ class OrderCreateRequest(BaseSchema):
     portfolio_id: str = Field(..., min_length=1, description="ID de la cartera propietaria")
     ticker: str = Field(..., min_length=1, max_length=30, description="Símbolo del activo")
     side: OrderSide = Field(..., description="Dirección de la orden: BUY o SELL")
-    order_type: OrderType = Field(default=OrderType.MARKET, description="Tipo de orden: MARKET o LIMIT")
+    order_type: OrderType = Field(
+        default=OrderType.MARKET, description="Tipo de orden: MARKET o LIMIT"
+    )
     quantity: float = Field(..., gt=0.0, description="Cantidad nominal a operar (> 0)")
-    price: Optional[float] = Field(default=None, gt=0.0, description="Precio límite o estimado de ejecución")
+    price: float | None = Field(
+        default=None, gt=0.0, description="Precio límite o estimado de ejecución"
+    )
     currency: Currency = Field(default=Currency.ARS, description="Moneda de liquidación")
-    justification: Optional[str] = Field(default="Manual trade order", description="Motivo o justificación de la orden")
+    justification: str | None = Field(
+        default="Manual trade order", description="Motivo o justificación de la orden"
+    )
 
 
 class OrderTransitionRequest(BaseSchema):
     """Esquema inmutable de entrada para transición de estado en la FSM de una orden."""
 
     new_state: OrderState = Field(..., description="Nuevo estado objetivo en la FSM")
-    reason: Optional[str] = Field(default=None, description="Motivo de cancelación o rechazo")
+    reason: str | None = Field(default=None, description="Motivo de cancelación o rechazo")
 
 
 class OrderCancelRequest(BaseSchema):
     """Esquema opcional para cancelación de una orden activa."""
 
-    reason: Optional[str] = Field(default="Cancelación manual por el operador", description="Motivo de cancelación")
+    reason: str | None = Field(
+        default="Cancelación manual por el operador", description="Motivo de cancelación"
+    )
 
 
 class OrderResponseDTO(BaseModel):
@@ -106,7 +115,7 @@ async def _settle_order_on_portfolio(
     price = max(0.01, float(order_model.price_used))
     side = str(order_model.side).upper()
 
-    existing_holding: Optional[HoldingModel] = None
+    existing_holding: HoldingModel | None = None
     for h in portfolio.holdings:
         if (h.asset_ticker or "").strip().upper() == ticker:
             existing_holding = h
@@ -127,9 +136,13 @@ async def _settle_order_on_portfolio(
     if side == OrderSide.BUY.value:
         net_debit = round(gross_amount + total_fees, 2)
         if is_usd:
-            portfolio.cash_balance_usd = round(max(0.0, float(portfolio.cash_balance_usd) - net_debit), 2)
+            portfolio.cash_balance_usd = round(
+                max(0.0, float(portfolio.cash_balance_usd) - net_debit), 2
+            )
         else:
-            portfolio.cash_balance_ars = round(max(0.0, float(portfolio.cash_balance_ars) - net_debit), 2)
+            portfolio.cash_balance_ars = round(
+                max(0.0, float(portfolio.cash_balance_ars) - net_debit), 2
+            )
 
         if existing_holding is not None:
             old_qty = float(existing_holding.quantity)
@@ -173,12 +186,12 @@ async def _settle_order_on_portfolio(
                 existing_holding.current_price = price
 
 
-@router.get("", response_model=List[OrderResponseDTO], status_code=status.HTTP_200_OK)
+@router.get("", response_model=list[OrderResponseDTO], status_code=status.HTTP_200_OK)
 async def list_orders(
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    portfolio_id: Optional[str] = Query(default=None, description="Filtrar órdenes por ID de cartera"),
-) -> List[OrderResponseDTO]:
+    portfolio_id: str | None = Query(default=None, description="Filtrar órdenes por ID de cartera"),
+) -> list[OrderResponseDTO]:
     """
     Lista las órdenes asociadas a las carteras del usuario autenticado (o todas si es ADMIN).
     Si se especifica portfolio_id, verifica que la cartera pertenezca al usuario o que sea ADMIN.
@@ -229,7 +242,7 @@ async def create_order(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(ve),
-        )
+        ) from ve
 
     exec_price = domain_order.price if domain_order.price is not None else 1.0
     shares = max(1, int(round(domain_order.quantity)))
@@ -281,7 +294,9 @@ async def get_order(
             detail="Order not found",
         )
 
-    if not _is_admin_user(current_user) and str(order_model.portfolio.user_id) != str(current_user.id):
+    if not _is_admin_user(current_user) and str(order_model.portfolio.user_id) != str(
+        current_user.id
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Order not found",
@@ -315,7 +330,9 @@ async def transition_order_state(
             detail="Order not found",
         )
 
-    if not _is_admin_user(current_user) and str(order_model.portfolio.user_id) != str(current_user.id):
+    if not _is_admin_user(current_user) and str(order_model.portfolio.user_id) != str(
+        current_user.id
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Order not found",
@@ -344,13 +361,13 @@ async def transition_order_state(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
-        )
+        ) from exc
 
     order_model.status = domain_order.state.value
-    if (
-        domain_order.state == OrderState.FILLED
-        and previous_status not in {OrderState.FILLED.value, "EXECUTED"}
-    ):
+    if domain_order.state == OrderState.FILLED and previous_status not in {
+        OrderState.FILLED.value,
+        "EXECUTED",
+    }:
         await _settle_order_on_portfolio(order_model, current_user, db)
 
     await db.flush()
@@ -384,7 +401,9 @@ async def execute_order(
             detail="Order not found",
         )
 
-    if not _is_admin_user(current_user) and str(order_model.portfolio.user_id) != str(current_user.id):
+    if not _is_admin_user(current_user) and str(order_model.portfolio.user_id) != str(
+        current_user.id
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Order not found",
@@ -413,7 +432,7 @@ async def cancel_order(
     order_id: str,
     current_user: Annotated[UserModel, Depends(require_trader_or_admin)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    payload: Optional[OrderCancelRequest] = None,
+    payload: OrderCancelRequest | None = None,
 ) -> OrderResponseDTO:
     """
     Cancela una orden en estado PENDING, CREATED, VALIDATED o ROUTED,
@@ -433,7 +452,9 @@ async def cancel_order(
             detail="Order not found",
         )
 
-    if not _is_admin_user(current_user) and str(order_model.portfolio.user_id) != str(current_user.id):
+    if not _is_admin_user(current_user) and str(order_model.portfolio.user_id) != str(
+        current_user.id
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Order not found",

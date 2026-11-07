@@ -2,13 +2,13 @@
 Unit test suite for Module 6.2 Phase 1: Data Cleaning Pipeline,
 Monetary Normalization, and Ticker/Currency Validation.
 """
+
 from __future__ import annotations
 
-from decimal import Decimal
 import unittest
+from decimal import Decimal
 
 import pytest
-
 from app.domain.services.ingestion import (
     CleaningErrorCode,
     DataCleaningPipeline,
@@ -139,7 +139,16 @@ class TestDataCleaningPipeline(unittest.TestCase):
         """
         norm_curr = DataCleaningPipeline.normalize_currency
 
-        for ars_label in ("$", "Pesos", "ARS", "Pesos Argentinos", "Moneda Local", "AR$", None, "  "):
+        for ars_label in (
+            "$",
+            "Pesos",
+            "ARS",
+            "Pesos Argentinos",
+            "Moneda Local",
+            "AR$",
+            None,
+            "  ",
+        ):
             self.assertEqual(norm_curr(ars_label), "ARS")
 
         for usd_label in (
@@ -300,12 +309,8 @@ class TestDataCleaningPipeline(unittest.TestCase):
         for valid_rec in result.valid_records:
             self.assertIsNone(valid_rec.avg_price)
 
-        self.assertEqual(
-            result.invalid_records[0].error_code, CleaningErrorCode.INVALID_PRICE
-        )
-        self.assertEqual(
-            result.invalid_records[1].error_code, CleaningErrorCode.INVALID_PRICE
-        )
+        self.assertEqual(result.invalid_records[0].error_code, CleaningErrorCode.INVALID_PRICE)
+        self.assertEqual(result.invalid_records[1].error_code, CleaningErrorCode.INVALID_PRICE)
 
     def test_currency_inference_from_price_string_when_currency_column_missing(
         self,
@@ -368,9 +373,7 @@ class TestDataCleaningPipeline(unittest.TestCase):
         result = pipeline.clean_records(raw_batch)
         self.assertEqual(result.total_valid, 1)
         self.assertEqual(result.total_invalid, 1)
-        self.assertEqual(
-            result.invalid_records[0].error_code, CleaningErrorCode.ZERO_QUANTITY
-        )
+        self.assertEqual(result.invalid_records[0].error_code, CleaningErrorCode.ZERO_QUANTITY)
         self.assertEqual(result.valid_records[0].ticker, "YPFD")
         self.assertEqual(result.valid_records[0].quantity, Decimal("10.0000"))
         self.assertIsNone(result.valid_records[0].avg_price)
@@ -429,4 +432,3 @@ class TestDataCleaningPipeline(unittest.TestCase):
                 CleaningErrorCode.NEGATIVE_QUANTITY,
             ],
         )
-

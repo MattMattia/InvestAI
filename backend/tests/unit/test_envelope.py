@@ -2,19 +2,18 @@
 Pruebas unitarias para el Universal Envelope y contratos de transporte (ARQ-02).
 Valida inmutabilidad, sanitización de frontera (extra="forbid") y serialización de APIResponse y APIErrorResponse.
 """
-from datetime import datetime, timezone
+
 import unittest
 import uuid
-from pydantic import ValidationError
 
 from app.schemas.envelope import (
     APIErrorResponse,
     APIResponse,
-    BaseSchema,
     ErrorDetail,
     ResponseMeta,
     SubErrorDetail,
 )
+from pydantic import ValidationError
 
 
 class TestEnvelopeSchemas(unittest.TestCase):
@@ -127,4 +126,3 @@ class TestEnvelopeSchemas(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

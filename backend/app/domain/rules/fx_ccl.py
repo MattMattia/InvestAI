@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from app.domain.models.portfolio import Portfolio
 from app.domain.rules.base import BaseRiskRule, RuleResult, Severity
 
@@ -8,11 +9,12 @@ class ImplicitFXDivergenceRule(BaseRiskRule):
     Deterministic rule evaluating exchange rate distortions and arbitrage divergence
     between asset-implied dollar rates (CCL / MEP) and the benchmark FX rate (F1.4 & Sec 4.1).
     """
+
     rule_id = "RULE_FX_001"
     rule_name = "Desvío y Distorsión de Dólar Implícito (CCL / MEP)"
     description = "Detecta desvíos significativos entre el tipo de cambio implícito de activos bimoneda/CEDEARs y el dólar cable de referencia."
 
-    DEFAULT_MAX_WARNING_SPREAD_PCT: float = 5.0    # 5% spread warning
+    DEFAULT_MAX_WARNING_SPREAD_PCT: float = 5.0  # 5% spread warning
     DEFAULT_MAX_CRITICAL_SPREAD_PCT: float = 10.0  # 10% spread critical anomaly
 
     def __init__(
@@ -26,14 +28,14 @@ class ImplicitFXDivergenceRule(BaseRiskRule):
     def evaluate(
         self,
         portfolio: Portfolio,
-        context: Optional[Dict[str, Any]] = None,
-    ) -> List[RuleResult]:
+        context: dict[str, Any] | None = None,
+    ) -> list[RuleResult]:
         ctx = context or {}
         reference_ccl = ctx.get("reference_ccl_fx")
         reference_mep = ctx.get("reference_mep_fx")
-        implicit_fx_rates: Dict[str, float] = ctx.get("implicit_fx_rates", {})
+        implicit_fx_rates: dict[str, float] = ctx.get("implicit_fx_rates", {})
 
-        results: List[RuleResult] = []
+        results: list[RuleResult] = []
 
         if not reference_ccl and not reference_mep:
             results.append(
@@ -131,4 +133,3 @@ class ImplicitFXDivergenceRule(BaseRiskRule):
                 )
 
         return results
-

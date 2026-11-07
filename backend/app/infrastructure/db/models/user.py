@@ -3,11 +3,13 @@ Modelo relacional de usuario e identidad (Módulo 5.1 - Fase 1).
 Entidad persistente con control de acceso basado en roles (RBAC),
 UUID nativo, hashing de credenciales y auditoría temporal.
 """
-from datetime import datetime, timezone
-from typing import List, TYPE_CHECKING
-import uuid
 
-from sqlalchemy import Boolean, DateTime, Enum as SQLEnum, String
+import uuid
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
@@ -89,13 +91,13 @@ class UserModel(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -107,9 +109,8 @@ class UserModel(Base):
         nullable=False,
     )
 
-    portfolios: Mapped[List["PortfolioModel"]] = relationship(
+    portfolios: Mapped[list["PortfolioModel"]] = relationship(
         "PortfolioModel",
         back_populates="user",
         cascade="all, delete-orphan",
     )
-

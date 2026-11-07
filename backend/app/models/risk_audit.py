@@ -1,8 +1,10 @@
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, TYPE_CHECKING
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
+
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.core.database import Base
 
 if TYPE_CHECKING:
@@ -37,7 +39,7 @@ class RiskAuditSnapshotModel(Base):
         default=0,
         nullable=False,
     )
-    report_payload: Mapped[Dict[str, Any]] = mapped_column(
+    report_payload: Mapped[dict[str, Any]] = mapped_column(
         JSON,
         nullable=False,
     )
@@ -48,7 +50,7 @@ class RiskAuditSnapshotModel(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 

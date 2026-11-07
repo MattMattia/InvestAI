@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.domain.models.financial_statements import (
     BalanceSheetStandard,
@@ -22,7 +22,7 @@ class TestFXNormalization(unittest.TestCase):
         quote = FXQuote(
             pair="USD_CCL/ARS",
             rate=1310.50,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             source="BYMA",
         )
         self.assertEqual(quote.pair, "USD_CCL/ARS")
@@ -92,13 +92,19 @@ class TestFXNormalization(unittest.TestCase):
     def test_implicit_ccl_invalid_inputs(self) -> None:
         # Zero or negative underlying price
         with self.assertRaises(ValueError):
-            self.fx_service.calculate_implicit_ccl(cedear_price_ars=1000.0, underlying_price_usd=0.0, conversion_ratio=1.0)
+            self.fx_service.calculate_implicit_ccl(
+                cedear_price_ars=1000.0, underlying_price_usd=0.0, conversion_ratio=1.0
+            )
         with self.assertRaises(ValueError):
-            self.fx_service.calculate_implicit_ccl(cedear_price_ars=1000.0, underlying_price_usd=-50.0, conversion_ratio=1.0)
+            self.fx_service.calculate_implicit_ccl(
+                cedear_price_ars=1000.0, underlying_price_usd=-50.0, conversion_ratio=1.0
+            )
 
         # Zero or negative cedear price
         with self.assertRaises(ValueError):
-            self.fx_service.calculate_implicit_ccl(cedear_price_ars=0.0, underlying_price_usd=100.0, conversion_ratio=1.0)
+            self.fx_service.calculate_implicit_ccl(
+                cedear_price_ars=0.0, underlying_price_usd=100.0, conversion_ratio=1.0
+            )
 
     def test_canonical_currency_conversions(self) -> None:
         self.fx_service.register_quote(FXQuote(pair="USD/ARS", rate=1250.0))
@@ -119,7 +125,9 @@ class TestFXNormalization(unittest.TestCase):
 
         # Convenience methods
         self.assertEqual(self.fx_service.convert_to_ars(10.0, Currency.USD_CCL), 13000.0)
-        self.assertEqual(self.fx_service.convert_to_usd(13000.0, Currency.ARS, fx_rate=1300.0), 10.0)
+        self.assertEqual(
+            self.fx_service.convert_to_usd(13000.0, Currency.ARS, fx_rate=1300.0), 10.0
+        )
 
         # Holding conversion (quantity * price)
         # 10 shares at $13,000 ARS each = $130,000 ARS -> in USD CCL = $100 USD
@@ -210,7 +218,7 @@ class TestFinancialStatementsCanonical(unittest.TestCase):
             income=inc,
             balance=bal,
             shares_outstanding=4000000.0,  # 4M shares * $100 = $400M Market Cap
-            earnings_growth_rate=15.0,     # 15% EPS growth
+            earnings_growth_rate=15.0,  # 15% EPS growth
         )
 
         # P/E = 100 / 5 = 20.0

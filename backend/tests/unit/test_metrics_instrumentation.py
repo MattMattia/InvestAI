@@ -8,13 +8,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse
-import httpx
-from httpx import ASGITransport, AsyncClient
-from prometheus_client import CollectorRegistry
 import pytest
-
 from app.core.metrics import (
     HTTP_DURATION_BUCKETS,
     InvestAIMetrics,
@@ -22,6 +16,10 @@ from app.core.metrics import (
     normalize_route_path,
 )
 from app.main import app
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
+from httpx import ASGITransport, AsyncClient
+from prometheus_client import CollectorRegistry
 
 
 @pytest.mark.unit

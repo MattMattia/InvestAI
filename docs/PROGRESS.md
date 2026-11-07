@@ -1,10 +1,10 @@
 # Bitácora Viva de Avance: InvestAI Enterprise (PROGRESS.md)
 
-> **Estado Global del Proyecto:**  
-> **Progreso Consolidado:** 26 de 26 Módulos del Backend Completados (100.0%) — Capítulos 1 al 8 completados en su totalidad  
-> **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5, 6, 7 y 8 (100% completados)  
-> **Capítulos Pendientes / En Progreso:** Capítulo 9 (Frontend Dashboard Reactivo) — Módulo 9.1 en progreso  
-> **Calidad y Suite de Pruebas:** **666 tests pasando al 100% en verde (582 unitarios + 84 de integración)**  
+> **Estado Global del Proyecto:**
+> **Progreso Consolidado:** 26 de 26 Módulos del Backend Completados (100.0%) — Capítulos 1 al 8 completados en su totalidad
+> **Capítulos Implementados:** Capítulos 1, 2, 3, 4, 5, 6, 7 y 8 (100% completados)
+> **Capítulos Pendientes / En Progreso:** Capítulo 9 (Frontend Dashboard Reactivo) — Módulo 9.1 en progreso
+> **Calidad y Suite de Pruebas:** **666 tests pasando al 100% en verde (582 unitarios + 84 de integración)**
 > **Última Actualización:** 2026-11-02
 
 ---
@@ -198,9 +198,9 @@
 
 ## ESTADO FINAL DEL PLAN MAESTRO: 100% COMPLETADO (9 / 9 CAPÍTULOS + AUDITORÍA FORENSE FASES I Y II SELLADAS)
 
-> **Estado Global:** **PLAN MAESTRO DE INVESTAI COMPLETADO Y SELLADO AL 100%**  
-> **Backend:** **674 tests en verde** (583 unitarios + 91 de integración — 0 fallos, 0 regresiones, 0 warnings)  
-> **Frontend:** Scaffolding reactivo institucional completo (React 18 + Vite + TypeScript estricto + Tailwind CSS) compilando limpiamente con **0 errores de tipado** en todos sus módulos y componentes.  
+> **Estado Global:** **PLAN MAESTRO DE INVESTAI COMPLETADO Y SELLADO AL 100%**
+> **Backend:** **674 tests en verde** (583 unitarios + 91 de integración — 0 fallos, 0 regresiones, 0 warnings)
+> **Frontend:** Scaffolding reactivo institucional completo (React 18 + Vite + TypeScript estricto + Tailwind CSS) compilando limpiamente con **0 errores de tipado** en todos sus módulos y componentes.
 > **Auditoría Forense Multi-Ronda (`docs/AUDIT_LEDGER.md`):** **12 / 12 Apartados Sellados (`[x] [SEALED - 100% VERIFIED]`)** — Proxy OpenMetrics `/metrics` con 4 KPIs ejecutivos, Lanzador Desktop 1-Click en < 1s, Higiene Criptográfica de Auth + Hot-Swap de Rol/Perfil (`PATCH /api/v1/auth/me`), Motor de Ingesta compatible con extractos reales de Balanz Excel/CSV (`CEDEAR N` -> `NVDA`, auto-clasificación `CEDEAR`/`BOND`/`STOCK` y eliminación del error `Field required`), Conector Público y Base de Datos de Métricas Cuantitativas de 10 Años (`10.0` años para acciones/CEDEARs y `5.8` años para bonos soberanos emitidos en sept-2020) e Indicadores Fundamentales (`P/E`, `P/B`, `ROE`, `TIR`, `Modified Duration`, `Paridad`), Rebalanceo Multi-Estrategia 10Y (`CONSERVATIVE` Min-Variance, `MODERATE` Risk Parity Spinu, `AGGRESSIVE` Max-Sharpe Markowitz, `EQUAL_WEIGHT` $1/N$), Geometría Donut SVG con arcos `<path fill="none" pointerEvents="stroke">` sin captura errónea de hover, Boleta Pre-Trade con liquidación contable FSM (`POST /orders/{id}/execute` y `/cancel`), CRUD de Tesorería Bimonetaria y Manual de Defensa Académica (`docs/ACADEMIC_DEFENSE_GUIDE.md`).
 
 ### Resumen Consolidado de Ejecución por Capítulos:
@@ -214,10 +214,3 @@
 8. **Capítulo 8**: Ciclo de Vida de Base de Datos y Automatización en Background — 7 / 7 fases (666 tests) [x]
 9. **Capítulo 9**: Frontend Dashboard Reactivo (React 18 + Vite + TypeScript) — 9 / 9 fases (Build Verificado) [x]
 10. **Auditoría Forense Multi-Ronda (Fases I y II) y Defensa Académica**: 12 / 12 apartados sellados (`docs/AUDIT_LEDGER.md`, `docs/ACADEMIC_DEFENSE_GUIDE.md` — **674 tests passed**) [x]
-
-
-
-
-
-
-

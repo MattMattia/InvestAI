@@ -3,22 +3,22 @@ Async Alembic migration environment for InvestAI (Module 8.1 - Phase 1).
 Supports multi-dialect migrations (PostgreSQL + asyncpg / SQLite + aiosqlite),
 declarative naming convention governance, and event-loop-safe execution.
 """
+
 from __future__ import annotations
 
 import asyncio
+import os
 from concurrent.futures import ThreadPoolExecutor
 from logging.config import fileConfig
-import os
 from typing import Any
 
+import app.models  # noqa: F401 - ensures all domain models register on Base.metadata
 from alembic import context
 from alembic.config import Config
-from sqlalchemy import Connection, pool
-from sqlalchemy.ext.asyncio import AsyncConnection, async_engine_from_config
-
 from app.core.config import settings
 from app.core.database import Base
-import app.models  # noqa: F401 - ensures all domain models register on Base.metadata
+from sqlalchemy import Connection, pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
 
 PLACEHOLDER_DB_URL: str = "driver://user:pass@localhost/dbname"
 
@@ -102,11 +102,7 @@ def run_migrations_offline(alembic_cfg: Config | None = None) -> None:
     Run migrations in 'offline' mode, generating SQL scripts directly
     without acquiring a live server connection.
     """
-    cfg = (
-        alembic_cfg
-        if alembic_cfg is not None
-        else (getattr(context, "config", None))
-    )
+    cfg = alembic_cfg if alembic_cfg is not None else (getattr(context, "config", None))
     url = resolve_alembic_database_url(cfg)
     is_sqlite = url.startswith("sqlite")
 
@@ -130,11 +126,7 @@ async def run_async_migrations(alembic_cfg: Config | None = None) -> None:
     Reuses pre-injected connections without disposing them, or creates and
     disposes an ephemeral NullPool async engine.
     """
-    cfg = (
-        alembic_cfg
-        if alembic_cfg is not None
-        else (getattr(context, "config", None))
-    )
+    cfg = alembic_cfg if alembic_cfg is not None else (getattr(context, "config", None))
     url = resolve_alembic_database_url(cfg)
 
     injected_conn: Any = None
@@ -172,11 +164,7 @@ def run_migrations_online(alembic_cfg: Config | None = None) -> None:
     via a separate thread executor to prevent 'asyncio.run() cannot be called
     from a running event loop' errors.
     """
-    cfg = (
-        alembic_cfg
-        if alembic_cfg is not None
-        else (getattr(context, "config", None))
-    )
+    cfg = alembic_cfg if alembic_cfg is not None else (getattr(context, "config", None))
 
     injected_conn: Any = None
     if cfg is not None and hasattr(cfg, "attributes"):

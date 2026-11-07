@@ -120,14 +120,26 @@ class TestOrderFSM(unittest.TestCase):
 
     def test_rejection_from_states(self) -> None:
         # Reject from CREATED (e.g. insufficient cash)
-        o1 = Order(ticker="PAMP", side=OrderSide.BUY, order_type=OrderType.LIMIT, quantity=100.0, price=3000.0)
+        o1 = Order(
+            ticker="PAMP",
+            side=OrderSide.BUY,
+            order_type=OrderType.LIMIT,
+            quantity=100.0,
+            price=3000.0,
+        )
         o1.reject(reason="Saldo insuficiente en cuenta")
         self.assertEqual(o1.state, OrderState.REJECTED)
         self.assertTrue(o1.is_terminal)
         self.assertEqual(o1.rejection_reason, "Saldo insuficiente en cuenta")
 
         # Reject from SUBMITTED (e.g. exchange rejection / market collar)
-        o2 = Order(ticker="PAMP", side=OrderSide.BUY, order_type=OrderType.LIMIT, quantity=100.0, price=3000.0)
+        o2 = Order(
+            ticker="PAMP",
+            side=OrderSide.BUY,
+            order_type=OrderType.LIMIT,
+            quantity=100.0,
+            price=3000.0,
+        )
         o2.validate().submit()
         o2.reject(reason="BYMA collar limit breached")
         self.assertEqual(o2.state, OrderState.REJECTED)
@@ -202,12 +214,16 @@ class TestMarketFrictions(unittest.TestCase):
         slippage_rate = 0.002  # 0.2%
 
         # BUY: price shifts UP
-        eff_px_buy, slip_amt_buy = calculate_slippage(price, qty, OrderSide.BUY, slippage_rate=slippage_rate)
+        eff_px_buy, slip_amt_buy = calculate_slippage(
+            price, qty, OrderSide.BUY, slippage_rate=slippage_rate
+        )
         self.assertEqual(eff_px_buy, 1002.0)
         self.assertEqual(slip_amt_buy, 20.0)  # (1002 - 1000) * 10 = 20
 
         # SELL: price shifts DOWN
-        eff_px_sell, slip_amt_sell = calculate_slippage(price, qty, OrderSide.SELL, slippage_rate=slippage_rate)
+        eff_px_sell, slip_amt_sell = calculate_slippage(
+            price, qty, OrderSide.SELL, slippage_rate=slippage_rate
+        )
         self.assertEqual(eff_px_sell, 998.0)
         self.assertEqual(slip_amt_sell, 20.0)
 

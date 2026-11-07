@@ -3,11 +3,11 @@ Contratos canónicos de identidad y usuario (Módulo 5.1 - Fase 1).
 DTOs inmutables basados en Pydantic v2 con validación estricta, enmascaramiento SecretStr
 y validación defensiva de correos según RFC 5321/5322.
 """
-from datetime import datetime, timezone
+
 import enum
 import re
-from typing import Optional
 import uuid
+from datetime import UTC, datetime
 
 from pydantic import ConfigDict, Field, SecretStr, field_validator
 
@@ -85,17 +85,17 @@ class UserCreate(UserBase):
 class UserUpdateRequest(BaseSchema):
     """Esquema para actualización de perfil de usuario y simulación de rol RBAC."""
 
-    full_name: Optional[str] = Field(
+    full_name: str | None = Field(
         default=None,
         min_length=2,
         max_length=100,
         description="Nombre completo actualizado",
     )
-    investor_profile: Optional[str] = Field(
+    investor_profile: str | None = Field(
         default=None,
         description="Perfil de inversor (CONSERVATIVE, MODERATE, AGGRESSIVE)",
     )
-    role: Optional[UserRole] = Field(
+    role: UserRole | None = Field(
         default=None,
         description="Rol RBAC activo (VIEWER, TRADER, ADMIN)",
     )
@@ -110,7 +110,9 @@ class UserResponse(UserBase):
         description="Perfil de riesgo del inversor asociado a la cuenta",
     )
     created_at: datetime = Field(description="Fecha y hora de creación de la cuenta en UTC")
-    updated_at: datetime = Field(description="Fecha y hora de última actualización de la cuenta en UTC")
+    updated_at: datetime = Field(
+        description="Fecha y hora de última actualización de la cuenta en UTC"
+    )
 
     model_config = ConfigDict(
         from_attributes=True,
@@ -123,5 +125,5 @@ class UserResponse(UserBase):
     @classmethod
     def ensure_utc_timestamp(cls, v: datetime) -> datetime:
         if v.tzinfo is None:
-            return v.replace(tzinfo=timezone.utc)
-        return v.astimezone(timezone.utc)
+            return v.replace(tzinfo=UTC)
+        return v.astimezone(UTC)

@@ -5,11 +5,12 @@ unicidad de salt, rechazo de tipos inválidos, cadenas vacías y bytes nulos,
 límite estricto de 72 bytes UTF-8 (multibyte DoS boundary), manejo seguro de hashes corruptos
 y validación de factor de costo (rounds).
 """
-import unittest
-import pytest
-from pydantic import SecretStr
 
+import unittest
+
+import pytest
 from app.core.security import get_password_hash, verify_password
+from pydantic import SecretStr
 
 
 @pytest.mark.unit
@@ -166,4 +167,3 @@ class TestSecurityCrypto(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

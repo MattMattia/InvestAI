@@ -7,6 +7,7 @@ anti-IDOR ownership verification, multipart file sanitization, 10 MB size ceilin
 and end-to-end orchestration across Modules 6.1, 6.2, and 6.3 wrapped in the
 canonical `APIResponse[IngestionReportSummary]` envelope.
 """
+
 from __future__ import annotations
 
 import logging
@@ -102,9 +103,7 @@ def _resolve_reconciliation_mode(
     request: Request,
 ) -> ReconciliationMode:
     """Resolve and validate `mode` from multipart form or query params."""
-    raw_mode = (
-        form_mode if form_mode is not None else request.query_params.get("mode")
-    )
+    raw_mode = form_mode if form_mode is not None else request.query_params.get("mode")
     if raw_mode is None or not raw_mode.strip():
         return ReconciliationMode.SNAPSHOT
 
@@ -114,10 +113,7 @@ def _resolve_reconciliation_mode(
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=(
-                f"Invalid reconciliation mode '{raw_mode}'. "
-                "Allowed values: SNAPSHOT, MERGE."
-            ),
+            detail=(f"Invalid reconciliation mode '{raw_mode}'. Allowed values: SNAPSHOT, MERGE."),
         ) from exc
 
 
@@ -222,9 +218,7 @@ async def upload_broker_report(
     try:
         effective_portfolio_id = _resolve_portfolio_id(portfolio_id, request)
         effective_mode = _resolve_reconciliation_mode(mode, request)
-        effective_allow_empty = _resolve_allow_empty_snapshot(
-            allow_empty_snapshot, request
-        )
+        effective_allow_empty = _resolve_allow_empty_snapshot(allow_empty_snapshot, request)
 
         clean_filename = _sanitize_and_validate_filename(file.filename)
 
@@ -339,9 +333,7 @@ async def upload_broker_report(
         ) from exc
 
     # 4. Canonical Envelope Assembly
-    combined_warnings = list(clean_result.warnings) + list(
-        reconciliation_report.warnings
-    )
+    combined_warnings = list(clean_result.warnings) + list(reconciliation_report.warnings)
     summary = IngestionReportSummary(
         filename=clean_filename,
         portfolio_id=effective_portfolio_id,

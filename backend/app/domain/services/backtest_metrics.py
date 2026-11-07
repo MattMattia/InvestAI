@@ -1,10 +1,9 @@
-from typing import List, Union
 import numpy as np
 
 from app.schemas.backtest import BacktestPerformanceMetrics
 
 
-def _clean_series(values: Union[List[float], np.ndarray]) -> np.ndarray:
+def _clean_series(values: list[float] | np.ndarray) -> np.ndarray:
     """
     Sanea y valida una serie numérica para garantizar que sea un array 1D
     finito (sin NaNs ni Infs) de tipo float64.
@@ -23,7 +22,7 @@ def _clean_series(values: Union[List[float], np.ndarray]) -> np.ndarray:
     return arr
 
 
-def calculate_total_return(portfolio_values: Union[List[float], np.ndarray]) -> float:
+def calculate_total_return(portfolio_values: list[float] | np.ndarray) -> float:
     """
     Calcula el retorno total acumulado de una serie de valor liquidativo (NAV):
     Total Return = (Valor Final - Valor Inicial) / Valor Inicial = (V_N / V_0) - 1
@@ -48,7 +47,7 @@ def calculate_total_return(portfolio_values: Union[List[float], np.ndarray]) -> 
 
 
 def calculate_cagr(
-    portfolio_values: Union[List[float], np.ndarray],
+    portfolio_values: list[float] | np.ndarray,
     periods_per_year: int = 252,
 ) -> float:
     """
@@ -80,7 +79,7 @@ def calculate_cagr(
         return 0.0
 
 
-def calculate_daily_returns(portfolio_values: Union[List[float], np.ndarray]) -> np.ndarray:
+def calculate_daily_returns(portfolio_values: list[float] | np.ndarray) -> np.ndarray:
     """
     Calcula la serie de retornos diarios discretos:
     R_t = (V_t - V_{t-1}) / V_{t-1}
@@ -103,7 +102,7 @@ def calculate_daily_returns(portfolio_values: Union[List[float], np.ndarray]) ->
 
 
 def calculate_annualized_volatility(
-    daily_returns: Union[List[float], np.ndarray],
+    daily_returns: list[float] | np.ndarray,
     periods_per_year: int = 252,
 ) -> float:
     """
@@ -125,7 +124,7 @@ def calculate_annualized_volatility(
 
 
 def calculate_sharpe_ratio(
-    daily_returns: Union[List[float], np.ndarray],
+    daily_returns: list[float] | np.ndarray,
     risk_free_rate: float = 0.0,
     periods_per_year: int = 252,
 ) -> float:
@@ -151,7 +150,7 @@ def calculate_sharpe_ratio(
 
 
 def calculate_sortino_ratio(
-    daily_returns: Union[List[float], np.ndarray],
+    daily_returns: list[float] | np.ndarray,
     risk_free_rate: float = 0.0,
     periods_per_year: int = 252,
 ) -> float:
@@ -171,7 +170,7 @@ def calculate_sortino_ratio(
 
     daily_rf = risk_free_rate / periods_per_year
     downside_diff = np.minimum(arr - daily_rf, 0.0)
-    downside_variance = float(np.mean(downside_diff ** 2))
+    downside_variance = float(np.mean(downside_diff**2))
 
     if not np.isfinite(downside_variance) or downside_variance <= 1e-16:
         return 0.0
@@ -187,7 +186,7 @@ def calculate_sortino_ratio(
     return float(sortino) if np.isfinite(sortino) else 0.0
 
 
-def calculate_drawdown_series(portfolio_values: Union[List[float], np.ndarray]) -> np.ndarray:
+def calculate_drawdown_series(portfolio_values: list[float] | np.ndarray) -> np.ndarray:
     """
     Calcula la serie histórica de drawdowns relativos respecto al máximo histórico acumulado:
     DD_t = (V_t - Peak_t) / Peak_t <= 0.0
@@ -208,7 +207,7 @@ def calculate_drawdown_series(portfolio_values: Union[List[float], np.ndarray]) 
     return dd
 
 
-def calculate_max_drawdown(portfolio_values: Union[List[float], np.ndarray]) -> float:
+def calculate_max_drawdown(portfolio_values: list[float] | np.ndarray) -> float:
     """
     Calcula el Máximo Drawdown (MDD) histórico como magnitud positiva (>= 0.0):
     MDD = |min(DD_t)|
@@ -240,7 +239,7 @@ def calculate_calmar_ratio(cagr: float, max_drawdown: float) -> float:
 
 
 def calculate_performance_metrics(
-    portfolio_values: Union[List[float], np.ndarray],
+    portfolio_values: list[float] | np.ndarray,
     risk_free_rate: float = 0.0,
     total_frictions: float = 0.0,
     periods_per_year: int = 252,
