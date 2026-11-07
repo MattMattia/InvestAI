@@ -103,3 +103,7 @@ desktop.ini
 temp/
 uploads/
 
+
+# Local AI tooling (CodeGraph index, skill registry)
+.codegraph/
+.atl/
