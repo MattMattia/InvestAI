@@ -35,7 +35,7 @@ repos:
         name: biome check
         entry: cmd /c npx @biomejs/biome check --write --no-errors-on-unmatched
         language: system
-        types_or: [javascript, jsx, ts, tsx, json]
+        types_or: [javascript, jsx, ts, tsx, json, css]
         files: ^frontend/(src|e2e)/
         pass_filenames: true
       - id: gga-review

@@ -113,3 +113,12 @@ frontend/playwright-report/
 frontend/test-results/
 frontend/blob-report/
 frontend/playwright/.cache/
+
+# Coverage, local env files and AI tooling
+coverage/
+.env.*
+!.env.example
+.claude/
+.cursor/
+.antigravity/
+.engram/

@@ -43,7 +43,15 @@
       },
       "suspicious": {
         "noExplicitAny": "warn",
-        "noArrayIndexKey": "warn"
+        "noArrayIndexKey": "warn",
+        "noUnknownAtRules": {
+          "level": "error",
+          "options": {
+            "ignore": [
+              "tailwind"
+            ]
+          }
+        }
       },
       "a11y": {
         "useButtonType": "warn",
