@@ -1,7 +1,12 @@
 import asyncio
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
-from sqlalchemy import MetaData
+from alembic import command
+from alembic.autogenerate import compare_metadata
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from sqlalchemy import Connection, MetaData, inspect
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -58,66 +63,81 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=POSTGRES_NAMING_CONVENTION)
 
 
+ALEMBIC_INI_PATH: Path = Path(__file__).resolve().parents[2] / "alembic.ini"
+BASELINE_REVISION: str = "001_initial_schema"
+
 _db_initialized = False
 _init_lock = asyncio.Lock()
 
 
+class SchemaDriftError(RuntimeError):
+    """Raised when an unversioned legacy database does not match the ORM schema."""
+
+
+def build_alembic_config() -> Config:
+    """Build the Alembic config from backend/alembic.ini, independent of the current cwd."""
+    if not ALEMBIC_INI_PATH.is_file():
+        raise RuntimeError(f"Alembic configuration not found at {ALEMBIC_INI_PATH}")
+    return Config(str(ALEMBIC_INI_PATH))
+
+
+def _legacy_schema_drift(sync_conn: Connection) -> list[str] | None:
+    """
+    Detect databases created by the former ``create_all`` bootstrap (no ``alembic_version``).
+
+    Returns ``None`` when the database is versioned or empty (normal upgrade path), otherwise
+    the list of structural differences against the ORM metadata (empty list = in sync).
+    """
+    tables = set(inspect(sync_conn).get_table_names())
+    if "alembic_version" in tables or not tables & set(Base.metadata.tables):
+        return None
+
+    structural_ops = {"add_table", "remove_table", "add_column", "remove_column"}
+    drift: list[str] = []
+    for diff in compare_metadata(MigrationContext.configure(sync_conn), Base.metadata):
+        if isinstance(diff, tuple) and diff[0] in structural_ops:
+            if diff[0] in ("add_table", "remove_table"):
+                drift.append(f"{diff[0]} {diff[1].name}")
+            else:
+                drift.append(f"{diff[0]} {diff[2]}.{diff[3].name}")
+    return drift
+
+
+def _run_migrations(legacy_in_sync: bool) -> None:
+    """Run Alembic synchronously (called from a worker thread, outside the event loop)."""
+    cfg = build_alembic_config()
+    if legacy_in_sync:
+        command.stamp(cfg, BASELINE_REVISION)
+    command.upgrade(cfg, "head")
+
+
 async def init_db() -> None:
     """
-    Initializes the database schema by ensuring all tables exist.
-    Essential for local SQLite zero-config development.
+    Bring the database schema to the latest Alembic revision (ARQ: migrations-only schema).
+
+    Unversioned databases created by the former ``create_all`` bootstrap are stamped at the
+    baseline revision when their structure already matches the models; otherwise startup
+    fails fast with the list of differences instead of patching tables in place.
     """
     global _db_initialized
-    async with async_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        if is_sqlite:
+    import app.models  # noqa: F401 - registers every ORM table on Base.metadata
 
-            def _check_and_migrate_sqlite(sync_conn):
-                res = sync_conn.exec_driver_sql("PRAGMA table_info(portfolios)").fetchall()
-                col_names = [r[1] for r in res]
-                if col_names and "investor_profile" not in col_names:
-                    sync_conn.exec_driver_sql(
-                        "ALTER TABLE portfolios ADD COLUMN investor_profile VARCHAR(50) DEFAULT 'MODERATE' NOT NULL"
-                    )
+    async with async_engine.connect() as conn:
+        drift = await conn.run_sync(_legacy_schema_drift)
 
-                asset_res = sync_conn.exec_driver_sql("PRAGMA table_info(assets)").fetchall()
-                asset_cols = {r[1] for r in asset_res}
-                if asset_cols:
-                    asset_migrations = [
-                        ("history_start_date", "VARCHAR(20) DEFAULT '2016-11-01'"),
-                        ("history_years_available", "FLOAT DEFAULT 10.0 NOT NULL"),
-                        ("data_points_count", "INTEGER DEFAULT 2520 NOT NULL"),
-                        ("cagr_annualized", "FLOAT DEFAULT 0.12 NOT NULL"),
-                        ("volatility_annualized", "FLOAT DEFAULT 0.25 NOT NULL"),
-                        ("sharpe_ratio", "FLOAT DEFAULT 0.48 NOT NULL"),
-                        ("sortino_ratio", "FLOAT DEFAULT 0.68 NOT NULL"),
-                        ("max_drawdown", "FLOAT DEFAULT 0.28 NOT NULL"),
-                        ("beta_market", "FLOAT DEFAULT 1.0 NOT NULL"),
-                        ("var_95_daily", "FLOAT DEFAULT 0.026 NOT NULL"),
-                        ("pe_ratio", "FLOAT"),
-                        ("pb_ratio", "FLOAT"),
-                        ("roe_pct", "FLOAT"),
-                        ("debt_to_equity", "FLOAT"),
-                        ("dividend_yield_pct", "FLOAT"),
-                        ("market_cap_usd", "FLOAT"),
-                        ("ytm_tir_pct", "FLOAT"),
-                        ("modified_duration", "FLOAT"),
-                        ("parity_pct", "FLOAT"),
-                        ("metrics_payload", "JSON"),
-                        ("metrics_updated_at", "DATETIME"),
-                    ]
-                    for col_name, col_def in asset_migrations:
-                        if col_name not in asset_cols:
-                            sync_conn.exec_driver_sql(
-                                f"ALTER TABLE assets ADD COLUMN {col_name} {col_def}"
-                            )
+    if drift:
+        raise SchemaDriftError(
+            "Database was created outside Alembic and differs from the ORM schema: "
+            + ", ".join(drift)
+            + ". Back it up and recreate it (local SQLite: delete the file and re-run the seed)."
+        )
 
-            await conn.run_sync(_check_and_migrate_sqlite)
+    await asyncio.to_thread(_run_migrations, drift is not None)
     _db_initialized = True
 
 
 async def ensure_db_ready() -> None:
-    """Lazily ensures database tables exist even outside of lifespan hooks."""
+    """Lazily applies pending migrations even outside of lifespan hooks."""
     global _db_initialized
     if not _db_initialized:
         async with _init_lock:
