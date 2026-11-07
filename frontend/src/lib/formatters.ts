@@ -4,30 +4,30 @@
  * localized date-time rendering, and portfolio holding metrics calculation.
  */
 
-import { Holding, HoldingWithMetrics } from "@/types/api";
+import type { Holding, HoldingWithMetrics } from "@/types/api";
 
 /**
  * Safely parses any numeric or decimal string representation into a finite JavaScript number.
  * Returns 0 if null, undefined, invalid string, or non-finite (NaN / Infinity).
  */
 export function parseDecimalSafe(
-  value: string | number | null | undefined
+	value: string | number | null | undefined,
 ): number {
-  if (value === null || value === undefined) {
-    return 0;
-  }
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : 0;
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return 0;
-    // Replace any localized commas if formatted as "1.234,56" or clean standard strings
-    const cleaned = trimmed.replace(/,/g, "");
-    const parsed = Number(cleaned);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
+	if (value === null || value === undefined) {
+		return 0;
+	}
+	if (typeof value === "number") {
+		return Number.isFinite(value) ? value : 0;
+	}
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		if (!trimmed) return 0;
+		// Replace any localized commas if formatted as "1.234,56" or clean standard strings
+		const cleaned = trimmed.replace(/,/g, "");
+		const parsed = Number(cleaned);
+		return Number.isFinite(parsed) ? parsed : 0;
+	}
+	return 0;
 }
 
 /**
@@ -36,41 +36,41 @@ export function parseDecimalSafe(
  * Example: 1250000.5 -> "US$ 1.250.000,50" or "$ 1.250.000,50"
  */
 export function formatMoney(
-  amount: string | number | null | undefined,
-  currency: "ARS" | "USD" = "USD"
+	amount: string | number | null | undefined,
+	currency: "ARS" | "USD" = "USD",
 ): string {
-  const num = parseDecimalSafe(amount);
-  const formatter = new Intl.NumberFormat("es-AR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+	const num = parseDecimalSafe(amount);
+	const formatter = new Intl.NumberFormat("es-AR", {
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	});
 
-  const prefix = currency === "ARS" ? "$ " : "US$ ";
-  return `${prefix}${formatter.format(num)}`;
+	const prefix = currency === "ARS" ? "$ " : "US$ ";
+	return `${prefix}${formatter.format(num)}`;
 }
 
 const USD_NATIVE_TICKERS = new Set([
-  "AL30D",
-  "GD30D",
-  "AE38D",
-  "AL35D",
-  "GD35",
-  "GD35D",
+	"AL30D",
+	"GD30D",
+	"AE38D",
+	"AL35D",
+	"GD35",
+	"GD35D",
 ]);
 
 /**
  * Infers the native settlement currency ('ARS' or 'USD') of a BYMA instrument from its ticker.
  */
 export function inferAssetNativeCurrency(
-  ticker: string | null | undefined,
-  fallback: "ARS" | "USD" = "ARS"
+	ticker: string | null | undefined,
+	fallback: "ARS" | "USD" = "ARS",
 ): "ARS" | "USD" {
-  if (!ticker) return fallback;
-  const clean = ticker.trim().toUpperCase();
-  if (USD_NATIVE_TICKERS.has(clean)) {
-    return "USD";
-  }
-  return "ARS";
+	if (!ticker) return fallback;
+	const clean = ticker.trim().toUpperCase();
+	if (USD_NATIVE_TICKERS.has(clean)) {
+		return "USD";
+	}
+	return "ARS";
 }
 
 /**
@@ -79,31 +79,32 @@ export function inferAssetNativeCurrency(
  * Example: "2026-11-02T18:30:00" -> "02/11/2026 15:30"
  */
 export function formatDate(isoString: string | null | undefined): string {
-  if (!isoString) return "—";
-  try {
-    let normalized = isoString.trim();
-    // If timestamp has time component but lacks 'Z' or explicit timezone offset (+HH:MM / -HH:MM), treat as UTC
-    if (
-      (normalized.includes("T") || /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(normalized)) &&
-      !normalized.endsWith("Z") &&
-      !/[+-]\d{2}:?\d{2}$/.test(normalized)
-    ) {
-      normalized = normalized.replace(" ", "T") + "Z";
-    }
-    const date = new Date(normalized);
-    if (isNaN(date.getTime())) return "—";
-    return new Intl.DateTimeFormat("es-AR", {
-      timeZone: "America/Argentina/Buenos_Aires",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).format(date);
-  } catch {
-    return "—";
-  }
+	if (!isoString) return "—";
+	try {
+		let normalized = isoString.trim();
+		// If timestamp has time component but lacks 'Z' or explicit timezone offset (+HH:MM / -HH:MM), treat as UTC
+		if (
+			(normalized.includes("T") ||
+				/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(normalized)) &&
+			!normalized.endsWith("Z") &&
+			!/[+-]\d{2}:?\d{2}$/.test(normalized)
+		) {
+			normalized = normalized.replace(" ", "T") + "Z";
+		}
+		const date = new Date(normalized);
+		if (isNaN(date.getTime())) return "—";
+		return new Intl.DateTimeFormat("es-AR", {
+			timeZone: "America/Argentina/Buenos_Aires",
+			day: "2-digit",
+			month: "2-digit",
+			year: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+			hour12: false,
+		}).format(date);
+	} catch {
+		return "—";
+	}
 }
 
 /**
@@ -111,84 +112,84 @@ export function formatDate(isoString: string | null | undefined): string {
  * Example: 0.125 -> "+12.50%", -0.04 -> "-4.00%"
  */
 export function formatPercent(
-  value: string | number | null | undefined,
-  showSign: boolean = true
+	value: string | number | null | undefined,
+	showSign: boolean = true,
 ): string {
-  const num = parseDecimalSafe(value);
-  const pct = num * 100;
-  const sign = showSign && pct > 0 ? "+" : "";
-  return `${sign}${pct.toFixed(2)}%`;
+	const num = parseDecimalSafe(value);
+	const pct = num * 100;
+	const sign = showSign && pct > 0 ? "+" : "";
+	return `${sign}${pct.toFixed(2)}%`;
 }
 
 /**
  * Formats a ratio with semantic sign and metadata flags for financial chip styling.
  */
 export function formatSignedPercent(
-  value: string | number | null | undefined
+	value: string | number | null | undefined,
 ): { text: string; isPositive: boolean; isZero: boolean } {
-  const num = parseDecimalSafe(value);
-  const pct = num * 100;
-  const isZero = Math.abs(pct) < 0.005;
-  const isPositive = !isZero && pct > 0;
-  const sign = isPositive ? "+" : "";
+	const num = parseDecimalSafe(value);
+	const pct = num * 100;
+	const isZero = Math.abs(pct) < 0.005;
+	const isPositive = !isZero && pct > 0;
+	const sign = isPositive ? "+" : "";
 
-  return {
-    text: `${sign}${pct.toFixed(2)}%`,
-    isPositive,
-    isZero,
-  };
+	return {
+		text: `${sign}${pct.toFixed(2)}%`,
+		isPositive,
+		isZero,
+	};
 }
 
 /**
  * Formats raw numeric values with thousand separators.
  */
 export function formatNumber(
-  value: string | number | null | undefined,
-  decimals: number = 2
+	value: string | number | null | undefined,
+	decimals: number = 2,
 ): string {
-  const num = parseDecimalSafe(value);
-  return new Intl.NumberFormat("es-AR", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(num);
+	const num = parseDecimalSafe(value);
+	return new Intl.NumberFormat("es-AR", {
+		minimumFractionDigits: decimals,
+		maximumFractionDigits: decimals,
+	}).format(num);
 }
 
 /**
  * Safely calculates holding financial metrics with strict zero-division protection.
  */
 export function calculateHoldingMetrics(
-  holding: Holding,
-  totalPortfolioValue: number
+	holding: Holding,
+	totalPortfolioValue: number,
 ): HoldingWithMetrics {
-  const qty = parseDecimalSafe(holding.quantity);
-  const buyPrice = parseDecimalSafe(holding.average_buy_price);
-  const curPrice = parseDecimalSafe(holding.current_price);
+	const qty = parseDecimalSafe(holding.quantity);
+	const buyPrice = parseDecimalSafe(holding.average_buy_price);
+	const curPrice = parseDecimalSafe(holding.current_price);
 
-  const marketValue = qty * curPrice;
-  const costBasis = qty * buyPrice;
-  const unrealizedPnl = marketValue - costBasis;
-  const unrealizedPnlPct = costBasis > 0 ? unrealizedPnl / costBasis : 0;
-  const weightPct =
-    totalPortfolioValue > 0 ? (marketValue / totalPortfolioValue) * 100 : 0;
+	const marketValue = qty * curPrice;
+	const costBasis = qty * buyPrice;
+	const unrealizedPnl = marketValue - costBasis;
+	const unrealizedPnlPct = costBasis > 0 ? unrealizedPnl / costBasis : 0;
+	const weightPct =
+		totalPortfolioValue > 0 ? (marketValue / totalPortfolioValue) * 100 : 0;
 
-  const rawCurrency = holding.asset?.currency?.toUpperCase();
-  const currency: "ARS" | "USD" = rawCurrency === "USD" ? "USD" : "ARS";
+	const rawCurrency = holding.asset?.currency?.toUpperCase();
+	const currency: "ARS" | "USD" = rawCurrency === "USD" ? "USD" : "ARS";
 
-  return {
-    id: holding.id,
-    portfolio_id: holding.portfolio_id,
-    asset_ticker: holding.asset_ticker,
-    quantity: qty,
-    average_buy_price: buyPrice,
-    current_price: curPrice,
-    market_value: marketValue,
-    cost_basis: costBasis,
-    unrealized_pnl: unrealizedPnl,
-    unrealized_pnl_pct: unrealizedPnlPct,
-    weight_pct: weightPct,
-    currency,
-    asset: holding.asset,
-  };
+	return {
+		id: holding.id,
+		portfolio_id: holding.portfolio_id,
+		asset_ticker: holding.asset_ticker,
+		quantity: qty,
+		average_buy_price: buyPrice,
+		current_price: curPrice,
+		market_value: marketValue,
+		cost_basis: costBasis,
+		unrealized_pnl: unrealizedPnl,
+		unrealized_pnl_pct: unrealizedPnlPct,
+		weight_pct: weightPct,
+		currency,
+		asset: holding.asset,
+	};
 }
 
 /**
@@ -196,23 +197,23 @@ export function calculateHoldingMetrics(
  * Safely parses JSON strings or returns native objects, with fallback to an empty object.
  */
 export function normalizeSnapshotPayload(
-  payload: unknown
+	payload: unknown,
 ): Record<string, unknown> {
-  if (!payload) return {};
-  if (typeof payload === "object" && !Array.isArray(payload)) {
-    return payload as Record<string, unknown>;
-  }
-  if (typeof payload === "string") {
-    try {
-      const parsed = JSON.parse(payload);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-    } catch {
-      return { raw: payload };
-    }
-  }
-  return {};
+	if (!payload) return {};
+	if (typeof payload === "object" && !Array.isArray(payload)) {
+		return payload as Record<string, unknown>;
+	}
+	if (typeof payload === "string") {
+		try {
+			const parsed = JSON.parse(payload);
+			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+				return parsed as Record<string, unknown>;
+			}
+		} catch {
+			return { raw: payload };
+		}
+	}
+	return {};
 }
 
 /**
@@ -225,40 +226,46 @@ export function normalizeSnapshotPayload(
  * - Net total = side === 'BUY' ? grossAmount + totalFees : grossAmount - totalFees
  */
 export function calculateOrderCostBreakdown(params: {
-  quantity: number;
-  price: number;
-  side: "BUY" | "SELL";
-  brokerFeePct?: number;
-  marketFeePct?: number;
+	quantity: number;
+	price: number;
+	side: "BUY" | "SELL";
+	brokerFeePct?: number;
+	marketFeePct?: number;
 }): {
-  grossAmount: number;
-  brokerFee: number;
-  brokerFeeVat: number;
-  marketFee: number;
-  totalFees: number;
-  netTotal: number;
+	grossAmount: number;
+	brokerFee: number;
+	brokerFeeVat: number;
+	marketFee: number;
+	totalFees: number;
+	netTotal: number;
 } {
-  const { quantity, price, side, brokerFeePct = 0.005, marketFeePct = 0.001 } = params;
-  const q = Math.max(0, quantity);
-  const p = Math.max(0, price);
+	const {
+		quantity,
+		price,
+		side,
+		brokerFeePct = 0.005,
+		marketFeePct = 0.001,
+	} = params;
+	const q = Math.max(0, quantity);
+	const p = Math.max(0, price);
 
-  const grossAmount = Number((q * p).toFixed(2));
-  const brokerFee = Number((grossAmount * brokerFeePct).toFixed(2));
-  const brokerFeeVat = Number((brokerFee * 0.21).toFixed(2));
-  const marketFee = Number((grossAmount * marketFeePct).toFixed(2));
-  const totalFees = Number((brokerFee + brokerFeeVat + marketFee).toFixed(2));
+	const grossAmount = Number((q * p).toFixed(2));
+	const brokerFee = Number((grossAmount * brokerFeePct).toFixed(2));
+	const brokerFeeVat = Number((brokerFee * 0.21).toFixed(2));
+	const marketFee = Number((grossAmount * marketFeePct).toFixed(2));
+	const totalFees = Number((brokerFee + brokerFeeVat + marketFee).toFixed(2));
 
-  const netTotal =
-    side === "BUY"
-      ? Number((grossAmount + totalFees).toFixed(2))
-      : Number(Math.max(0, grossAmount - totalFees).toFixed(2));
+	const netTotal =
+		side === "BUY"
+			? Number((grossAmount + totalFees).toFixed(2))
+			: Number(Math.max(0, grossAmount - totalFees).toFixed(2));
 
-  return {
-    grossAmount,
-    brokerFee,
-    brokerFeeVat,
-    marketFee,
-    totalFees,
-    netTotal,
-  };
+	return {
+		grossAmount,
+		brokerFee,
+		brokerFeeVat,
+		marketFee,
+		totalFees,
+		netTotal,
+	};
 }
