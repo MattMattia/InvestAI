@@ -107,3 +107,9 @@ uploads/
 # Local AI tooling (CodeGraph index, skill registry)
 .codegraph/
 .atl/
+
+# Playwright E2E artifacts
+frontend/playwright-report/
+frontend/test-results/
+frontend/blob-report/
+frontend/playwright/.cache/

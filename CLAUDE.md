@@ -26,7 +26,15 @@ Frontend (run from `frontend/`):
 ```bash
 npm run dev        # Vite on :5173, proxies /api, /health, /ready, /metrics to 127.0.0.1:8000
 npm run build      # tsc type-check + vite build (this is the only type/lint gate)
+npm run test:e2e   # Playwright E2E (Chromium only); auto-starts `npm run dev` unless :5173 is already up
+npm run test:e2e:ui                     # Playwright UI mode
+npx playwright test e2e/smoke.spec.ts   # single spec
+npx playwright install chromium         # one-time browser download
 ```
+
+E2E specs live in `frontend/e2e/` (config: `frontend/playwright.config.ts`, baseURL `http://localhost:5173`). The smoke test does not need the backend; specs that hit the API need it running on :8000 (Vite proxies `/api`).
+
+Quality gates (repo root): `ruff.toml` (backend: `E,W,F,I,B,UP,S`, line 100, py311), `biome.json` (Biome 2.6.6 for `frontend/src`: 2-space, line 100, LF, `useImportType` as error) and `.pre-commit-config.yaml` (hygiene hooks, gitleaks, ruff + ruff-format on `backend/`, `biome check --write` on `frontend/src`). Install once with `uv tool install pre-commit && pre-commit install`; run everything with `pre-commit run --all-files`. Fixer hooks rewrite files, so a run that reports "files were modified" must be re-run. The previous Gentleman Guardian Angel hook is chained as `.git/hooks/pre-commit.legacy` and needs `AGENTS.md`.
 
 Full stack: `start_app.ps1` / `start_app.bat` (frees ports 8000/5173, starts both), `scripts/stop_investai.ps1` to stop, or `docker compose up` (Postgres 15 + backend + frontend).
 

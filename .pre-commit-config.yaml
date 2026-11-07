@@ -1,0 +1,46 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+        exclude: ^(\.vscode/|.*tsconfig.*\.json$)
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1500"]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+        files: ^backend/
+        exclude: ^backend/alembic/versions/
+      - id: ruff-format
+        files: ^backend/
+        exclude: ^backend/alembic/versions/
+
+  - repo: local
+    hooks:
+      - id: biome-check
+        name: biome check
+        entry: cmd /c npx @biomejs/biome check --write --no-errors-on-unmatched
+        language: system
+        types_or: [javascript, jsx, ts, tsx, json]
+        files: ^frontend/(src|e2e)/
+        pass_filenames: true
+      - id: gga-review
+        name: Gentleman Guardian Angel (GGA / Gentle AI)
+        entry: bash -c "gga run"
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
