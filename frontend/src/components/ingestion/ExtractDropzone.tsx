@@ -90,7 +90,7 @@ export const ExtractDropzone: React.FC<ExtractDropzoneProps> = ({
 		onFileSelect(file);
 	};
 
-	const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+	const handleDragEnter = (e: React.DragEvent<HTMLElement>) => {
 		e.preventDefault();
 		e.stopPropagation();
 		dragCounterRef.current += 1;
@@ -99,7 +99,7 @@ export const ExtractDropzone: React.FC<ExtractDropzoneProps> = ({
 		}
 	};
 
-	const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+	const handleDragLeave = (e: React.DragEvent<HTMLElement>) => {
 		e.preventDefault();
 		e.stopPropagation();
 		dragCounterRef.current -= 1;
@@ -109,12 +109,12 @@ export const ExtractDropzone: React.FC<ExtractDropzoneProps> = ({
 		}
 	};
 
-	const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+	const handleDragOver = (e: React.DragEvent<HTMLElement>) => {
 		e.preventDefault();
 		e.stopPropagation();
 	};
 
-	const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+	const handleDrop = (e: React.DragEvent<HTMLElement>) => {
 		e.preventDefault();
 		e.stopPropagation();
 		setIsDragOver(false);
@@ -170,20 +170,6 @@ export const ExtractDropzone: React.FC<ExtractDropzoneProps> = ({
 
 			{/* Main Drag-and-Drop Surface */}
 			<div
-				onDragEnter={handleDragEnter}
-				onDragLeave={handleDragLeave}
-				onDragOver={handleDragOver}
-				onDrop={handleDrop}
-				onClick={handleTriggerInput}
-				onKeyDown={(e) => {
-					if (e.key === "Enter" || e.key === " ") {
-						e.preventDefault();
-						handleTriggerInput();
-					}
-				}}
-				tabIndex={disabled ? -1 : 0}
-				role="button"
-				aria-disabled={disabled}
 				className={`relative w-full rounded-2xl border-2 border-dashed p-8 transition-all cursor-pointer select-none text-center ${
 					disabled
 						? "border-slate-800 bg-slate-900/40 opacity-60 cursor-not-allowed"
@@ -194,6 +180,17 @@ export const ExtractDropzone: React.FC<ExtractDropzoneProps> = ({
 								: "border-slate-700/80 bg-slate-900/60 hover:border-slate-600 hover:bg-slate-900/90"
 				}`}
 			>
+				<button
+					type="button"
+					onClick={handleTriggerInput}
+					disabled={disabled}
+					aria-label="Examinar y cargar extracto"
+					onDragEnter={handleDragEnter}
+					onDragLeave={handleDragLeave}
+					onDragOver={handleDragOver}
+					onDrop={handleDrop}
+					className="absolute inset-0 h-full w-full rounded-2xl cursor-pointer disabled:cursor-not-allowed"
+				/>
 				{selectedFile ? (
 					/* File Selected State */
 					<div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-2 pointer-events-none">
@@ -228,7 +225,7 @@ export const ExtractDropzone: React.FC<ExtractDropzoneProps> = ({
 							</div>
 						</div>
 
-						<div className="flex items-center gap-2 pointer-events-auto shrink-0">
+						<div className="relative z-10 flex items-center gap-2 pointer-events-auto shrink-0">
 							<button
 								type="button"
 								onClick={handleRemoveFile}

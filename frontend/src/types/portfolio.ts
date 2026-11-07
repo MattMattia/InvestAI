@@ -84,7 +84,7 @@ export interface RuleResult {
 	severity: "INFO" | "WARNING" | "CRITICAL";
 	passed: boolean;
 	message: string;
-	details: Record<string, any>;
+	details: Record<string, unknown>;
 	timestamp: string;
 }
 

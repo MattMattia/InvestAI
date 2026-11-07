@@ -23,7 +23,7 @@ import {
 	Zap,
 } from "lucide-react";
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { inferAssetNativeCurrency, parseDecimalSafe } from "@/lib/formatters";
 import { orderKeys, portfolioKeys } from "@/lib/queryKeys";
@@ -158,6 +158,7 @@ function computeClientSide10YTargetWeights(
 export const RebalancePanel: React.FC<RebalancePanelProps> = ({
 	portfolio,
 }) => {
+	const uid = useId();
 	const queryClient = useQueryClient();
 	const { isAuthenticated, isTrader, isAdmin, isViewer } = useAuth();
 	const canRebalance = isAuthenticated && (isTrader || isAdmin);
@@ -452,10 +453,10 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({
 				{/* 10-Year Quantitative Strategy Selector */}
 				<div className="space-y-2.5">
 					<div className="flex flex-wrap items-center justify-between gap-2">
-						<label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+						<span className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
 							<Cpu className="h-3.5 w-3.5 text-sky-400" />
 							<span>Modelo Cuantitativo de Optimización (Ventana 10 Años)</span>
-						</label>
+						</span>
 						<span className="text-[11px] font-mono text-sky-400 bg-sky-500/10 border border-sky-500/20 px-2.5 py-0.5 rounded-full">
 							Fórmula Activa: {activeStratInfo.formula}
 						</span>
@@ -505,12 +506,12 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
 					{/* Tolerance Band Preset Selector */}
 					<div className="space-y-2">
-						<label className="block text-xs font-medium text-slate-300 flex items-center justify-between">
+						<span className="block text-xs font-medium text-slate-300 flex items-center justify-between">
 							<span>Banda de Tolerancia (τ)</span>
 							<span className="font-mono text-sky-400 font-bold">
 								±{tolerancePct.toFixed(1)}%
 							</span>
-						</label>
+						</span>
 
 						<div className="grid grid-cols-3 gap-2">
 							{[2.0, 5.0, 10.0].map((val) => (
@@ -532,7 +533,10 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({
 
 					{/* Cash Buffer */}
 					<div className="space-y-2">
-						<label className="block text-xs font-medium text-slate-300 flex items-center justify-between">
+						<label
+							htmlFor={`${uid}-cash-buffer`}
+							className="block text-xs font-medium text-slate-300 flex items-center justify-between"
+						>
 							<span>Buffer de Liquidez Mínimo</span>
 							<span className="font-mono text-emerald-400 font-bold">
 								{cashBufferPct.toFixed(1)}%
@@ -541,6 +545,7 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({
 
 						<div className="flex items-center gap-3">
 							<input
+								id={`${uid}-cash-buffer`}
 								type="range"
 								min="0"
 								max="10"

@@ -20,7 +20,7 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { usePortfolios } from "@/hooks/usePortfolios";
-import { ApiError } from "@/lib/apiClient";
+import { ApiError, extractErrorMessage } from "@/lib/apiClient";
 import { navigateToPortfolioDetail } from "@/lib/navigation";
 import { portfolioKeys, snapshotKeys } from "@/lib/queryKeys";
 import { ingestionService } from "@/services/ingestionService";
@@ -111,14 +111,12 @@ export const IngestionView: React.FC = () => {
 				setErrorMessage(`${err.detail}${extraIssues}`);
 				return;
 			}
-			const anyErr = err as any;
-			const detail =
-				anyErr?.response?.data?.detail ||
-				anyErr?.response?.data?.error?.message ||
-				anyErr?.message ||
-				"Error al procesar el extracto. Verifique el formato y las columnas requeridas.";
 			setErrorMessage(
-				typeof detail === "string" ? detail : JSON.stringify(detail),
+				extractErrorMessage(
+					err,
+					"Error al procesar el extracto. Verifique el formato y las columnas requeridas.",
+					["detail", "error.message"],
+				),
 			);
 		},
 	});
@@ -378,9 +376,9 @@ export const IngestionView: React.FC = () => {
 
 							{/* Mode Selector */}
 							<div className="space-y-2 pt-2 border-t border-slate-800/60">
-								<label className="text-xs text-slate-300 block font-medium">
+								<span className="text-xs text-slate-300 block font-medium">
 									Modo de Conciliación:
-								</label>
+								</span>
 								<div className="grid grid-cols-2 gap-2">
 									<button
 										type="button"

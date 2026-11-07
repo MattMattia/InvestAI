@@ -7,6 +7,7 @@
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { extractErrorMessage } from "../lib/apiClient";
 import type {
 	Holding,
 	RebalanceOrder,
@@ -71,11 +72,11 @@ export const RebalanceModal: React.FC<RebalanceModalProps> = ({
 		try {
 			const res = await onGeneratePlan(targets);
 			setPlan(res);
-		} catch (err: any) {
+		} catch (err: unknown) {
 			setError(
-				err.response?.data?.message ||
-					err.message ||
-					"Error al calcular el rebalanceo.",
+				extractErrorMessage(err, "Error al calcular el rebalanceo.", [
+					"message",
+				]),
 			);
 		} finally {
 			setLoading(false);
@@ -117,6 +118,7 @@ export const RebalanceModal: React.FC<RebalanceModalProps> = ({
 						</h3>
 					</div>
 					<button
+						type="button"
 						onClick={onClose}
 						className="text-slate-400 hover:text-white p-1 rounded transition"
 					>
@@ -211,6 +213,7 @@ export const RebalanceModal: React.FC<RebalanceModalProps> = ({
 
 					<div className="flex justify-end">
 						<button
+							type="button"
 							onClick={handleCalculate}
 							disabled={loading || targets.length === 0}
 							className="bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-lg transition flex items-center space-x-1.5"
@@ -297,8 +300,11 @@ export const RebalanceModal: React.FC<RebalanceModalProps> = ({
 												</td>
 											</tr>
 										) : (
-											plan.orders.map((o, idx) => (
-												<tr key={idx} className="hover:bg-slate-800/40">
+											plan.orders.map((o) => (
+												<tr
+													key={`${o.ticker}-${o.side}`}
+													className="hover:bg-slate-800/40"
+												>
 													<td className="py-2.5 px-3 font-bold text-white">
 														{o.ticker}
 													</td>
@@ -337,6 +343,7 @@ export const RebalanceModal: React.FC<RebalanceModalProps> = ({
 				{/* Footer */}
 				<div className="flex justify-end pt-3 border-t border-slate-700">
 					<button
+						type="button"
 						onClick={onClose}
 						className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold rounded-lg transition"
 					>

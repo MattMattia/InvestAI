@@ -113,7 +113,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 			<div className="flex items-center gap-2 text-xs">
 				<span className="font-mono text-slate-400">InvestAI Enterprise</span>
 				<ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-				<span
+				<button
+					type="button"
+					disabled={!portfolioId}
 					onClick={() => {
 						if (portfolioId) navigateToPortfoliosList();
 					}}
@@ -124,7 +126,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 					}`}
 				>
 					{sectionTitles[activeSection].title}
-				</span>
+				</button>
 				{portfolioId && (
 					<>
 						<ChevronRight className="h-3.5 w-3.5 text-slate-400" />
@@ -191,6 +193,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 						</button>
 
 						<button
+							type="button"
 							onClick={() => logout()}
 							className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-800/50 text-xs font-medium transition-colors"
 							title="Cerrar sesión institucional"
@@ -201,6 +204,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 					</div>
 				) : (
 					<button
+						type="button"
 						onClick={onOpenAuthModal}
 						className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium shadow-md shadow-sky-600/30 transition-all hover:shadow-sky-500/50 active:scale-95"
 					>

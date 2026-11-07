@@ -6,6 +6,11 @@
 import { apiClient } from "@/lib/apiClient";
 import type { APIResponse, BrokerReportUploadResponse } from "@/types/api";
 
+/** Loose backend payload: every field is optional until sanitized below. */
+type RawUploadPayload = Partial<BrokerReportUploadResponse> & {
+	invalid_records_count?: number;
+};
+
 export interface UploadBrokerReportParams {
 	file: File;
 	portfolioId?: string;
@@ -61,41 +66,39 @@ export const ingestionService = {
 			formData.append("mode", mode);
 		}
 
-		const response = await apiClient.post<APIResponse<any> | any>(
-			"/ingestion/upload-report",
-			formData,
-			{
-				signal,
-				params: {
-					...(portfolioId && portfolioId.trim()
-						? { portfolio_id: portfolioId.trim() }
-						: {}),
-					...(mode ? { mode } : {}),
-				},
-				headers: {
-					"Content-Type": undefined as unknown as string,
-				},
-				onUploadProgress: (progressEvent) => {
-					if (progressEvent.total && onProgress) {
-						const pct = Math.round(
-							(progressEvent.loaded * 100) / progressEvent.total,
-						);
-						onProgress(Math.min(100, Math.max(0, pct)));
-					}
-				},
+		const response = await apiClient.post<
+			APIResponse<RawUploadPayload> | RawUploadPayload
+		>("/ingestion/upload-report", formData, {
+			signal,
+			params: {
+				...(portfolioId && portfolioId.trim()
+					? { portfolio_id: portfolioId.trim() }
+					: {}),
+				...(mode ? { mode } : {}),
 			},
-		);
+			headers: {
+				"Content-Type": undefined as unknown as string,
+			},
+			onUploadProgress: (progressEvent) => {
+				if (progressEvent.total && onProgress) {
+					const pct = Math.round(
+						(progressEvent.loaded * 100) / progressEvent.total,
+					);
+					onProgress(Math.min(100, Math.max(0, pct)));
+				}
+			},
+		});
 
 		const rawData = response.data;
 		const meta =
 			rawData && typeof rawData === "object" && "meta" in rawData
-				? (rawData as APIResponse<any>).meta
+				? (rawData as APIResponse<RawUploadPayload>).meta
 				: undefined;
 
 		const data =
 			rawData && typeof rawData === "object" && "data" in rawData
-				? (rawData as APIResponse<any>).data
-				: rawData;
+				? (rawData as APIResponse<RawUploadPayload>).data
+				: (rawData as RawUploadPayload);
 
 		const totalRows = Number(data?.total_rows_parsed ?? 0);
 		const validCount = Number(data?.valid_records_count ?? 0);

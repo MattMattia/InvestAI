@@ -28,7 +28,10 @@ export interface LiveMarketFeedPayload {
 	updated_at: string;
 }
 
-function sanitizeQuote(raw: any): MarketQuote {
+/** Untrusted quote payload: any known field may be missing or mistyped. */
+type RawQuote = Partial<Record<keyof MarketQuote, unknown>>;
+
+function sanitizeQuote(raw: RawQuote): MarketQuote {
 	const lastPrice = Number(raw.last_price) || 0;
 	const prevClose = Number(raw.previous_close) || lastPrice;
 	const chgNom =
@@ -39,7 +42,7 @@ function sanitizeQuote(raw: any): MarketQuote {
 	return {
 		ticker: String(raw.ticker || "").toUpperCase(),
 		name: String(raw.name || raw.ticker || ""),
-		asset_type: raw.asset_type || "STOCK",
+		asset_type: (raw.asset_type as MarketQuote["asset_type"]) || "STOCK",
 		currency: raw.currency === "USD" ? "USD" : "ARS",
 		last_price: lastPrice,
 		open_price: Number(raw.open_price) || lastPrice,
@@ -56,7 +59,10 @@ function sanitizeQuote(raw: any): MarketQuote {
 	};
 }
 
-function sanitizeBar(raw: any): HistoricalBarExtended {
+/** Untrusted OHLCV bar payload: any known field may be missing or mistyped. */
+type RawBar = Partial<Record<keyof HistoricalBarExtended, unknown>>;
+
+function sanitizeBar(raw: RawBar): HistoricalBarExtended {
 	return {
 		timestamp: String(raw.timestamp || new Date().toISOString()),
 		open: Number(raw.open) || 0,

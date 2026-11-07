@@ -102,6 +102,7 @@ export const AuditCompliancePanel: React.FC<AuditCompliancePanelProps> = ({
 
 					<div className="flex items-center gap-3">
 						<button
+							type="button"
 							onClick={() => refetch()}
 							disabled={isFetching || !isAuthenticated}
 							className="p-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-40"
@@ -114,6 +115,7 @@ export const AuditCompliancePanel: React.FC<AuditCompliancePanelProps> = ({
 
 						{canCapture ? (
 							<button
+								type="button"
 								onClick={() => auditMutation.mutate()}
 								disabled={auditMutation.isPending}
 								className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium shadow-md shadow-sky-600/30 transition-all active:scale-95 disabled:opacity-50"

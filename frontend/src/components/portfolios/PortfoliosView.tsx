@@ -105,6 +105,7 @@ export const PortfoliosView: React.FC<PortfoliosViewProps> = ({
 
 				<div className="flex items-center gap-2.5">
 					<button
+						type="button"
 						onClick={() => refetch()}
 						disabled={isFetching || !isAuthenticated}
 						className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-40"
@@ -117,6 +118,7 @@ export const PortfoliosView: React.FC<PortfoliosViewProps> = ({
 
 					{canCreate ? (
 						<button
+							type="button"
 							onClick={() => setIsCreateModalOpen(true)}
 							className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium shadow-md shadow-sky-600/30 transition-all active:scale-95"
 						>
@@ -133,6 +135,7 @@ export const PortfoliosView: React.FC<PortfoliosViewProps> = ({
 						</div>
 					) : (
 						<button
+							type="button"
 							onClick={onOpenAuthModal}
 							className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 border border-sky-500/30 text-xs font-medium transition-all"
 						>
@@ -161,6 +164,7 @@ export const PortfoliosView: React.FC<PortfoliosViewProps> = ({
 						</div>
 					</div>
 					<button
+						type="button"
 						onClick={onOpenAuthModal}
 						className="px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium transition-colors shrink-0 self-start sm:self-auto"
 					>
@@ -284,6 +288,7 @@ export const PortfoliosView: React.FC<PortfoliosViewProps> = ({
 							"No se pudieron recuperar las carteras desde el servidor backend."}
 					</p>
 					<button
+						type="button"
 						onClick={() => refetch()}
 						className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-white transition-colors"
 					>
@@ -310,6 +315,7 @@ export const PortfoliosView: React.FC<PortfoliosViewProps> = ({
 
 					{canCreate && !searchQuery && profileFilter === "ALL" && (
 						<button
+							type="button"
 							onClick={() => setIsCreateModalOpen(true)}
 							className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium shadow-md shadow-sky-600/30 transition-all inline-flex items-center gap-2"
 						>

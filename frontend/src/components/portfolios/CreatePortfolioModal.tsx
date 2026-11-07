@@ -13,7 +13,7 @@ import {
 	X,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useCreatePortfolio } from "@/hooks/usePortfolios";
 import { ApiError, type ValidationErrorDetail } from "@/lib/apiClient";
 import type { InvestorProfile } from "@/types/api";
@@ -27,6 +27,7 @@ export const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
 	isOpen,
 	onClose,
 }) => {
+	const uid = useId();
 	const createMutation = useCreatePortfolio();
 
 	const [name, setName] = useState<string>("");
@@ -100,8 +101,11 @@ export const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 			{/* Backdrop */}
-			<div
-				className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
+			<button
+				type="button"
+				aria-label="Cerrar modal"
+				tabIndex={-1}
+				className="fixed inset-0 h-full w-full cursor-default bg-slate-950/80 backdrop-blur-sm transition-opacity"
 				onClick={onClose}
 			/>
 
@@ -124,6 +128,7 @@ export const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
 					</div>
 
 					<button
+						type="button"
 						onClick={onClose}
 						className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
 					>
@@ -139,8 +144,8 @@ export const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
 							<span className="font-semibold block">{errorMessage}</span>
 							{validationErrors.length > 0 && (
 								<ul className="list-disc list-inside space-y-0.5 text-rose-300/90 font-mono text-[11px]">
-									{validationErrors.map((ve, idx) => (
-										<li key={idx}>
+									{validationErrors.map((ve) => (
+										<li key={`${ve.field ?? ""}-${ve.issue}`}>
 											{ve.field ? `${ve.field}: ` : ""}
 											{ve.issue}
 										</li>
@@ -154,10 +159,14 @@ export const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
 				{/* Form Body */}
 				<form onSubmit={handleSubmit} className="space-y-4">
 					<div>
-						<label className="block text-xs font-medium text-slate-300 mb-1.5">
+						<label
+							htmlFor={`${uid}-name`}
+							className="block text-xs font-medium text-slate-300 mb-1.5"
+						>
 							Nombre de la Cartera *
 						</label>
 						<input
+							id={`${uid}-name`}
 							type="text"
 							required
 							placeholder="Ej: Cartera Renta Fija ARS o CEDEARs Tech"
@@ -168,9 +177,9 @@ export const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
 					</div>
 
 					<div>
-						<label className="block text-xs font-medium text-slate-300 mb-1.5">
+						<span className="block text-xs font-medium text-slate-300 mb-1.5">
 							Perfil de Inversor (Asset Allocation)
-						</label>
+						</span>
 						<div className="grid grid-cols-3 gap-2">
 							{(
 								["CONSERVATIVE", "MODERATE", "AGGRESSIVE"] as InvestorProfile[]
@@ -194,11 +203,15 @@ export const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
 					{/* Bimonetary Initial Cash Balances */}
 					<div className="grid grid-cols-2 gap-3 pt-1">
 						<div>
-							<label className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
+							<label
+								htmlFor={`${uid}-cash-ars`}
+								className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5"
+							>
 								<Coins className="h-3.5 w-3.5 text-emerald-400" />
 								Saldo Inicial ARS ($)
 							</label>
 							<input
+								id={`${uid}-cash-ars`}
 								type="number"
 								step="any"
 								min="0"
@@ -209,11 +222,15 @@ export const CreatePortfolioModal: React.FC<CreatePortfolioModalProps> = ({
 						</div>
 
 						<div>
-							<label className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
+							<label
+								htmlFor={`${uid}-cash-usd`}
+								className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5"
+							>
 								<DollarSign className="h-3.5 w-3.5 text-sky-400" />
 								Saldo Inicial USD (US$)
 							</label>
 							<input
+								id={`${uid}-cash-usd`}
 								type="number"
 								step="any"
 								min="0"

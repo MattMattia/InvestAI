@@ -30,6 +30,16 @@ interface SnapshotDetailModalProps {
 	onClose: () => void;
 }
 
+/** Untrusted rule entry from a stored snapshot payload. */
+interface RawRuleResult {
+	rule_id?: unknown;
+	rule_name?: unknown;
+	severity?: unknown;
+	passed?: unknown;
+	message?: unknown;
+	details?: unknown;
+}
+
 interface ParsedRuleResult {
 	rule_id: string;
 	rule_name: string;
@@ -70,7 +80,7 @@ export const SnapshotDetailModal: React.FC<SnapshotDetailModalProps> = ({
 
 	const rawResults = Array.isArray(payload.results) ? payload.results : [];
 	const rulesList: ParsedRuleResult[] = rawResults.map(
-		(r: any, idx: number) => ({
+		(r: RawRuleResult, idx: number) => ({
 			rule_id: String(r?.rule_id || `RULE_${idx + 1}`),
 			rule_name: String(
 				r?.rule_name || r?.rule_id || `Regla Normativa #${idx + 1}`,
@@ -120,8 +130,11 @@ export const SnapshotDetailModal: React.FC<SnapshotDetailModalProps> = ({
 	return (
 		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
 			{/* Backdrop */}
-			<div
-				className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
+			<button
+				type="button"
+				aria-label="Cerrar modal"
+				tabIndex={-1}
+				className="fixed inset-0 h-full w-full cursor-default bg-slate-950/80 backdrop-blur-sm transition-opacity"
 				onClick={onClose}
 			/>
 
@@ -238,14 +251,14 @@ export const SnapshotDetailModal: React.FC<SnapshotDetailModalProps> = ({
 
 						{rulesList.length > 0 ? (
 							<div className="space-y-2.5">
-								{rulesList.map((rule, index) => {
+								{rulesList.map((rule) => {
 									const isRulePassed = rule.passed;
 									const isCritical =
 										!isRulePassed && rule.severity === "CRITICAL";
 
 									return (
 										<div
-											key={`${rule.rule_id}-${index}`}
+											key={rule.rule_id}
 											className={`p-4 rounded-xl border transition-colors ${
 												isRulePassed
 													? "bg-slate-950/60 border-slate-800/90"

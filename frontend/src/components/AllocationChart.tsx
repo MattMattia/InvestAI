@@ -280,6 +280,7 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
 				{/* View Switcher Toggle: Por Activo | Por Sector | Por Tipo de Activo */}
 				<div className="flex items-center bg-slate-900/90 p-1 rounded-lg border border-slate-700/80 self-stretch sm:self-auto gap-1">
 					<button
+						type="button"
 						onClick={() => {
 							setViewMode("asset");
 							setHoveredSlice(null);
@@ -295,6 +296,7 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
 						<span>Por Activo</span>
 					</button>
 					<button
+						type="button"
 						onClick={() => {
 							setViewMode("sector");
 							setHoveredSlice(null);
@@ -310,6 +312,7 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
 						<span>Por Sector</span>
 					</button>
 					<button
+						type="button"
 						onClick={() => {
 							setViewMode("assetType");
 							setHoveredSlice(null);
@@ -358,8 +361,17 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
 										strokeDasharray={segment.strokeDasharray}
 										strokeDashoffset={segment.strokeDashoffset}
 										className="cursor-pointer transition-all duration-200 hover:opacity-90"
+										role="option"
+										tabIndex={0}
+										aria-label={segment.label}
 										onMouseEnter={() => setHoveredSlice(segment)}
 										onClick={() => setClickedSlice(segment)}
+										onKeyDown={(e) => {
+											if (e.key === "Enter" || e.key === " ") {
+												e.preventDefault();
+												setClickedSlice(segment);
+											}
+										}}
 									/>
 								);
 							})}
@@ -413,11 +425,12 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
 						{slices.map((slice) => {
 							const isSelected = activeSlice?.key === slice.key;
 							return (
-								<div
+								<button
+									type="button"
 									key={slice.key}
 									onMouseEnter={() => setHoveredSlice(slice)}
 									onClick={() => setClickedSlice(slice)}
-									className={`p-2 rounded-lg transition border cursor-pointer ${
+									className={`block w-full text-left p-2 rounded-lg transition border cursor-pointer ${
 										isSelected
 											? "bg-slate-900/90 border-slate-600 shadow-sm ring-1 ring-sky-500/30"
 											: "bg-slate-900/40 border-slate-700/60 hover:bg-slate-900/60 hover:border-slate-600"
@@ -472,7 +485,7 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
 											}}
 										/>
 									</div>
-								</div>
+								</button>
 							);
 						})}
 					</div>
@@ -483,14 +496,16 @@ export const AllocationChart: React.FC<AllocationChartProps> = ({
 			<div className="pt-2">
 				<div className="w-full h-3 rounded-full bg-slate-950 flex overflow-hidden p-0.5 border border-slate-800 shadow-inner">
 					{slices.map((slice) => (
-						<div
+						<button
+							type="button"
 							key={slice.key}
+							aria-label={`${slice.label}: ${slice.percentage}%`}
 							title={`${slice.label}: ${slice.percentage}%`}
 							style={{
 								width: `${slice.percentage}%`,
 								backgroundColor: slice.color,
 							}}
-							className="h-full transition-all hover:brightness-125 cursor-pointer first:rounded-l-full last:rounded-r-full"
+							className="h-full p-0 border-0 transition-all hover:brightness-125 cursor-pointer first:rounded-l-full last:rounded-r-full"
 							onMouseEnter={() => setHoveredSlice(slice)}
 							onClick={() => setClickedSlice(slice)}
 						/>

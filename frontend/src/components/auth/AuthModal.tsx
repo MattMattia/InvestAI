@@ -16,7 +16,7 @@ import {
 	X,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, type ValidationErrorDetail } from "@/lib/apiClient";
 import type { InvestorProfile } from "@/types/api";
@@ -32,6 +32,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 	onClose,
 	initialMode = "login",
 }) => {
+	const uid = useId();
 	const { login, register, isAuthenticated } = useAuth();
 	const [mode, setMode] = useState<"login" | "register">(initialMode);
 
@@ -160,13 +161,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 	};
 
 	return (
-		<div
-			className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
-			onClick={handleClose}
-		>
+		<div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+			<button
+				type="button"
+				aria-label="Cerrar modal"
+				tabIndex={-1}
+				onClick={handleClose}
+				className="absolute inset-0 h-full w-full cursor-default"
+			/>
 			<div
-				className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col"
-				onClick={(e) => e.stopPropagation()}
+				className="relative bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col"
 				role="dialog"
 				aria-modal="true"
 			>
@@ -198,6 +202,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 					</div>
 
 					<button
+						type="button"
 						onClick={handleClose}
 						className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
 						aria-label="Cerrar modal"
@@ -220,8 +225,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 								<p className="font-semibold">{errorMessage}</p>
 								{validationErrors.length > 0 && (
 									<ul className="mt-1 list-disc list-inside space-y-0.5 text-rose-300/80">
-										{validationErrors.map((v, i) => (
-											<li key={i}>
+										{validationErrors.map((v) => (
+											<li key={`${v.field ?? ""}-${v.issue}`}>
 												{v.field ? (
 													<span className="font-mono">{v.field}: </span>
 												) : null}
@@ -262,12 +267,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 					{mode === "register" && (
 						<>
 							<div>
-								<label className="block text-xs font-medium text-slate-300 mb-1.5">
+								<label
+									htmlFor={`${uid}-fullname`}
+									className="block text-xs font-medium text-slate-300 mb-1.5"
+								>
 									Nombre Completo
 								</label>
 								<div className="relative">
 									<UserCheck className="h-4 w-4 text-slate-500 absolute left-3 top-3" />
 									<input
+										id={`${uid}-fullname`}
 										type="text"
 										required
 										minLength={2}
@@ -281,10 +290,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 							</div>
 
 							<div>
-								<label className="block text-xs font-medium text-slate-300 mb-1.5">
+								<label
+									htmlFor={`${uid}-profile`}
+									className="block text-xs font-medium text-slate-300 mb-1.5"
+								>
 									Perfil de Inversor Inicial
 								</label>
 								<select
+									id={`${uid}-profile`}
 									value={investorProfile}
 									onChange={(e) =>
 										setInvestorProfile(e.target.value as InvestorProfile)
@@ -312,12 +325,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
 					{/* Common Fields: Email and Password */}
 					<div>
-						<label className="block text-xs font-medium text-slate-300 mb-1.5">
+						<label
+							htmlFor={`${uid}-email`}
+							className="block text-xs font-medium text-slate-300 mb-1.5"
+						>
 							Correo Electrónico
 						</label>
 						<div className="relative">
 							<Mail className="h-4 w-4 text-slate-500 absolute left-3 top-3" />
 							<input
+								id={`${uid}-email`}
 								type="email"
 								name="investai_auth_email"
 								required
@@ -331,12 +348,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 					</div>
 
 					<div>
-						<label className="block text-xs font-medium text-slate-300 mb-1.5">
+						<label
+							htmlFor={`${uid}-password`}
+							className="block text-xs font-medium text-slate-300 mb-1.5"
+						>
 							Contraseña
 						</label>
 						<div className="relative">
 							<Lock className="h-4 w-4 text-slate-500 absolute left-3 top-3" />
 							<input
+								id={`${uid}-password`}
 								type="password"
 								name="investai_auth_password"
 								required

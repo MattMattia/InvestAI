@@ -355,9 +355,8 @@ export const FinancialTimeSeriesChart: React.FC<
 				{/* Right Controls: Currency Selector (ARS / USD CCL) + Timeframe Tabs */}
 				<div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
 					{/* Currency Toggle */}
-					<div
-						className="flex items-center gap-1 p-1 rounded-xl bg-slate-950 border border-slate-800"
-						role="group"
+					<fieldset
+						className="flex min-w-0 items-center gap-1 p-1 rounded-xl bg-slate-950 border border-slate-800"
 						aria-label="Moneda de visualización del gráfico"
 					>
 						<button
@@ -384,7 +383,7 @@ export const FinancialTimeSeriesChart: React.FC<
 						>
 							USD (CCL)
 						</button>
-					</div>
+					</fieldset>
 
 					{/* Timeframe Tabs */}
 					<div className="flex items-center gap-1 p-1 rounded-xl bg-slate-950 border border-slate-800">
@@ -446,8 +445,8 @@ export const FinancialTimeSeriesChart: React.FC<
 						</defs>
 
 						{/* Horizontal Grid Lines */}
-						{yTicks.map((tick, idx) => (
-							<g key={idx}>
+						{yTicks.map((tick) => (
+							<g key={`tick-${tick.val}`}>
 								<line
 									x1={paddingLeft}
 									y1={tick.y}
@@ -565,7 +564,7 @@ export const FinancialTimeSeriesChart: React.FC<
 
 							return (
 								<rect
-									key={`vol-${idx}`}
+									key={`vol-${bar.timestamp}`}
 									x={p.x - 2}
 									y={barY}
 									width="4"

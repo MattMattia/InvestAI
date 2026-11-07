@@ -363,6 +363,7 @@ export const App: React.FC = () => {
 						</div>
 
 						<button
+							type="button"
 							onClick={handleFullSubsystemSync}
 							disabled={healthQuery.isFetching || metricsQuery.isFetching}
 							className="py-2 px-4 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-xs font-semibold text-white shadow-lg shadow-sky-900/30 flex items-center gap-2 transition"
@@ -385,6 +386,7 @@ export const App: React.FC = () => {
 								<span>{syncSuccessBanner}</span>
 							</div>
 							<button
+								type="button"
 								onClick={() => setSyncSuccessBanner(null)}
 								className="text-emerald-400 hover:text-emerald-200 text-xs font-mono px-2"
 							>
@@ -450,6 +452,7 @@ export const App: React.FC = () => {
 							</div>
 
 							<button
+								type="button"
 								onClick={handleFullSubsystemSync}
 								disabled={healthQuery.isFetching}
 								className="mt-6 w-full py-2 px-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 flex items-center justify-center gap-2 transition"
@@ -658,6 +661,7 @@ export const App: React.FC = () => {
 								className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500"
 							/>
 							<button
+								type="button"
 								onClick={() => metricsQuery.refetch()}
 								disabled={metricsQuery.isFetching}
 								className="py-1.5 px-3.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-xs font-semibold text-white flex items-center gap-1.5 transition shadow"
@@ -765,6 +769,7 @@ export const App: React.FC = () => {
 									{filteredSamples.length})
 								</h3>
 								<button
+									type="button"
 									onClick={() => setShowRawMetrics((prev) => !prev)}
 									className="text-xs text-sky-400 hover:text-sky-300 font-mono flex items-center gap-1.5"
 								>
@@ -787,9 +792,9 @@ export const App: React.FC = () => {
 									</thead>
 									<tbody className="divide-y divide-slate-800/60 text-xs font-mono">
 										{filteredSamples.length > 0 ? (
-											filteredSamples.slice(0, 100).map((sample, idx) => (
+											filteredSamples.slice(0, 100).map((sample) => (
 												<tr
-													key={`${sample.name}-${sample.labels}-${idx}`}
+													key={`${sample.name}-${sample.labels}`}
 													className="hover:bg-slate-800/40 transition"
 												>
 													<td className="py-2.5 px-4">
@@ -838,9 +843,9 @@ export const App: React.FC = () => {
 
 							{showRawMetrics && (
 								<div className="p-4 bg-slate-950 border-t border-slate-800 max-h-[320px] overflow-y-auto font-mono text-xs space-y-1">
-									{filteredRawLines.map((line, idx) => (
+									{filteredRawLines.map((line) => (
 										<div
-											key={idx}
+											key={line}
 											className={
 												line.startsWith("# HELP")
 													? "text-sky-400 font-semibold mt-2"

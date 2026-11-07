@@ -1,6 +1,6 @@
 ﻿import { ArrowDownRight, ArrowUpRight, Plus, Trash2 } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { Holding, HoldingCreatePayload } from "../types/portfolio";
 
 interface HoldingsTableProps {
@@ -14,6 +14,7 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
 	onAddHolding,
 	onDeleteHolding,
 }) => {
+	const uid = useId();
 	const [showModal, setShowModal] = useState(false);
 	const [ticker, setTicker] = useState("");
 	const [quantity, setQuantity] = useState<number>(10);
@@ -86,6 +87,7 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
 					</p>
 				</div>
 				<button
+					type="button"
 					onClick={() => setShowModal(true)}
 					className="flex items-center space-x-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition"
 				>
@@ -199,6 +201,7 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
 										</td>
 										<td className="py-3 px-4 text-center">
 											<button
+												type="button"
 												onClick={() => onDeleteHolding(h.id)}
 												title="Eliminar posición"
 												className="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-700 transition"
@@ -224,10 +227,14 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
 						<form onSubmit={handleSubmit} className="space-y-4">
 							<div className="grid grid-cols-2 gap-3">
 								<div>
-									<label className="block text-xs font-semibold text-slate-300 mb-1">
+									<label
+										htmlFor={`${uid}-ticker`}
+										className="block text-xs font-semibold text-slate-300 mb-1"
+									>
 										Ticker / Símbolo
 									</label>
 									<input
+										id={`${uid}-ticker`}
 										type="text"
 										required
 										placeholder="ej. AAPL, AL30, GGAL"
@@ -237,10 +244,14 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
 									/>
 								</div>
 								<div>
-									<label className="block text-xs font-semibold text-slate-300 mb-1">
+									<label
+										htmlFor={`${uid}-asset-type`}
+										className="block text-xs font-semibold text-slate-300 mb-1"
+									>
 										Tipo de Activo
 									</label>
 									<select
+										id={`${uid}-asset-type`}
 										value={assetType}
 										onChange={(e) => setAssetType(e.target.value)}
 										className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500 cursor-pointer"
@@ -260,10 +271,14 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
 
 							<div className="grid grid-cols-3 gap-3">
 								<div>
-									<label className="block text-xs font-semibold text-slate-300 mb-1">
+									<label
+										htmlFor={`${uid}-quantity`}
+										className="block text-xs font-semibold text-slate-300 mb-1"
+									>
 										Cantidad
 									</label>
 									<input
+										id={`${uid}-quantity`}
 										type="number"
 										min="0.0001"
 										step="any"
@@ -276,10 +291,14 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
 									/>
 								</div>
 								<div>
-									<label className="block text-xs font-semibold text-slate-300 mb-1">
+									<label
+										htmlFor={`${uid}-buy-price`}
+										className="block text-xs font-semibold text-slate-300 mb-1"
+									>
 										Precio Compra ($)
 									</label>
 									<input
+										id={`${uid}-buy-price`}
 										type="number"
 										min="0"
 										step="any"
@@ -292,10 +311,14 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
 									/>
 								</div>
 								<div>
-									<label className="block text-xs font-semibold text-slate-300 mb-1">
+									<label
+										htmlFor={`${uid}-market-price`}
+										className="block text-xs font-semibold text-slate-300 mb-1"
+									>
 										Cotización Mercado ($)
 									</label>
 									<input
+										id={`${uid}-market-price`}
 										type="number"
 										min="0"
 										step="any"
@@ -311,10 +334,14 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
 
 							<div className="grid grid-cols-2 gap-3">
 								<div>
-									<label className="block text-xs font-semibold text-slate-300 mb-1">
+									<label
+										htmlFor={`${uid}-currency`}
+										className="block text-xs font-semibold text-slate-300 mb-1"
+									>
 										Moneda
 									</label>
 									<select
+										id={`${uid}-currency`}
 										value={currency}
 										onChange={(e) => setCurrency(e.target.value)}
 										className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500 cursor-pointer"
@@ -324,10 +351,14 @@ export const HoldingsTable: React.FC<HoldingsTableProps> = ({
 									</select>
 								</div>
 								<div>
-									<label className="block text-xs font-semibold text-slate-300 mb-1">
+									<label
+										htmlFor={`${uid}-sector`}
+										className="block text-xs font-semibold text-slate-300 mb-1"
+									>
 										Sector Económico
 									</label>
 									<select
+										id={`${uid}-sector`}
 										value={sector}
 										onChange={(e) => setSector(e.target.value)}
 										className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500 cursor-pointer"

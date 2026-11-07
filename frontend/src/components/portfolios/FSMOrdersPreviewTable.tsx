@@ -72,13 +72,13 @@ export const FSMOrdersPreviewTable: React.FC<FSMOrdersPreviewTableProps> = ({
 						</tr>
 					</thead>
 					<tbody className="divide-y divide-slate-800/60 font-mono">
-						{orders.map((o, idx) => {
+						{orders.map((o) => {
 							const isBuy = o.side === "BUY";
 							const isSell = o.side === "SELL";
 
 							return (
 								<tr
-									key={`${o.ticker}-${idx}`}
+									key={`${o.ticker}-${o.side}`}
 									className="hover:bg-slate-800/40 transition-colors"
 								>
 									{/* Ticker */}

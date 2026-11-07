@@ -70,6 +70,7 @@ export const RiskAlertsPanel: React.FC<RiskAlertsPanelProps> = ({
 				</div>
 
 				<button
+					type="button"
 					onClick={onEvaluate}
 					disabled={loading}
 					className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-lg transition shadow-md shadow-emerald-700/20"
@@ -130,8 +131,11 @@ export const RiskAlertsPanel: React.FC<RiskAlertsPanelProps> = ({
 
 					{/* Lista de Reglas Evaluadas */}
 					<div className="divide-y divide-slate-700/60 border border-slate-700 rounded-lg overflow-hidden bg-slate-900/40">
-						{report.results.map((rule, idx) => (
-							<div key={idx} className="p-3.5 hover:bg-slate-700/20 transition">
+						{report.results.map((rule) => (
+							<div
+								key={rule.rule_id}
+								className="p-3.5 hover:bg-slate-700/20 transition"
+							>
 								<div className="flex items-center justify-between mb-1.5">
 									<div className="flex items-center space-x-2">
 										<span className="text-xs font-bold text-white">

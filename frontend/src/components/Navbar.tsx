@@ -7,7 +7,7 @@ import {
 	ShieldCheck,
 } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { InvestorProfile, PortfolioListItem } from "../types/portfolio";
 
 interface NavbarProps {
@@ -63,6 +63,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 	onRefresh,
 	loading,
 }) => {
+	const uid = useId();
 	const [showModal, setShowModal] = useState(false);
 	const [newPortName, setNewPortName] = useState("");
 	const [profile, setProfile] = useState<InvestorProfile>("MODERATE");
@@ -180,6 +181,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 						</div>
 
 						<button
+							type="button"
 							onClick={() => setShowModal(true)}
 							className="flex items-center space-x-1 bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium px-3 py-2 rounded-lg transition shadow-sm"
 						>
@@ -188,6 +190,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 						</button>
 
 						<button
+							type="button"
 							onClick={onRefresh}
 							disabled={loading}
 							title="Recargar datos"
@@ -214,10 +217,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
 						<form onSubmit={handleSubmit} className="space-y-4">
 							<div>
-								<label className="block text-xs font-semibold text-slate-300 mb-1">
+								<label
+									htmlFor={`${uid}-port-name`}
+									className="block text-xs font-semibold text-slate-300 mb-1"
+								>
 									Nombre del Portafolio
 								</label>
 								<input
+									id={`${uid}-port-name`}
 									type="text"
 									required
 									placeholder="ej. Cartera Equities & Bonos 2026"
@@ -229,9 +236,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
 							{/* Selector de Perfil del Inversor */}
 							<div>
-								<label className="block text-xs font-semibold text-slate-300 mb-1.5">
+								<span className="block text-xs font-semibold text-slate-300 mb-1.5">
 									Perfil de Riesgo y Estrategia Cuantitativa
-								</label>
+								</span>
 								<div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
 									{(
 										[
@@ -293,10 +300,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 							{/* Saldos iniciales de efectivo (estrictamente 0 por defecto) */}
 							<div className="grid grid-cols-2 gap-3 pt-1">
 								<div>
-									<label className="block text-xs font-semibold text-slate-300 mb-1">
+									<label
+										htmlFor={`${uid}-cash-ars`}
+										className="block text-xs font-semibold text-slate-300 mb-1"
+									>
 										Efectivo Inicial ARS ($)
 									</label>
 									<input
+										id={`${uid}-cash-ars`}
 										type="number"
 										min="0"
 										step="any"
@@ -311,10 +322,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 									</span>
 								</div>
 								<div>
-									<label className="block text-xs font-semibold text-slate-300 mb-1">
+									<label
+										htmlFor={`${uid}-cash-usd`}
+										className="block text-xs font-semibold text-slate-300 mb-1"
+									>
 										Efectivo Inicial USD (u$s)
 									</label>
 									<input
+										id={`${uid}-cash-usd`}
 										type="number"
 										min="0"
 										step="any"

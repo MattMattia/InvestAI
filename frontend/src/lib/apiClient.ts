@@ -296,3 +296,39 @@ apiClient.interceptors.response.use(
 		return Promise.reject(normalizeError(error));
 	},
 );
+
+export type ErrorMessageField = "detail" | "message" | "error.message";
+
+/**
+ * Extracts a human-readable message from an unknown thrown value.
+ * Looks at the HTTP response body fields (in the given order), then at the
+ * error's own `message`, and finally falls back to the provided text.
+ */
+export function extractErrorMessage(
+	error: unknown,
+	fallback: string,
+	fields: ErrorMessageField[] = ["detail", "message", "error.message"],
+): string {
+	const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+		value && typeof value === "object"
+			? (value as Record<string, unknown>)
+			: undefined;
+
+	const err = asRecord(error);
+	const data = asRecord(asRecord(err?.response)?.data);
+
+	for (const field of fields) {
+		const value =
+			field === "error.message"
+				? asRecord(data?.error)?.message
+				: data?.[field];
+		if (value) {
+			return typeof value === "string" ? value : JSON.stringify(value);
+		}
+	}
+
+	if (typeof err?.message === "string" && err.message) {
+		return err.message;
+	}
+	return fallback;
+}

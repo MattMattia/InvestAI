@@ -41,10 +41,13 @@ export const PortfolioCard: React.FC<PortfolioCardProps> = ({
 			: (portfolio.holdings?.length ?? 0);
 
 	return (
-		<div
-			onClick={() => onSelect?.(portfolio)}
-			className="group relative rounded-xl bg-slate-900/90 border border-slate-800 p-5 shadow-lg hover:border-sky-500/50 hover:shadow-sky-500/10 transition-all cursor-pointer flex flex-col justify-between"
-		>
+		<div className="group relative rounded-xl bg-slate-900/90 border border-slate-800 p-5 shadow-lg hover:border-sky-500/50 hover:shadow-sky-500/10 transition-all cursor-pointer flex flex-col justify-between">
+			<button
+				type="button"
+				aria-label={`Abrir ${portfolio.name}`}
+				onClick={() => onSelect?.(portfolio)}
+				className="absolute inset-0 h-full w-full rounded-xl cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60"
+			/>
 			{/* Top Header: Name & Profile */}
 			<div>
 				<div className="flex items-start justify-between gap-3 mb-3">
@@ -119,7 +122,7 @@ export const PortfolioCard: React.FC<PortfolioCardProps> = ({
 						e.stopPropagation();
 						onSelect?.(portfolio);
 					}}
-					className="flex items-center gap-1 text-[11px] font-mono text-sky-400 hover:text-sky-300 transition-colors font-medium"
+					className="relative z-10 flex items-center gap-1 text-[11px] font-mono text-sky-400 hover:text-sky-300 transition-colors font-medium"
 				>
 					<span>Ver Tenencias</span>
 					<ChevronRight className="h-3.5 w-3.5" />

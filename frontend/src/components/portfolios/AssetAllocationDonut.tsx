@@ -188,7 +188,7 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
 	return (
 		<div
 			className="rounded-xl bg-slate-900 border border-slate-800 p-5 shadow-lg flex flex-col justify-between space-y-5"
-			onMouseLeave={() => setHoveredSectorId(null)}
+			onPointerLeave={() => setHoveredSectorId(null)}
 		>
 			{/* Header with Currency Switcher */}
 			<div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -238,12 +238,12 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
 			<div className="flex flex-col md:flex-row items-center justify-center gap-6">
 				<div
 					className="relative w-52 h-52 shrink-0 flex items-center justify-center select-none"
-					onMouseLeave={() => setHoveredSectorId(null)}
+					onPointerLeave={() => setHoveredSectorId(null)}
 				>
 					<svg
 						viewBox="0 0 220 220"
 						className="w-full h-full overflow-visible"
-						onMouseLeave={() => setHoveredSectorId(null)}
+						onPointerLeave={() => setHoveredSectorId(null)}
 					>
 						{/* Background track circle — pointerEvents="none" so it never steals hover */}
 						<circle
@@ -288,8 +288,8 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
 														"stroke-width 150ms ease, stroke-opacity 150ms ease",
 												}}
 												className="cursor-pointer"
-												onMouseEnter={() => setHoveredSectorId(sector.id)}
-												onMouseLeave={() => setHoveredSectorId(null)}
+												onPointerEnter={() => setHoveredSectorId(sector.id)}
+												onPointerLeave={() => setHoveredSectorId(null)}
 											/>
 										);
 									}
@@ -318,8 +318,8 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
 													"stroke-width 150ms ease, stroke-opacity 150ms ease",
 											}}
 											className="cursor-pointer"
-											onMouseEnter={() => setHoveredSectorId(sector.id)}
-											onMouseLeave={() => setHoveredSectorId(null)}
+											onPointerEnter={() => setHoveredSectorId(sector.id)}
+											onPointerLeave={() => setHoveredSectorId(null)}
 										/>
 									);
 								});
@@ -379,7 +379,7 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
 				{/* Interactive Legend */}
 				<div
 					className="flex-1 w-full max-h-52 overflow-y-auto space-y-1.5 pr-1"
-					onMouseLeave={() => setHoveredSectorId(null)}
+					onPointerLeave={() => setHoveredSectorId(null)}
 				>
 					{sectors.length > 0 ? (
 						sectors.map((sector) => {
@@ -388,8 +388,8 @@ export const AssetAllocationDonut: React.FC<AssetAllocationDonutProps> = ({
 							return (
 								<div
 									key={sector.id}
-									onMouseEnter={() => setHoveredSectorId(sector.id)}
-									onMouseLeave={() => setHoveredSectorId(null)}
+									onPointerEnter={() => setHoveredSectorId(sector.id)}
+									onPointerLeave={() => setHoveredSectorId(null)}
 									className={`flex items-center justify-between p-2 rounded-lg text-xs font-mono transition-all cursor-pointer ${
 										isHovered
 											? "bg-slate-800/90 border border-slate-700 shadow-sm"

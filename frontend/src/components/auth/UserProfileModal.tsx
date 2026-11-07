@@ -16,7 +16,7 @@ import {
 	X,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import type { InvestorProfile, UserRole } from "@/types/api";
 
@@ -29,6 +29,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 	isOpen,
 	onClose,
 }) => {
+	const uid = useId();
 	const { user, updateUserProfile } = useAuth();
 
 	const [fullName, setFullName] = useState<string>("");
@@ -88,13 +89,16 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 	};
 
 	return (
-		<div
-			className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4"
-			onClick={onClose}
-		>
+		<div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+			<button
+				type="button"
+				aria-label="Cerrar modal"
+				tabIndex={-1}
+				onClick={onClose}
+				className="absolute inset-0 h-full w-full cursor-default"
+			/>
 			<div
-				className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col"
-				onClick={(e) => e.stopPropagation()}
+				className="relative bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col"
 				role="dialog"
 				aria-modal="true"
 			>
@@ -113,6 +117,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 					</div>
 
 					<button
+						type="button"
 						onClick={onClose}
 						className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
 					>
@@ -138,10 +143,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
 					{/* Full Name */}
 					<div>
-						<label className="block text-xs font-semibold text-slate-300 mb-1.5">
+						<label
+							htmlFor={`${uid}-fullname`}
+							className="block text-xs font-semibold text-slate-300 mb-1.5"
+						>
 							Nombre del Operador / Titular
 						</label>
 						<input
+							id={`${uid}-fullname`}
 							type="text"
 							required
 							minLength={2}
@@ -153,10 +162,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
 					{/* Investor Risk Profile */}
 					<div>
-						<label className="block text-xs font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
+						<span className="block text-xs font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
 							<Sliders className="h-3.5 w-3.5 text-sky-400" />
 							Perfil de Inversor Predeterminado
-						</label>
+						</span>
 						<div className="grid grid-cols-3 gap-2.5">
 							{(
 								[
@@ -201,10 +210,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
 					{/* RBAC Role Switcher for Live Academic Demo */}
 					<div>
-						<label className="block text-xs font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
+						<span className="block text-xs font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
 							<Shield className="h-3.5 w-3.5 text-indigo-400" />
 							Rol de Autorización RBAC (Conmutación en Caliente para Defensa)
-						</label>
+						</span>
 						<div className="space-y-2">
 							{(
 								[

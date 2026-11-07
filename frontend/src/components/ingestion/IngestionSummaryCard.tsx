@@ -195,8 +195,8 @@ export const IngestionSummaryCard: React.FC<IngestionSummaryCardProps> = ({
 						<span>Advertencias durante el saneamiento contable:</span>
 					</div>
 					<ul className="list-disc list-inside space-y-1 text-amber-200/90 font-mono text-[11px] pl-1">
-						{result.warnings!.map((w, idx) => (
-							<li key={idx}>{w}</li>
+						{result.warnings!.map((w) => (
+							<li key={w}>{w}</li>
 						))}
 					</ul>
 				</div>

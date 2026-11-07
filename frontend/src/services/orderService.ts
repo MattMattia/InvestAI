@@ -151,8 +151,8 @@ export const orderService = {
 			: raw &&
 					typeof raw === "object" &&
 					"data" in raw &&
-					Array.isArray((raw as any).data)
-				? (raw as any).data
+					Array.isArray((raw as { data: unknown }).data)
+				? (raw as { data: BackendOrderDTO[] }).data
 				: [];
 
 		return list.map((item) => mapBackendOrderToRecord(item, "MARKET"));

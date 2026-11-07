@@ -7,6 +7,7 @@
 } from "lucide-react";
 import type React from "react";
 import { useRef, useState } from "react";
+import { extractErrorMessage } from "../lib/apiClient";
 import type { IngestionReport } from "../types/portfolio";
 
 interface FileUploaderProps {
@@ -73,11 +74,13 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
 			if (res.valid_records_count > 0) {
 				onUploadSuccess();
 			}
-		} catch (err: any) {
+		} catch (err: unknown) {
 			setErrorMessage(
-				err.response?.data?.message ||
-					err.message ||
+				extractErrorMessage(
+					err,
 					"Error al procesar el archivo en el servidor.",
+					["message"],
+				),
 			);
 		} finally {
 			setUploading(false);
@@ -109,16 +112,21 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
 			</div>
 
 			<div
-				onDragOver={handleDragOver}
-				onDragLeave={handleDragLeave}
-				onDrop={handleDrop}
-				onClick={() => fileInputRef.current?.click()}
-				className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition ${
+				className={`relative border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition ${
 					dragOver
 						? "border-sky-500 bg-sky-950/20"
 						: "border-slate-700 hover:border-slate-600 bg-slate-900/40"
 				}`}
 			>
+				<button
+					type="button"
+					aria-label="Examinar y seleccionar un reporte"
+					onDragOver={handleDragOver}
+					onDragLeave={handleDragLeave}
+					onDrop={handleDrop}
+					onClick={() => fileInputRef.current?.click()}
+					className="absolute inset-0 h-full w-full rounded-xl cursor-pointer"
+				/>
 				<input
 					ref={fileInputRef}
 					type="file"
@@ -152,6 +160,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
 					</div>
 					<div className="flex items-center space-x-2">
 						<button
+							type="button"
 							onClick={clearSelection}
 							className="text-slate-400 hover:text-white p-1 rounded transition"
 							title="Quitar archivo"
@@ -159,6 +168,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
 							<X className="w-4 h-4" />
 						</button>
 						<button
+							type="button"
 							onClick={handleUpload}
 							disabled={uploading || !portfolioId}
 							className="bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-lg transition flex items-center space-x-1"
@@ -228,8 +238,10 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
 								Detalle de anomalías descartadas ({report.errors.length}):
 							</span>
 							<ul className="list-disc list-inside space-y-1 text-[11px] text-slate-300 max-h-32 overflow-y-auto">
-								{report.errors.map((e, idx) => (
-									<li key={idx}>
+								{report.errors.map((e) => (
+									<li
+										key={`${e.row ?? "general"}-${e.ticker ?? ""}-${e.error_type}-${e.detail ?? e.message ?? ""}`}
+									>
 										{e.row ? `Fila ${e.row}` : "General"} (
 										{e.ticker || "Sin ticker"}): {e.detail || e.message}
 									</li>

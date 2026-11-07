@@ -23,11 +23,12 @@ import {
 	X,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { OrderExecutionModal } from "@/components/orders/OrderExecutionModal";
 import { RecentOrdersTable } from "@/components/orders/RecentOrdersTable";
 import { useAuth } from "@/hooks/useAuth";
 import { usePortfolio } from "@/hooks/usePortfolios";
+import { extractErrorMessage } from "@/lib/apiClient";
 import { formatMoney, parseDecimalSafe } from "@/lib/formatters";
 import { navigateToPortfoliosList, useHashRoute } from "@/lib/navigation";
 import { orderKeys, portfolioKeys } from "@/lib/queryKeys";
@@ -47,6 +48,7 @@ interface PortfolioDetailViewProps {
 export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
 	portfolioId,
 }) => {
+	const uid = useId();
 	const { tab, navigateToPortfolioTab } = useHashRoute();
 	const queryClient = useQueryClient();
 	const { isAuthenticated, isTrader, isAdmin } = useAuth();
@@ -148,11 +150,11 @@ export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
 					cashAction === "DEPOSIT" ? "Depósito" : "Retiro"
 				} de ${formatMoney(cashAmount, cashCurrency)} acreditado exitosamente.`,
 			);
-		} catch (err: any) {
+		} catch (err: unknown) {
 			setManagementError(
-				err?.response?.data?.detail ||
-					err?.message ||
-					"Error al actualizar el saldo de caja.",
+				extractErrorMessage(err, "Error al actualizar el saldo de caja.", [
+					"detail",
+				]),
 			);
 		} finally {
 			setIsSavingManagement(false);
@@ -183,11 +185,13 @@ export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
 				}),
 			]);
 			setManagementSuccess("Parámetros de la cartera actualizados.");
-		} catch (err: any) {
+		} catch (err: unknown) {
 			setManagementError(
-				err?.response?.data?.detail ||
-					err?.message ||
+				extractErrorMessage(
+					err,
 					"Error al actualizar la configuración de la cartera.",
+					["detail"],
+				),
 			);
 		} finally {
 			setIsSavingManagement(false);
@@ -203,11 +207,11 @@ export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
 			await queryClient.invalidateQueries({ queryKey: portfolioKeys.lists() });
 			setManagementMode(null);
 			navigateToPortfoliosList();
-		} catch (err: any) {
+		} catch (err: unknown) {
 			setManagementError(
-				err?.response?.data?.detail ||
-					err?.message ||
-					"Error al eliminar el portafolio.",
+				extractErrorMessage(err, "Error al eliminar el portafolio.", [
+					"detail",
+				]),
 			);
 			setIsSavingManagement(false);
 		}
@@ -530,12 +534,16 @@ export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
 
 									{/* Amount Input & Quick Presets */}
 									<div className="space-y-2">
-										<label className="text-xs font-mono text-slate-300 block">
+										<label
+											htmlFor={`${uid}-cash-amount`}
+											className="text-xs font-mono text-slate-300 block"
+										>
 											Monto a{" "}
 											{cashAction === "DEPOSIT" ? "Depositar" : "Retirar"} (
 											{cashCurrency}):
 										</label>
 										<input
+											id={`${uid}-cash-amount`}
 											type="number"
 											min="1"
 											step="any"
@@ -589,10 +597,14 @@ export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
 								<div className="space-y-5">
 									<form onSubmit={handleSaveSettings} className="space-y-3.5">
 										<div className="space-y-1">
-											<label className="text-xs font-mono text-slate-300 block">
+											<label
+												htmlFor={`${uid}-edit-name`}
+												className="text-xs font-mono text-slate-300 block"
+											>
 												Nombre de la Cartera:
 											</label>
 											<input
+												id={`${uid}-edit-name`}
 												type="text"
 												value={editName}
 												onChange={(e) => setEditName(e.target.value)}
@@ -601,10 +613,14 @@ export const PortfolioDetailView: React.FC<PortfolioDetailViewProps> = ({
 										</div>
 
 										<div className="space-y-1">
-											<label className="text-xs font-mono text-slate-300 block">
+											<label
+												htmlFor={`${uid}-edit-profile`}
+												className="text-xs font-mono text-slate-300 block"
+											>
 												Perfil de Riesgo Institucional:
 											</label>
 											<select
+												id={`${uid}-edit-profile`}
 												value={editProfile}
 												onChange={(e) =>
 													setEditProfile(e.target.value as InvestorProfile)

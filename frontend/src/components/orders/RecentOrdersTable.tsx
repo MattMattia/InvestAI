@@ -23,6 +23,7 @@ import {
 import type React from "react";
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { extractErrorMessage } from "@/lib/apiClient";
 import {
 	calculateOrderCostBreakdown,
 	formatDate,
@@ -83,12 +84,12 @@ export const RecentOrdersTable: React.FC<RecentOrdersTableProps> = ({
 				setSelectedOrderDetail(updated);
 			}
 		},
-		onError: (err: any) => {
+		onError: (err: unknown) => {
 			setProcessingOrderId(null);
 			setActionError(
-				err?.response?.data?.detail ||
-					err?.message ||
-					"Error al liquidar la orden en cartera.",
+				extractErrorMessage(err, "Error al liquidar la orden en cartera.", [
+					"detail",
+				]),
 			);
 		},
 	});
@@ -109,12 +110,10 @@ export const RecentOrdersTable: React.FC<RecentOrdersTableProps> = ({
 				setSelectedOrderDetail(updated);
 			}
 		},
-		onError: (err: any) => {
+		onError: (err: unknown) => {
 			setProcessingOrderId(null);
 			setActionError(
-				err?.response?.data?.detail ||
-					err?.message ||
-					"Error al cancelar la orden.",
+				extractErrorMessage(err, "Error al cancelar la orden.", ["detail"]),
 			);
 		},
 	});

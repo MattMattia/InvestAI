@@ -113,6 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
 						return (
 							<button
+								type="button"
 								key={item.id}
 								onClick={() => onNavigate(item.id)}
 								className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-medium transition-all group ${

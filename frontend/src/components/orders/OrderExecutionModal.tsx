@@ -25,6 +25,7 @@ import type React from "react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { usePortfolio, usePortfolios } from "@/hooks/usePortfolios";
+import { extractErrorMessage } from "@/lib/apiClient";
 import {
 	calculateOrderCostBreakdown,
 	formatMoney,
@@ -227,7 +228,7 @@ export const OrderExecutionModal: React.FC<OrderExecutionModalProps> = ({
 		const target = selectedTicker.trim().toUpperCase();
 		const h = holdingsList.find(
 			(item) =>
-				(item.asset_ticker || (item as any).ticker || "")
+				(item.asset_ticker || (item as { ticker?: string }).ticker || "")
 					.trim()
 					.toUpperCase() === target,
 		);
@@ -273,13 +274,10 @@ export const OrderExecutionModal: React.FC<OrderExecutionModalProps> = ({
 				onOrderCreated(order);
 			}
 		},
-		onError: (err: any) => {
-			const msg =
-				err?.response?.data?.detail ||
-				err?.response?.data?.message ||
-				err?.message ||
-				"Error al despachar la orden a BYMA.";
-			setSubmitError(typeof msg === "string" ? msg : JSON.stringify(msg));
+		onError: (err: unknown) => {
+			setSubmitError(
+				extractErrorMessage(err, "Error al despachar la orden a BYMA."),
+			);
 		},
 	});
 
@@ -461,13 +459,17 @@ export const OrderExecutionModal: React.FC<OrderExecutionModalProps> = ({
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 								{/* Portfolio Selector */}
 								<div className="space-y-1.5">
-									<label className="text-xs font-medium text-slate-300 flex items-center justify-between">
+									<label
+										htmlFor={`${modalId}-portfolio`}
+										className="text-xs font-medium text-slate-300 flex items-center justify-between"
+									>
 										<span className="flex items-center gap-1.5">
 											<Briefcase className="h-3.5 w-3.5 text-sky-400" />
 											Cartera Operativa:
 										</span>
 									</label>
 									<select
+										id={`${modalId}-portfolio`}
 										value={resolvedPortfolioId}
 										onChange={(e) => setSelectedPortfolioId(e.target.value)}
 										disabled={!canTrade || orderMutation.isPending}
@@ -483,7 +485,10 @@ export const OrderExecutionModal: React.FC<OrderExecutionModalProps> = ({
 
 								{/* Dynamic BYMA Species Selector */}
 								<div className="space-y-1.5">
-									<label className="text-xs font-medium text-slate-300 flex items-center justify-between">
+									<label
+										htmlFor={`${modalId}-ticker`}
+										className="text-xs font-medium text-slate-300 flex items-center justify-between"
+									>
 										<span className="flex items-center gap-1.5">
 											<TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
 											Especie BYMA:
@@ -493,6 +498,7 @@ export const OrderExecutionModal: React.FC<OrderExecutionModalProps> = ({
 										</span>
 									</label>
 									<select
+										id={`${modalId}-ticker`}
 										value={selectedTicker}
 										onChange={(e) => handleSelectSpecies(e.target.value)}
 										disabled={!canTrade || orderMutation.isPending}
@@ -587,9 +593,9 @@ export const OrderExecutionModal: React.FC<OrderExecutionModalProps> = ({
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 								{/* Order Type */}
 								<div className="space-y-1">
-									<label className="text-[11px] font-medium text-slate-400 font-mono">
+									<span className="text-[11px] font-medium text-slate-400 font-mono">
 										Tipo de Orden:
-									</label>
+									</span>
 									<div className="grid grid-cols-2 gap-1.5">
 										<button
 											type="button"
@@ -618,7 +624,10 @@ export const OrderExecutionModal: React.FC<OrderExecutionModalProps> = ({
 
 								{/* Quantity + Quick Fill Buttons on SELL */}
 								<div className="space-y-1">
-									<label className="text-[11px] font-medium text-slate-400 font-mono flex items-center justify-between">
+									<label
+										htmlFor={`${modalId}-quantity`}
+										className="text-[11px] font-medium text-slate-400 font-mono flex items-center justify-between"
+									>
 										<span>Cantidad (Nominal):</span>
 										{side === "SELL" && currentHoldingShares > 0 && (
 											<div className="flex items-center gap-1">
@@ -648,6 +657,7 @@ export const OrderExecutionModal: React.FC<OrderExecutionModalProps> = ({
 										)}
 									</label>
 									<input
+										id={`${modalId}-quantity`}
 										type="number"
 										min="1"
 										step="1"
@@ -664,10 +674,14 @@ export const OrderExecutionModal: React.FC<OrderExecutionModalProps> = ({
 							{/* Price Row (If LIMIT) */}
 							{orderType === "LIMIT" && (
 								<div className="space-y-1">
-									<label className="text-[11px] font-medium text-slate-400 font-mono">
+									<label
+										htmlFor={`${modalId}-limit-price`}
+										className="text-[11px] font-medium text-slate-400 font-mono"
+									>
 										Precio Límite ({currency}):
 									</label>
 									<input
+										id={`${modalId}-limit-price`}
 										type="number"
 										step="0.01"
 										min="0.01"
@@ -684,10 +698,14 @@ export const OrderExecutionModal: React.FC<OrderExecutionModalProps> = ({
 							{/* Justification & Immediate Execution Toggle */}
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
 								<div className="space-y-1">
-									<label className="text-[11px] font-medium text-slate-400 font-mono">
+									<label
+										htmlFor={`${modalId}-justification`}
+										className="text-[11px] font-medium text-slate-400 font-mono"
+									>
 										Motivo / Justificación (Opcional):
 									</label>
 									<input
+										id={`${modalId}-justification`}
 										type="text"
 										placeholder="Ej: Rebalanceo táctico, toma de ganancias"
 										value={justification}
