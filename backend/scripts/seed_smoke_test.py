@@ -15,7 +15,7 @@ from sqlalchemy import select
 # Asegurar backend en sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.core.database import AsyncSessionLocal, async_engine, init_db, is_sqlite
+from app.core.database import AsyncSessionLocal, async_engine, init_db
 from app.core.security import get_password_hash
 from app.domain.services.market_data_provider import infer_instrument_metadata
 from app.models import AssetModel, HoldingModel, PortfolioModel, UserModel
@@ -321,32 +321,6 @@ DEMO_HOLDINGS = [
 
 async def seed_demo_data() -> None:
     await init_db()
-
-    if is_sqlite:
-        async with async_engine.begin() as conn:
-
-            def _migrate_sqlite_schema(sync_conn):
-                user_res = sync_conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()
-                user_cols = [r[1] for r in user_res]
-                if user_cols:
-                    if "full_name" not in user_cols:
-                        sync_conn.exec_driver_sql(
-                            "ALTER TABLE users ADD COLUMN full_name VARCHAR(255) DEFAULT 'InvestAI User' NOT NULL"
-                        )
-                    if "is_active" not in user_cols:
-                        sync_conn.exec_driver_sql(
-                            "ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1 NOT NULL"
-                        )
-                    if "role" not in user_cols:
-                        sync_conn.exec_driver_sql(
-                            "ALTER TABLE users ADD COLUMN role VARCHAR(50) DEFAULT 'TRADER' NOT NULL"
-                        )
-                    if "updated_at" not in user_cols:
-                        sync_conn.exec_driver_sql(
-                            "ALTER TABLE users ADD COLUMN updated_at DATETIME"
-                        )
-
-            await conn.run_sync(_migrate_sqlite_schema)
 
     async with AsyncSessionLocal() as session:
         # 1. Asegurar Activos en BYMA en una sola consulta en lote con métricas 10Y

@@ -23,6 +23,15 @@ import numpy as np
 
 logger = logging.getLogger("investai.market_data")
 
+
+async def ssrf_checked_url(url: str) -> str:
+    """Validate an outbound URL through the SSRF guard (DNS lookup runs off the event loop)."""
+    # Local import: the guard module imports this package's market_connector.
+    from app.infrastructure.market_data.ssrf_guard import validate_url_against_ssrf
+
+    return await asyncio.to_thread(validate_url_against_ssrf, url)
+
+
 # Universo conocido de CEDEARs operados en BYMA
 KNOWN_CEDEAR_TICKERS = {
     "AAPL",
@@ -1515,14 +1524,14 @@ class PublicMarket10YProvider:
         ccl, mep = 1668.0, 1581.0
         try:
             if client is not None:
-                r = await client.get(cls.DOLAR_API_URL, timeout=1.8)
+                r = await client.get(await ssrf_checked_url(cls.DOLAR_API_URL), timeout=1.8)
                 if r.status_code == 200:
                     rates = {x.get("casa"): x.get("venta") for x in r.json() if isinstance(x, dict)}
                     ccl = float(rates.get("contadoconliqui", ccl))
                     mep = float(rates.get("bolsa", mep))
             else:
                 async with httpx.AsyncClient(headers=cls.DEFAULT_HEADERS, timeout=1.8) as c:
-                    r = await c.get(cls.DOLAR_API_URL)
+                    r = await c.get(await ssrf_checked_url(cls.DOLAR_API_URL))
                     if r.status_code == 200:
                         rates = {
                             x.get("casa"): x.get("venta") for x in r.json() if isinstance(x, dict)
@@ -1572,7 +1581,7 @@ class PublicMarket10YProvider:
                                 url = cls.YAHOO_V8_URL.format(
                                     symbol=yahoo_sym, range_param="5d", interval_param="1d"
                                 )
-                                r = await client.get(url)
+                                r = await client.get(await ssrf_checked_url(url))
                                 if r.status_code == 200:
                                     result = r.json().get("chart", {}).get("result", [])
                                     if result:
@@ -1639,7 +1648,7 @@ class PublicMarket10YProvider:
                             # 2. Google Finance Fallback (:BCBA)
                             try:
                                 gf_url = cls.GOOGLE_FINANCE_URL.format(ticker=t)
-                                r = await client.get(gf_url)
+                                r = await client.get(await ssrf_checked_url(gf_url))
                                 if r.status_code == 200 and t.lower() in r.text.lower():
                                     m = re.search(r'data-last-price="([\d\.]+)"', r.text)
                                     if not m:
@@ -1915,7 +1924,7 @@ class PublicMarket10YProvider:
                 url = cls.YAHOO_V8_URL.format(
                     symbol=yahoo_sym, range_param=range_param, interval_param=interval_param
                 )
-                r = await client.get(url)
+                r = await client.get(await ssrf_checked_url(url))
                 if r.status_code == 200:
                     payload = r.json()
                     res_list = payload.get("chart", {}).get("result", [])
@@ -1993,7 +2002,7 @@ class PublicMarket10YProvider:
             try:
                 async with httpx.AsyncClient(timeout=1.2) as client:
                     resp = await client.get(
-                        cls.YAHOO_CHART_URL.format(symbol=yahoo_sym),
+                        await ssrf_checked_url(cls.YAHOO_CHART_URL.format(symbol=yahoo_sym)),
                         headers={"User-Agent": "Mozilla/5.0 InvestAI-QuantEngine/2.0"},
                     )
                     if resp.status_code == 200:
