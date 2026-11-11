@@ -22,6 +22,8 @@ interface FinancialTimeSeriesChartProps {
   onTimeframeChange: (tf: ChartTimeframe) => void;
   quote?: MarketQuote;
   cclRate?: number;
+  marketOpenTime?: string;
+  marketCloseTime?: string;
 }
 
 const TIMEFRAME_LABELS: { id: ChartTimeframe; label: string }[] = [
@@ -55,6 +57,8 @@ export const FinancialTimeSeriesChart: React.FC<FinancialTimeSeriesChartProps> =
   onTimeframeChange,
   quote,
   cclRate,
+  marketOpenTime = "10:30",
+  marketCloseTime = "18:00",
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -204,17 +208,19 @@ export const FinancialTimeSeriesChart: React.FC<FinancialTimeSeriesChartProps> =
 
     const maxVol = Math.max(...convertedBars.map((b) => b.volume), 1);
 
-    // Identify session transition point (11:00-17:00 open -> 17:00+ closed / after-hours)
+    // Session transition point (official session -> after-hours) only exists intraday
     let transPt: { x: number; y: number; idx: number } | null = null;
-    const transIdx = computedPoints.findIndex(
-      (p, idx) => idx > 0 && computedPoints[idx - 1].bar.is_market_open && !p.bar.is_market_open,
-    );
-    if (transIdx !== -1) {
-      transPt = {
-        x: computedPoints[transIdx].x,
-        y: computedPoints[transIdx].y,
-        idx: transIdx,
-      };
+    if (timeframe === "1D") {
+      const transIdx = computedPoints.findIndex(
+        (p, idx) => idx > 0 && computedPoints[idx - 1].bar.is_market_open && !p.bar.is_market_open,
+      );
+      if (transIdx !== -1) {
+        transPt = {
+          x: computedPoints[transIdx].x,
+          y: computedPoints[transIdx].y,
+          idx: transIdx,
+        };
+      }
     }
 
     return {
@@ -228,7 +234,7 @@ export const FinancialTimeSeriesChart: React.FC<FinancialTimeSeriesChartProps> =
       maxVolume: maxVol,
       transitionPoint: transPt,
     };
-  }, [convertedBars, chartWidth]);
+  }, [convertedBars, chartWidth, timeframe]);
 
   // Mouse hover event handler on SVG surface
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -311,17 +317,21 @@ export const FinancialTimeSeriesChart: React.FC<FinancialTimeSeriesChartProps> =
             </div>
           )}
 
-          {/* Session Segment Indicators Legend */}
-          <div className="flex items-center gap-4 text-[10px] font-mono text-slate-400 pt-1.5 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-              <span>Rueda Oficial BYMA (11:00 - 17:00 ART)</span>
+          {/* Session Segment Indicators Legend (intraday only) */}
+          {isIntradiary && (
+            <div className="flex items-center gap-4 text-[10px] font-mono text-slate-400 pt-1.5 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                <span>
+                  Rueda Oficial BYMA ({marketOpenTime} - {marketCloseTime} ART)
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                <span>Mercado Cerrado / After-Hours (Tick Continuo 5s)</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
-              <span>Mercado Cerrado / After-Hours (Tick Continuo 5s)</span>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Right Controls: Currency Selector (ARS / USD CCL) + Timeframe Tabs */}
@@ -445,7 +455,7 @@ export const FinancialTimeSeriesChart: React.FC<FinancialTimeSeriesChartProps> =
                   height={priceChartHeight}
                   fill="rgba(245, 158, 11, 0.08)"
                 />
-                {/* Dotted Vertical Transition Line at 17:00 */}
+                {/* Dotted Vertical Transition Line at session close */}
                 <line
                   x1={transitionPoint.x}
                   y1={paddingTop}
@@ -490,7 +500,7 @@ export const FinancialTimeSeriesChart: React.FC<FinancialTimeSeriesChartProps> =
                     fontWeight="bold"
                     textAnchor="middle"
                   >
-                    CIERRE 17:00 → AFTER-HOURS (5s)
+                    CIERRE {marketCloseTime} → AFTER-HOURS (5s)
                   </text>
                 </g>
               </g>
@@ -673,16 +683,18 @@ export const FinancialTimeSeriesChart: React.FC<FinancialTimeSeriesChartProps> =
                   {activeBar.volume.toLocaleString()}
                 </span>
               </div>
-              <div className="flex justify-between gap-4 pt-0.5 border-t border-slate-800/80">
-                <span className="text-slate-400">Sesión:</span>
-                <span
-                  className={`font-semibold tabular-nums ${
-                    activeBar.is_market_open ? "text-emerald-400" : "text-amber-400"
-                  }`}
-                >
-                  {activeBar.is_market_open ? "🟢 ABIERTA" : "🟠 AFTER-HOURS"}
-                </span>
-              </div>
+              {isIntradiary && (
+                <div className="flex justify-between gap-4 pt-0.5 border-t border-slate-800/80">
+                  <span className="text-slate-400">Sesión:</span>
+                  <span
+                    className={`font-semibold tabular-nums ${
+                      activeBar.is_market_open ? "text-emerald-400" : "text-amber-400"
+                    }`}
+                  >
+                    {activeBar.is_market_open ? "🟢 RUEDA OFICIAL" : "🟠 AFTER-HOURS"}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>

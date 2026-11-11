@@ -147,6 +147,9 @@ async def get_live_market_quotes(
         "mep_rate": batch.get("mep_rate", 1581.0),
         "data_source": batch.get("data_source", "YAHOO_LIVE"),
         "updated_at": batch.get("updated_at"),
+        "is_market_open": batch.get("is_market_open", False),
+        "market_open_time": batch.get("market_open_time", "10:30"),
+        "market_close_time": batch.get("market_close_time", "18:00"),
     }
     return APIResponse[dict[str, Any]](data=response_data, meta=_build_meta())
 

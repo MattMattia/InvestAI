@@ -26,6 +26,9 @@ export interface LiveMarketFeedPayload {
   mep_rate: number;
   data_source: string;
   updated_at: string;
+  is_market_open?: boolean;
+  market_open_time?: string;
+  market_close_time?: string;
 }
 
 /** Untrusted quote payload: any known field may be missing or mistyped. */
@@ -90,7 +93,7 @@ const CURATED_INSTRUMENTS: CalibratedInstrumentSeed[] = [
     name: "Grupo Financiero Galicia S.A.",
     asset_type: "STOCK",
     currency: "ARS",
-    target_price: 5120.0,
+    target_price: 4980.0,
     volume_shares: 1450400,
   },
   {
@@ -98,7 +101,7 @@ const CURATED_INSTRUMENTS: CalibratedInstrumentSeed[] = [
     name: "YPF S.A.",
     asset_type: "STOCK",
     currency: "ARS",
-    target_price: 30200.0,
+    target_price: 29850.0,
     volume_shares: 520300,
   },
   {
@@ -106,7 +109,7 @@ const CURATED_INSTRUMENTS: CalibratedInstrumentSeed[] = [
     name: "Pampa Energía S.A.",
     asset_type: "STOCK",
     currency: "ARS",
-    target_price: 3450.0,
+    target_price: 3390.0,
     volume_shares: 680000,
   },
   {
@@ -172,7 +175,7 @@ const CURATED_INSTRUMENTS: CalibratedInstrumentSeed[] = [
     name: "Apple Inc. (CEDEAR 20:1)",
     asset_type: "CEDEAR",
     currency: "ARS",
-    target_price: 15450.0,
+    target_price: 15120.0,
     volume_shares: 520000,
   },
   {
@@ -180,7 +183,7 @@ const CURATED_INSTRUMENTS: CalibratedInstrumentSeed[] = [
     name: "NVIDIA Corporation (CEDEAR 24:1)",
     asset_type: "CEDEAR",
     currency: "ARS",
-    target_price: 14290.0,
+    target_price: 12180.0,
     volume_shares: 1280000,
   },
   {
@@ -188,7 +191,7 @@ const CURATED_INSTRUMENTS: CalibratedInstrumentSeed[] = [
     name: "Microsoft Corporation (CEDEAR 30:1)",
     asset_type: "CEDEAR",
     currency: "ARS",
-    target_price: 16650.0,
+    target_price: 16400.0,
     volume_shares: 290000,
   },
   {
@@ -196,7 +199,7 @@ const CURATED_INSTRUMENTS: CalibratedInstrumentSeed[] = [
     name: "SPDR S&P 500 ETF Trust (CEDEAR 20:1)",
     asset_type: "CEDEAR",
     currency: "ARS",
-    target_price: 31400.0,
+    target_price: 31150.0,
     volume_shares: 410400,
   },
   {
@@ -212,7 +215,7 @@ const CURATED_INSTRUMENTS: CalibratedInstrumentSeed[] = [
     name: "MercadoLibre Inc. (CEDEAR 120:1)",
     asset_type: "CEDEAR",
     currency: "ARS",
-    target_price: 28150.0,
+    target_price: 27800.0,
     volume_shares: 265000,
   },
   {
@@ -459,7 +462,7 @@ export const marketService = {
 
   /**
    * Evaluates BYMA official trading session status in Argentina Standard Time (ART / UTC-3).
-   * Regular session runs Monday through Friday from 11:00 to 17:00 ART.
+   * Regular session runs Monday through Friday from 10:30 to 18:00 ART.
    */
   async getMarketStatus(): Promise<MarketStatusInfo> {
     const now = new Date();
@@ -480,20 +483,20 @@ export const marketService = {
 
     const isWeekend = weekdayStr === "Sat" || weekdayStr === "Sun";
     const totalMinutes = hour * 60 + minute;
-    const openMinutes = 11 * 60; // 11:00 ART
-    const closeMinutes = 17 * 60; // 17:00 ART
+    const openMinutes = 10 * 60 + 30; // 10:30 ART
+    const closeMinutes = 18 * 60; // 18:00 ART
 
     const isOpen = !isWeekend && totalMinutes >= openMinutes && totalMinutes < closeMinutes;
 
     let nextChange = "";
     if (isOpen) {
-      nextChange = "Cierre de rueda hoy a las 17:00 ART";
+      nextChange = "Cierre de rueda hoy a las 18:00 ART";
     } else if (isWeekend) {
-      nextChange = "Apertura próximo día hábil a las 11:00 ART";
+      nextChange = "Apertura próximo día hábil a las 10:30 ART";
     } else if (totalMinutes < openMinutes) {
-      nextChange = "Apertura de rueda hoy a las 11:00 ART";
+      nextChange = "Apertura de rueda hoy a las 10:30 ART";
     } else {
-      nextChange = "Apertura próximo día hábil a las 11:00 ART";
+      nextChange = "Apertura próximo día hábil a las 10:30 ART";
     }
 
     const timeFormatter = new Intl.DateTimeFormat("es-AR", {
@@ -512,7 +515,7 @@ export const marketService = {
       next_change: nextChange,
       message: isOpen
         ? "Rueda de negociación en curso. Plazo normal T+1 / T+2."
-        : "Mercado fuera de horario. Rueda cerrada (11:00 a 17:00 ART).",
+        : "Mercado fuera de horario. Rueda cerrada (10:30 a 18:00 ART).",
     };
   },
 
@@ -522,20 +525,15 @@ export const marketService = {
    */
   async getLiveMarketFeed(category?: string, forceRefresh = false): Promise<LiveMarketFeedPayload> {
     try {
-      const response = await apiClient.get<
-        APIResponse<{
-          quotes: MarketQuote[];
-          ccl_rate: number;
-          mep_rate: number;
-          data_source: string;
-          updated_at: string;
-        }>
-      >("/market/live-quotes", {
-        params: {
-          category: category && category !== "ALL" ? category : undefined,
-          refresh: forceRefresh,
+      const response = await apiClient.get<APIResponse<LiveMarketFeedPayload>>(
+        "/market/live-quotes",
+        {
+          params: {
+            category: category && category !== "ALL" ? category : undefined,
+            refresh: forceRefresh,
+          },
         },
-      });
+      );
       const data = response.data?.data;
       if (data && Array.isArray(data.quotes) && data.quotes.length > 0) {
         return {
@@ -544,6 +542,10 @@ export const marketService = {
           mep_rate: Number(data.mep_rate) > 0 ? Number(data.mep_rate) : 1581.1,
           data_source: data.data_source || "YAHOO_LIVE",
           updated_at: data.updated_at || new Date().toISOString(),
+          is_market_open:
+            typeof data.is_market_open === "boolean" ? data.is_market_open : undefined,
+          market_open_time: data.market_open_time || undefined,
+          market_close_time: data.market_close_time || undefined,
         };
       }
     } catch {

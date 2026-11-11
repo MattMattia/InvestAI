@@ -1,5 +1,3 @@
 @echo off
-setlocal
-cd /d "%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\launch_investai.ps1"
-endlocal
+start "" wscript.exe //B //NoLogo "%~dp0scripts\launch_silent.vbs"
+exit /b 0

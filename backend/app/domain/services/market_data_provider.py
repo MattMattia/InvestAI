@@ -141,7 +141,7 @@ CALIBRATED_10Y_METRICS_CATALOG: dict[str, dict[str, Any]] = {
         "asset_type": "STOCK",
         "currency": "ARS",
         "sector": "FINANCIALS",
-        "reference_price": 5120.00,
+        "reference_price": 4980.00,
         "yahoo_symbol": "GGAL.BA",
         "adr_symbol": "GGAL",
         "cedear_ratio": 10.0,
@@ -167,7 +167,7 @@ CALIBRATED_10Y_METRICS_CATALOG: dict[str, dict[str, Any]] = {
         "asset_type": "STOCK",
         "currency": "ARS",
         "sector": "ENERGY",
-        "reference_price": 30200.00,
+        "reference_price": 29850.00,
         "yahoo_symbol": "YPFD.BA",
         "adr_symbol": "YPF",
         "cedear_ratio": 1.0,
@@ -193,7 +193,7 @@ CALIBRATED_10Y_METRICS_CATALOG: dict[str, dict[str, Any]] = {
         "asset_type": "STOCK",
         "currency": "ARS",
         "sector": "ENERGY",
-        "reference_price": 3180.00,
+        "reference_price": 3390.00,
         "yahoo_symbol": "PAMP.BA",
         "adr_symbol": "PAM",
         "cedear_ratio": 25.0,
@@ -396,7 +396,7 @@ CALIBRATED_10Y_METRICS_CATALOG: dict[str, dict[str, Any]] = {
         "asset_type": "CEDEAR",
         "currency": "ARS",
         "sector": "TECHNOLOGY",
-        "reference_price": 13580.00,
+        "reference_price": 15120.00,
         "yahoo_symbol": "AAPL",
         "underlying_ticker": "AAPL",
         "cedear_ratio": 20.0,
@@ -422,7 +422,7 @@ CALIBRATED_10Y_METRICS_CATALOG: dict[str, dict[str, Any]] = {
         "asset_type": "CEDEAR",
         "currency": "ARS",
         "sector": "TECHNOLOGY",
-        "reference_price": 14290.00,
+        "reference_price": 12180.00,
         "yahoo_symbol": "NVDA",
         "underlying_ticker": "NVDA",
         "cedear_ratio": 24.0,
@@ -448,7 +448,7 @@ CALIBRATED_10Y_METRICS_CATALOG: dict[str, dict[str, Any]] = {
         "asset_type": "CEDEAR",
         "currency": "ARS",
         "sector": "TECHNOLOGY",
-        "reference_price": 16890.00,
+        "reference_price": 16400.00,
         "yahoo_symbol": "MSFT",
         "underlying_ticker": "MSFT",
         "cedear_ratio": 30.0,
@@ -552,7 +552,7 @@ CALIBRATED_10Y_METRICS_CATALOG: dict[str, dict[str, Any]] = {
         "asset_type": "CEDEAR",
         "currency": "ARS",
         "sector": "INDEX_ETF",
-        "reference_price": 34480.00,
+        "reference_price": 31150.00,
         "yahoo_symbol": "SPY",
         "underlying_ticker": "SPY",
         "cedear_ratio": 20.0,
@@ -604,7 +604,7 @@ CALIBRATED_10Y_METRICS_CATALOG: dict[str, dict[str, Any]] = {
         "asset_type": "CEDEAR",
         "currency": "ARS",
         "sector": "TECHNOLOGY",
-        "reference_price": 20100.00,
+        "reference_price": 27800.00,
         "yahoo_symbol": "MELI",
         "underlying_ticker": "MELI",
         "cedear_ratio": 120.0,
@@ -1178,7 +1178,7 @@ BYMA_CURATED_UNIVERSE_CATALOG: list[dict[str, Any]] = [
         "asset_type": "STOCK",
         "currency": "ARS",
         "yahoo_symbol": "GGAL.BA",
-        "target_price": 5120.0,
+        "target_price": 4980.0,
         "volume_shares": 1450400,
     },
     {
@@ -1187,7 +1187,7 @@ BYMA_CURATED_UNIVERSE_CATALOG: list[dict[str, Any]] = [
         "asset_type": "STOCK",
         "currency": "ARS",
         "yahoo_symbol": "YPFD.BA",
-        "target_price": 30200.0,
+        "target_price": 29850.0,
         "volume_shares": 520300,
     },
     {
@@ -1196,7 +1196,7 @@ BYMA_CURATED_UNIVERSE_CATALOG: list[dict[str, Any]] = [
         "asset_type": "STOCK",
         "currency": "ARS",
         "yahoo_symbol": "PAMP.BA",
-        "target_price": 3450.0,
+        "target_price": 3390.0,
         "volume_shares": 680000,
     },
     {
@@ -1269,7 +1269,7 @@ BYMA_CURATED_UNIVERSE_CATALOG: list[dict[str, Any]] = [
         "asset_type": "CEDEAR",
         "currency": "ARS",
         "yahoo_symbol": "AAPL.BA",
-        "target_price": 15450.0,
+        "target_price": 15120.0,
         "volume_shares": 520000,
     },
     {
@@ -1278,7 +1278,7 @@ BYMA_CURATED_UNIVERSE_CATALOG: list[dict[str, Any]] = [
         "asset_type": "CEDEAR",
         "currency": "ARS",
         "yahoo_symbol": "NVDA.BA",
-        "target_price": 14290.0,
+        "target_price": 12180.0,
         "volume_shares": 1280000,
     },
     {
@@ -1287,7 +1287,7 @@ BYMA_CURATED_UNIVERSE_CATALOG: list[dict[str, Any]] = [
         "asset_type": "CEDEAR",
         "currency": "ARS",
         "yahoo_symbol": "MSFT.BA",
-        "target_price": 16650.0,
+        "target_price": 16400.0,
         "volume_shares": 290000,
     },
     {
@@ -1296,7 +1296,7 @@ BYMA_CURATED_UNIVERSE_CATALOG: list[dict[str, Any]] = [
         "asset_type": "CEDEAR",
         "currency": "ARS",
         "yahoo_symbol": "SPY.BA",
-        "target_price": 31400.0,
+        "target_price": 31150.0,
         "volume_shares": 410400,
     },
     {
@@ -1314,7 +1314,7 @@ BYMA_CURATED_UNIVERSE_CATALOG: list[dict[str, Any]] = [
         "asset_type": "CEDEAR",
         "currency": "ARS",
         "yahoo_symbol": "MELI.BA",
-        "target_price": 28150.0,
+        "target_price": 27800.0,
         "volume_shares": 265000,
     },
     {
@@ -1512,9 +1512,99 @@ class PublicMarket10YProvider:
     }
 
     _LIVE_STATE: dict[str, dict[str, Any]] = {}
+    # Apertura oficial de la última rueda por ticker (serie diaria), fuente única para que
+    # la columna "Apertura" y el primer punto del gráfico 1D coincidan
+    _SESSION_OPEN: dict[str, float] = {}
     _LAST_EXTERNAL_SYNC: float = 0.0
     _FX_STATE: tuple[float, float] = (1668.8, 1581.1)
     _semaphore = asyncio.Semaphore(8)
+
+    # Caché en memoria de series reales (clave "TICKER:TIMEFRAME" -> (monotonic, barras))
+    _BARS_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+    _BARS_TTL_SECONDS: dict[str, float] = {"1D": 20.0, "1W": 120.0, "1M": 600.0, "1Y": 600.0}
+    _TIMEFRAME_RANGES: dict[str, tuple[str, str]] = {
+        "1W": ("5d", "1h"),
+        "1M": ("1mo", "1d"),
+        "1Y": ("1y", "1d"),
+    }
+    _BG_TASK: asyncio.Task[None] | None = None
+    PREWARM_TICKERS: tuple[str, ...] = (
+        "GGAL",
+        "YPFD",
+        "PAMP",
+        "NVDA",
+        "AAPL",
+        "MELI",
+        "SPY",
+        "AL30",
+    )
+    PREWARM_TIMEFRAMES: tuple[str, ...] = ("1D", "1M")
+    PREWARM_INTERVAL_SECONDS: float = 15.0
+
+    # Rueda oficial BYMA en hora de Argentina (ART, UTC-3)
+    _ART_TZ = timezone(timedelta(hours=-3))
+    _MARKET_OPEN_HM: tuple[int, int] = (10, 30)  # 10:30 ART
+    _MARKET_CLOSE_HM: tuple[int, int] = (18, 0)  # 18:00 ART
+    _EARLIEST_OPEN_MINUTES: int = 9 * 60 + 30
+    _LATEST_CLOSE_MINUTES: int = 19 * 60
+    _AFTER_HOURS_POINTS: int = 4
+    _LIVE_POINT_GAP_SECONDS: float = 300.0
+    _CLOSED_SESSION_INTRADAY_TTL_SECONDS: float = 300.0
+
+    @classmethod
+    def _session_bounds_minutes(cls) -> tuple[int, int]:
+        open_h, open_m = cls._MARKET_OPEN_HM
+        close_h, close_m = cls._MARKET_CLOSE_HM
+        return open_h * 60 + open_m, close_h * 60 + close_m
+
+    @classmethod
+    def get_market_schedule_status(cls) -> dict[str, Any]:
+        """Estado de la rueda BYMA según el horario oficial vigente en ART (UTC-3)."""
+        now_art = datetime.now(cls._ART_TZ)
+        open_mins, close_mins = cls._session_bounds_minutes()
+        now_mins = now_art.hour * 60 + now_art.minute
+        is_open = now_art.weekday() < 5 and (open_mins <= now_mins < close_mins)
+        return {
+            "is_market_open": is_open,
+            "market_open_time": f"{open_mins // 60:02d}:{open_mins % 60:02d}",
+            "market_close_time": f"{close_mins // 60:02d}:{close_mins % 60:02d}",
+            "current_art_time": now_art.strftime("%H:%M:%S ART"),
+        }
+
+    @classmethod
+    def _widen_schedule_from_yahoo(cls, meta: dict[str, Any]) -> None:
+        """
+        Detección automática de horario: si Yahoo informa para un símbolo .BA una rueda
+        regular más amplia que la ventana oficial, la ventana se amplía (nunca se reduce
+        por debajo de 10:30 a 18:00 ART) dentro de límites de cordura.
+        """
+        regular = (meta.get("currentTradingPeriod") or {}).get("regular") or {}
+        start_ts, end_ts = regular.get("start"), regular.get("end")
+        if not isinstance(start_ts, int | float) or not isinstance(end_ts, int | float):
+            return
+        start_art = datetime.fromtimestamp(start_ts, tz=cls._ART_TZ)
+        end_art = datetime.fromtimestamp(end_ts, tz=cls._ART_TZ)
+        if start_art.weekday() >= 5 or end_art <= start_art:
+            return
+        start_mins = start_art.hour * 60 + start_art.minute
+        end_mins = end_art.hour * 60 + end_art.minute
+        open_mins, close_mins = cls._session_bounds_minutes()
+        if cls._EARLIEST_OPEN_MINUTES <= start_mins < open_mins:
+            cls._MARKET_OPEN_HM = (start_mins // 60, start_mins % 60)
+        if close_mins < end_mins <= cls._LATEST_CLOSE_MINUTES:
+            cls._MARKET_CLOSE_HM = (end_mins // 60, end_mins % 60)
+
+    @staticmethod
+    def _ratchet_seed_price(inst: dict[str, Any], last_val: float) -> None:
+        """
+        Live State Ratchet: el último precio real descargado reemplaza en memoria a la
+        semilla estática, para que ningún fallback posterior revierta a un precio viejo.
+        """
+        real_price = round(last_val, 2)
+        inst["target_price"] = real_price
+        seed = BYMA_CURATED_UNIVERSE_MAP.get(inst["ticker"])
+        if seed is not None:
+            seed["target_price"] = real_price
 
     @classmethod
     async def fetch_live_fx_rates(
@@ -1589,16 +1679,29 @@ class PublicMarket10YProvider:
                                         indicators = (
                                             result[0].get("indicators", {}).get("quote", [{}])[0]
                                         )
-                                        closes = [
-                                            c
-                                            for c in indicators.get("close", [])
-                                            if c is not None and c > 0
+                                        raw_closes = indicators.get("close", [])
+                                        closes = [c for c in raw_closes if c is not None and c > 0]
+                                        opens = [
+                                            o
+                                            for o in indicators.get("open", [])
+                                            if o is not None and o > 0
                                         ]
                                         last_p = meta.get("regularMarketPrice") or (
                                             closes[-1] if closes else None
                                         )
-                                        prev_c = meta.get("chartPreviousClose") or (
-                                            closes[-2] if len(closes) > 1 else last_p
+                                        # En rango 5d, chartPreviousClose es el cierre previo a
+                                        # toda la ventana (5 ruedas atrás), no el de la rueda
+                                        # anterior: el cierre anterior real sale de la serie diaria.
+                                        session_bar_pending = (
+                                            bool(raw_closes) and raw_closes[-1] is None
+                                        )
+                                        prior_closes = (
+                                            closes if session_bar_pending else closes[:-1]
+                                        )
+                                        prev_c = (
+                                            (prior_closes[-1] if prior_closes else None)
+                                            or meta.get("chartPreviousClose")
+                                            or last_p
                                         )
                                         if last_p and float(last_p) > 0:
                                             last_val = float(last_p)
@@ -1618,6 +1721,12 @@ class PublicMarket10YProvider:
                                             vol = meta.get("regularMarketVolume") or inst.get(
                                                 "volume_shares", 100000
                                             )
+                                            day_open = meta.get("regularMarketOpen") or (
+                                                opens[-1] if opens else prev_val
+                                            )
+                                            cls._ratchet_seed_price(inst, last_val)
+                                            if meta.get("regularMarketOpen") or opens:
+                                                cls._SESSION_OPEN[t] = round(float(day_open), 2)
                                             return {
                                                 "ticker": t,
                                                 "name": inst["name"],
@@ -1625,12 +1734,7 @@ class PublicMarket10YProvider:
                                                 "currency": inst["currency"],
                                                 "last_price": round(last_val, 2),
                                                 "base_price": round(last_val, 2),
-                                                "open_price": round(
-                                                    float(
-                                                        meta.get("regularMarketOpen") or prev_val
-                                                    ),
-                                                    2,
-                                                ),
+                                                "open_price": round(float(day_open), 2),
                                                 "high_price": round(float(high_p), 2),
                                                 "low_price": round(float(low_p), 2),
                                                 "previous_close": round(prev_val, 2),
@@ -1670,7 +1774,11 @@ class PublicMarket10YProvider:
                                         elif "," in raw:
                                             raw = raw.replace(",", ".")
                                         last_val = float(raw)
-                                        prev_val = float(inst.get("target_price", last_val))
+                                        prev_val = float(
+                                            cls._LIVE_STATE.get(t, {}).get("previous_close")
+                                            or last_val
+                                        )
+                                        cls._ratchet_seed_price(inst, last_val)
                                         chg_nom = round(last_val - prev_val, 2)
                                         chg_pct = (
                                             round((chg_nom / prev_val) * 100.0, 2)
@@ -1699,7 +1807,11 @@ class PublicMarket10YProvider:
                             except Exception as exc:
                                 logger.debug("Market data step failed, falling back: %s", exc)
 
-                            # 3. Fallback Calibrado
+                            # 3. Sin respuesta puntual: conservar el último estado en vivo
+                            if t in cls._LIVE_STATE:
+                                return dict(cls._LIVE_STATE[t])
+
+                            # 4. Fallback Calibrado (solo si nunca hubo estado en vivo)
                             base_price = float(inst.get("target_price", 1000.0))
                             return {
                                 "ticker": t,
@@ -1773,11 +1885,15 @@ class PublicMarket10YProvider:
         for q in cls._LIVE_STATE.values():
             base_p = float(q.get("base_price") or q.get("last_price", 1000.0))
             curr_p = float(q.get("last_price", base_p))
-            # Variación suave entre -0.18% y +0.18% con reversión hacia base_price
-            mean_reversion = -0.12 * ((curr_p - base_p) / base_p) if base_p > 0 else 0.0
-            noise = random.uniform(-0.0018, 0.0018)  # noqa: S311  # simulated tick, non-cryptographic
+            # Micro-fluctuación de ±0.035% con reversión hacia base_price (precio real
+            # descargado), acotada a ±0.08% de base_price para que nunca salte bruscamente
+            mean_reversion = -0.25 * ((curr_p - base_p) / base_p) if base_p > 0 else 0.0
+            noise = random.uniform(-0.00035, 0.00035)  # noqa: S311  # simulated tick, non-cryptographic
             pct_step = noise + mean_reversion
-            new_price = round(max(0.01, curr_p * (1.0 + pct_step)), 2)
+            candidate = curr_p * (1.0 + pct_step)
+            min_bound = base_p * 0.9992
+            max_bound = base_p * 1.0008
+            new_price = round(max(0.01, min(max_bound, max(min_bound, candidate))), 2)
             prev_c = float(q.get("previous_close") or base_p)
             chg_nom = round(new_price - prev_c, 2)
             chg_pct = round((chg_nom / prev_c) * 100.0, 2) if prev_c > 0 else 0.0
@@ -1802,7 +1918,283 @@ class PublicMarket10YProvider:
         result_dict["mep_rate"] = cls._FX_STATE[1]
         result_dict["data_source"] = "YAHOO_BCBA_LIVE_5S"
         result_dict["updated_at"] = now_iso
+        schedule = cls.get_market_schedule_status()
+        result_dict["is_market_open"] = schedule["is_market_open"]
+        result_dict["market_open_time"] = schedule["market_open_time"]
+        result_dict["market_close_time"] = schedule["market_close_time"]
         return result_dict
+
+    @staticmethod
+    def _parse_yahoo_chart(
+        payload: dict[str, Any], tz: timezone
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Convierte la respuesta Yahoo Finance v8 Chart en (meta, barras OHLCV válidas)."""
+        res_list = (payload.get("chart") or {}).get("result") or []
+        if not res_list:
+            return {}, []
+        chart_data = res_list[0]
+        timestamps = chart_data.get("timestamp") or []
+        quote_obj = ((chart_data.get("indicators") or {}).get("quote") or [{}])[0]
+        opens = quote_obj.get("open") or []
+        highs = quote_obj.get("high") or []
+        lows = quote_obj.get("low") or []
+        closes = quote_obj.get("close") or []
+        volumes = quote_obj.get("volume") or []
+
+        raw_bars: list[dict[str, Any]] = []
+        for i in range(len(timestamps)):
+            c = closes[i] if i < len(closes) else None
+            if c is None or c <= 0:
+                continue
+            o = opens[i] if i < len(opens) and opens[i] is not None else c
+            h = highs[i] if i < len(highs) and highs[i] is not None else max(o, c)
+            low_v = lows[i] if i < len(lows) and lows[i] is not None else min(o, c)
+            v = volumes[i] if i < len(volumes) and volumes[i] is not None else 10000
+            dt = datetime.fromtimestamp(timestamps[i], tz=tz)
+            raw_bars.append(
+                {
+                    "timestamp": dt.isoformat(),
+                    "open": round(float(o), 2),
+                    "high": round(float(h), 2),
+                    "low": round(float(low_v), 2),
+                    "close": round(float(c), 2),
+                    "volume": int(v),
+                    "vwap": round((float(o) + float(h) + float(low_v) + float(c)) / 4.0, 2),
+                    "is_market_open": True,
+                }
+            )
+        return chart_data.get("meta") or {}, raw_bars
+
+    @classmethod
+    async def _download_chart_bars(
+        cls,
+        client: httpx.AsyncClient,
+        yahoo_sym: str,
+        range_param: str,
+        interval_param: str,
+        tz: timezone,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        url = cls.YAHOO_V8_URL.format(
+            symbol=yahoo_sym, range_param=range_param, interval_param=interval_param
+        )
+        r = await client.get(await ssrf_checked_url(url))
+        if r.status_code != 200:
+            return {}, []
+        return cls._parse_yahoo_chart(r.json(), tz)
+
+    @classmethod
+    async def _download_intraday_session(
+        cls, client: httpx.AsyncClient, clean: str, yahoo_sym: str
+    ) -> list[dict[str, Any]]:
+        """
+        Velas reales de 5 minutos de la última rueda operada. La primera vela abre en el
+        precio de apertura real del día, que también se refleja en la cotización en vivo.
+        """
+        meta, bars = await cls._download_chart_bars(client, yahoo_sym, "1d", "5m", cls._ART_TZ)
+        if len(bars) < 2:
+            meta, bars = await cls._download_chart_bars(client, yahoo_sym, "5d", "5m", cls._ART_TZ)
+        if len(bars) < 2:
+            return []
+        if yahoo_sym.endswith(".BA"):
+            cls._widen_schedule_from_yahoo(meta)
+
+        last_traded_day = bars[-1]["timestamp"][:10]
+        session = [b for b in bars if b["timestamp"][:10] == last_traded_day]
+        if len(session) < 2:
+            return []
+
+        open_mins, close_mins = cls._session_bounds_minutes()
+        for bar in session:
+            bar_time = datetime.fromisoformat(bar["timestamp"])
+            bar["is_market_open"] = open_mins <= bar_time.hour * 60 + bar_time.minute <= close_mins
+
+        official_open = meta.get("regularMarketOpen") or cls._SESSION_OPEN.get(clean)
+        real_day_open = float(official_open or session[0]["open"])
+        if real_day_open > 0:
+            first = session[0]
+            first["open"] = round(real_day_open, 2)
+            first["high"] = round(max(first["high"], first["open"]), 2)
+            first["low"] = round(min(first["low"], first["open"]), 2)
+            if clean in cls._LIVE_STATE and clean not in cls._SESSION_OPEN:
+                cls._LIVE_STATE[clean]["open_price"] = first["open"]
+        return session
+
+    @classmethod
+    async def _get_real_bars(cls, clean: str, yahoo_sym: str, tf: str) -> list[dict[str, Any]]:
+        """
+        Serie real desde caché en memoria o Yahoo Finance v8. Ante una falla puntual sirve
+        la última serie real conocida en lugar de degradar a una curva sintética.
+        """
+        key = f"{clean}:{tf}"
+        cached = cls._BARS_CACHE.get(key)
+        now_mono = time.monotonic()
+        ttl_seconds = cls._BARS_TTL_SECONDS.get(tf, 600.0)
+        if tf == "1D" and not cls.get_market_schedule_status()["is_market_open"]:
+            # Con la rueda cerrada las velas intradiarias ya no cambian
+            ttl_seconds = max(ttl_seconds, cls._CLOSED_SESSION_INTRADAY_TTL_SECONDS)
+        if cached and now_mono - cached[0] < ttl_seconds:
+            return [dict(b) for b in cached[1]]
+
+        fresh: list[dict[str, Any]] = []
+        try:
+            async with httpx.AsyncClient(headers=cls.DEFAULT_HEADERS, timeout=2.5) as client:
+                if tf == "1D":
+                    fresh = await cls._download_intraday_session(client, clean, yahoo_sym)
+                else:
+                    range_param, interval_param = cls._TIMEFRAME_RANGES.get(tf, ("1mo", "1d"))
+                    _, bars = await cls._download_chart_bars(
+                        client, yahoo_sym, range_param, interval_param, UTC
+                    )
+                    fresh = bars if len(bars) >= 5 else []
+        except Exception as exc:
+            logger.debug("Market data step failed, falling back: %s", exc)
+
+        if fresh:
+            cls._BARS_CACHE[key] = (now_mono, fresh)
+            return [dict(b) for b in fresh]
+        if cached:
+            return [dict(b) for b in cached[1]]
+        return []
+
+    @staticmethod
+    def _anchor_last_bar(bar: dict[str, Any], curr_price: float) -> None:
+        bar["close"] = curr_price
+        bar["high"] = round(max(float(bar["high"]), curr_price), 2)
+        bar["low"] = round(min(float(bar["low"]), curr_price), 2)
+
+    @staticmethod
+    def _flat_point(
+        ts: datetime, prev_close: float, close_val: float, is_open: bool
+    ) -> dict[str, Any]:
+        """Punto sin volumen propio que une el cierre previo con un precio conocido."""
+        high_val = round(max(prev_close, close_val), 2)
+        low_val = round(min(prev_close, close_val), 2)
+        return {
+            "timestamp": ts.isoformat(),
+            "open": prev_close,
+            "high": high_val,
+            "low": low_val,
+            "close": close_val,
+            "volume": 0,
+            "vwap": round((prev_close + high_val + low_val + close_val) / 4.0, 2),
+            "is_market_open": is_open,
+        }
+
+    @classmethod
+    def _finalize_intraday_bars(
+        cls,
+        session: list[dict[str, Any]],
+        curr_price: float,
+        session_close_price: float,
+        is_now_open: bool,
+        now_art: datetime,
+    ) -> list[dict[str, Any]]:
+        """
+        Rueda abierta: el precio vivo es el último punto y nunca hay puntos futuros (si la
+        última vela real ya quedó atrás se agrega un punto "ahora", sin pisar esa vela).
+        Rueda cerrada: la rueda se extiende hasta el cierre oficial con el último precio
+        operado y se agrega un tramo After-Hours corto que converge al precio vivo.
+        """
+        bars = session
+        last_ts = datetime.fromisoformat(bars[-1]["timestamp"])
+        if is_now_open:
+            if (now_art - last_ts).total_seconds() > cls._LIVE_POINT_GAP_SECONDS:
+                bars.append(cls._flat_point(now_art, float(bars[-1]["close"]), curr_price, True))
+            else:
+                cls._anchor_last_bar(bars[-1], curr_price)
+            return bars
+
+        _, close_mins = cls._session_bounds_minutes()
+        official_close = last_ts.replace(
+            hour=close_mins // 60, minute=close_mins % 60, second=0, microsecond=0
+        )
+        if last_ts < official_close <= now_art:
+            bars.append(
+                cls._flat_point(official_close, float(bars[-1]["close"]), session_close_price, True)
+            )
+            last_ts = official_close
+
+        span_seconds = (now_art - last_ts).total_seconds()
+        if span_seconds <= 0:
+            cls._anchor_last_bar(bars[-1], curr_price)
+            return bars
+
+        last_close = float(bars[-1]["close"])
+        steps = cls._AFTER_HOURS_POINTS
+        for i in range(1, steps + 1):
+            alpha = i / steps
+            close_val = (
+                curr_price
+                if i == steps
+                else round(last_close + (curr_price - last_close) * alpha, 2)
+            )
+            bars.append(
+                cls._flat_point(
+                    last_ts + timedelta(seconds=span_seconds * alpha),
+                    float(bars[-1]["close"]),
+                    close_val,
+                    False,
+                )
+            )
+        return bars
+
+    @classmethod
+    def _build_synthetic_intraday_session(
+        cls,
+        live_quote: dict[str, Any],
+        curr_price: float,
+        is_now_open: bool,
+        now_art: datetime,
+    ) -> list[dict[str, Any]]:
+        """
+        Respaldo determinista sin red: rueda oficial en pasos de 15 minutos desde la
+        apertura conocida hasta el precio vivo, sin puntos posteriores a la hora actual.
+        """
+        open_mins, close_mins = cls._session_bounds_minutes()
+        now_mins = now_art.hour * 60 + now_art.minute
+        session_day = now_art
+        if now_art.weekday() >= 5 or now_mins < open_mins:
+            session_day = now_art - timedelta(days=1)
+            while session_day.weekday() >= 5:
+                session_day -= timedelta(days=1)
+
+        step_minutes = list(range(open_mins, close_mins + 1, 15))
+        if is_now_open:
+            step_minutes = [m for m in step_minutes if m <= now_mins] or [open_mins]
+
+        open_ref = float(
+            live_quote.get("open_price") or live_quote.get("previous_close") or curr_price
+        )
+        n_pts = len(step_minutes)
+        closes = [open_ref] * n_pts
+        for i in range(1, n_pts):
+            alpha = i / (n_pts - 1)
+            drift = open_ref + (curr_price - open_ref) * alpha
+            noise = math.sin(i * 0.8) * (curr_price * 0.0035) if i < n_pts - 1 else 0.0
+            closes[i] = round(max(0.01, drift + noise), 2)
+
+        day_str = session_day.strftime("%Y-%m-%d")
+        bars: list[dict[str, Any]] = []
+        for i, minute_of_day in enumerate(step_minutes):
+            c_val = closes[i]
+            o_val = closes[i - 1] if i > 0 else open_ref
+            h_val = round(max(o_val, c_val) * 1.002, 2)
+            l_val = round(min(o_val, c_val) * 0.998, 2)
+            bars.append(
+                {
+                    "timestamp": (
+                        f"{day_str}T{minute_of_day // 60:02d}:{minute_of_day % 60:02d}:00-03:00"
+                    ),
+                    "open": o_val,
+                    "high": h_val,
+                    "low": l_val,
+                    "close": c_val,
+                    "volume": 0,
+                    "vwap": round((o_val + h_val + l_val + c_val) / 4.0, 2),
+                    "is_market_open": True,
+                }
+            )
+        return bars
 
     @classmethod
     async def fetch_live_historical_bars(
@@ -1813,163 +2205,38 @@ class PublicMarket10YProvider:
         """
         Descarga barras OHLCV históricas reales y ancla estrictamente la última barra
         al precio vivo actual (last_price) de _LIVE_STATE para perfecta sincronía.
-        Para timeframe == '1D', genera 31 puntos con tramo de rueda y After-Hours con is_market_open.
+        Para timeframe == '1D' devuelve las velas intradiarias reales de la rueda (5m) con
+        is_market_open por vela y, con la rueda cerrada, un tramo After-Hours corto.
         """
         clean = (ticker or "GGAL").strip().upper()
+        tf = (timeframe or "1M").upper()
         inst = BYMA_CURATED_UNIVERSE_MAP.get(clean, {})
         yahoo_sym = inst.get("yahoo_symbol", f"{clean}.BA")
 
         # Asegurar precio actual en vivo
         if clean not in cls._LIVE_STATE:
             await cls.fetch_live_quotes_batch([clean])
+
+        real_bars = await cls._get_real_bars(clean, yahoo_sym, tf)
+
         live_quote = cls._LIVE_STATE.get(clean) or {}
         curr_price = float(live_quote.get("last_price") or inst.get("target_price", 1000.0))
 
-        # Hora oficial Argentina (UTC-3)
-        art_tz = timezone(timedelta(hours=-3))
-        now_art = datetime.now(art_tz)
-        is_today_weekday = now_art.weekday() < 5
-        is_now_open = is_today_weekday and (11 <= now_art.hour < 17)
+        if tf == "1D":
+            now_art = datetime.now(cls._ART_TZ)
+            is_now_open = bool(cls.get_market_schedule_status()["is_market_open"])
+            session = real_bars or cls._build_synthetic_intraday_session(
+                live_quote, curr_price, is_now_open, now_art
+            )
+            session_close_price = float(live_quote.get("base_price") or curr_price)
+            return cls._finalize_intraday_bars(
+                session, curr_price, session_close_price, is_now_open, now_art
+            )
 
-        # Generación intradiaria para '1D'
-        if timeframe.upper() == "1D":
-            bars: list[dict[str, Any]] = []
-            open_ref = float(live_quote.get("previous_close") or curr_price)
-            # Rueda oficial (11:00 a 17:00 ART) - 25 intervalos de 15m
-            step_times = [
-                "11:00",
-                "11:15",
-                "11:30",
-                "11:45",
-                "12:00",
-                "12:15",
-                "12:30",
-                "12:45",
-                "13:00",
-                "13:15",
-                "13:30",
-                "13:45",
-                "14:00",
-                "14:15",
-                "14:30",
-                "14:45",
-                "15:00",
-                "15:15",
-                "15:30",
-                "15:45",
-                "16:00",
-                "16:15",
-                "16:30",
-                "16:45",
-                "17:00",
-            ]
-            # After-hours (17:30 a 21:30 + Ahora) - 6 intervalos
-            after_times = ["17:30", "18:30", "19:30", "20:30", "21:30", "Ahora (Vivo 5s)"]
-            all_labels = step_times + after_times
-            n_pts = len(all_labels)
-
-            today_date_str = now_art.strftime("%Y-%m-%d")
-            closes = [open_ref] * n_pts
-            closes[-1] = curr_price
-
-            for i in range(1, n_pts - 1):
-                alpha = i / (n_pts - 1)
-                drift = open_ref + (curr_price - open_ref) * alpha
-                noise = math.sin(i * 0.8) * (curr_price * 0.0035)
-                closes[i] = round(max(0.01, drift + noise), 2)
-
-            for i, label in enumerate(all_labels):
-                is_open = i < len(step_times)  # Hasta las 17:00 es rueda oficial
-                c_val = closes[i]
-                o_val = closes[i - 1] if i > 0 else open_ref
-                h_val = round(max(o_val, c_val) * 1.002, 2)
-                l_val = round(min(o_val, c_val) * 0.998, 2)
-                v_val = (  # simulated volume, non-cryptographic
-                    random.randint(15000, 45000)  # noqa: S311
-                    if is_open
-                    else random.randint(800, 3500)  # noqa: S311
-                )
-                if ":" in label:
-                    hh, mm = label.split(":")
-                    ts_iso = f"{today_date_str}T{hh}:{mm}:00-03:00"
-                else:
-                    ts_iso = now_art.isoformat()
-
-                bars.append(
-                    {
-                        "timestamp": ts_iso,
-                        "open": o_val,
-                        "high": h_val,
-                        "low": l_val,
-                        "close": c_val,
-                        "volume": v_val,
-                        "vwap": round((o_val + h_val + l_val + c_val) / 4.0, 2),
-                        "is_market_open": is_open,
-                    }
-                )
-            bars[-1]["close"] = curr_price
-            bars[-1]["is_market_open"] = is_now_open
-            return bars
-
-        # Para '1W', '1M', '1Y': intentar Yahoo Finance v8
-        tf_map = {
-            "1W": ("5d", "1h"),
-            "1M": ("1mo", "1d"),
-            "1Y": ("1y", "1d"),
-        }
-        range_param, interval_param = tf_map.get(timeframe.upper(), ("1mo", "1d"))
-
-        try:
-            async with httpx.AsyncClient(headers=cls.DEFAULT_HEADERS, timeout=2.5) as client:
-                url = cls.YAHOO_V8_URL.format(
-                    symbol=yahoo_sym, range_param=range_param, interval_param=interval_param
-                )
-                r = await client.get(await ssrf_checked_url(url))
-                if r.status_code == 200:
-                    payload = r.json()
-                    res_list = payload.get("chart", {}).get("result", [])
-                    if res_list:
-                        chart_data = res_list[0]
-                        timestamps = chart_data.get("timestamp", [])
-                        quote_obj = (chart_data.get("indicators", {}).get("quote", [{}]))[0]
-                        opens = quote_obj.get("open", [])
-                        highs = quote_obj.get("high", [])
-                        lows = quote_obj.get("low", [])
-                        closes = quote_obj.get("close", [])
-                        volumes = quote_obj.get("volume", [])
-
-                        raw_bars: list[dict[str, Any]] = []
-                        for i in range(len(timestamps)):
-                            c = closes[i] if i < len(closes) else None
-                            if c is None or c <= 0:
-                                continue
-                            o = opens[i] if i < len(opens) and opens[i] is not None else c
-                            h = highs[i] if i < len(highs) and highs[i] is not None else max(o, c)
-                            low_v = lows[i] if i < len(lows) and lows[i] is not None else min(o, c)
-                            v = volumes[i] if i < len(volumes) and volumes[i] is not None else 10000
-                            dt = datetime.fromtimestamp(timestamps[i], tz=UTC)
-                            raw_bars.append(
-                                {
-                                    "timestamp": dt.isoformat(),
-                                    "open": round(float(o), 2),
-                                    "high": round(float(h), 2),
-                                    "low": round(float(low_v), 2),
-                                    "close": round(float(c), 2),
-                                    "volume": int(v),
-                                    "vwap": round(
-                                        (float(o) + float(h) + float(low_v) + float(c)) / 4.0, 2
-                                    ),
-                                    "is_market_open": True,
-                                }
-                            )
-                        if len(raw_bars) >= 5:
-                            raw_bars[-1]["close"] = curr_price
-                            raw_bars[-1]["high"] = round(max(raw_bars[-1]["high"], curr_price), 2)
-                            raw_bars[-1]["low"] = round(min(raw_bars[-1]["low"], curr_price), 2)
-                            raw_bars[-1]["is_market_open"] = is_now_open
-                            return raw_bars
-        except Exception as exc:
-            logger.debug("Market data step failed, falling back: %s", exc)
+        # '1W', '1M', '1Y': todas las barras pertenecen a ruedas oficiales (is_market_open=True)
+        if real_bars:
+            cls._anchor_last_bar(real_bars[-1], curr_price)
+            return real_bars
 
         # Fallback determinista
         det_bars = generate_deterministic_historical_bars(
@@ -1977,8 +2244,75 @@ class PublicMarket10YProvider:
         )
         if det_bars:
             det_bars[-1]["close"] = curr_price
-            det_bars[-1]["is_market_open"] = is_now_open
+            det_bars[-1]["is_market_open"] = True
         return det_bars
+
+    @classmethod
+    async def _refresh_prewarm_set(cls, force_quotes: bool) -> int:
+        """Refresca cotizaciones y series principales; retorna la cantidad de series en caché."""
+        await cls.fetch_live_quotes_batch(force_refresh=force_quotes)
+        results = await asyncio.gather(
+            *(
+                cls.fetch_live_historical_bars(t, tf)
+                for t in cls.PREWARM_TICKERS
+                for tf in cls.PREWARM_TIMEFRAMES
+            ),
+            return_exceptions=True,
+        )
+        return sum(1 for r in results if isinstance(r, list) and r)
+
+    @classmethod
+    async def prewarm_and_loop(cls) -> None:
+        """
+        Pre-calienta en memoria cotizaciones y series principales al arranque y luego las
+        mantiene frescas en segundo plano, para que la primera vista de mercado responda
+        desde memoria en lugar de esperar a los proveedores externos.
+        """
+        started = time.perf_counter()
+        try:
+            warmed = await cls._refresh_prewarm_set(force_quotes=True)
+            logger.info(
+                "market_prewarm_completed series=%d quotes=%d duration_ms=%.1f",
+                warmed,
+                len(cls._LIVE_STATE),
+                (time.perf_counter() - started) * 1000.0,
+            )
+        except Exception as exc:
+            logger.warning("market_prewarm_failed error=%s", exc)
+
+        while True:
+            await asyncio.sleep(cls.PREWARM_INTERVAL_SECONDS)
+            cycle_started = time.perf_counter()
+            try:
+                # Sin forzar: respeta la ventana de sincronización externa de cotizaciones
+                await cls._refresh_prewarm_set(force_quotes=False)
+                logger.debug(
+                    "market_background_sync duration_ms=%.1f",
+                    (time.perf_counter() - cycle_started) * 1000.0,
+                )
+            except Exception as exc:
+                logger.debug("market_background_sync_failed error=%s", exc)
+
+    @classmethod
+    def start_background_sync(cls) -> asyncio.Task[None]:
+        """Inicia (una sola vez) la tarea de pre-calentamiento y sincronización continua."""
+        if cls._BG_TASK is None or cls._BG_TASK.done():
+            cls._BG_TASK = asyncio.create_task(
+                cls.prewarm_and_loop(), name="investai-market-prewarm"
+            )
+        return cls._BG_TASK
+
+    @classmethod
+    async def stop_background_sync(cls) -> None:
+        """Cancela la tarea de sincronización y espera su finalización ordenada."""
+        task, cls._BG_TASK = cls._BG_TASK, None
+        if task is None or task.done():
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            logger.debug("market_background_sync_stopped")
 
     @classmethod
     async def fetch_live_or_calibrated_metrics(

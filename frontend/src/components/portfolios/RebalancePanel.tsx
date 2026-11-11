@@ -420,12 +420,22 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
               <Cpu className="h-3.5 w-3.5 text-sky-400" />
               <span>Modelo Cuantitativo de Optimización (Ventana 10 Años)</span>
             </span>
-            <span className="text-[11px] font-mono text-sky-400 bg-sky-500/10 border border-sky-500/20 px-2.5 py-0.5 rounded-full">
-              Fórmula Activa: {activeStratInfo.formula}
+          </div>
+
+          {/* Active formula card: full strategy name and math expression, never clipped */}
+          <div className="w-full border border-sky-500/30 bg-slate-950/90 px-4 py-2.5 rounded-xl flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
+            <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-sky-400 shrink-0">
+              Fórmula Activa
+            </span>
+            <span className="text-xs font-bold text-white leading-snug">
+              {activeStratInfo.label}
+            </span>
+            <span className="text-[11px] font-mono text-sky-200 leading-relaxed whitespace-normal break-words">
+              {activeStratInfo.formula}
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
             {QUANT_STRATEGIES.map((st) => {
               const active = selectedStrategy === st.id;
               return (
@@ -436,14 +446,14 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
                     setSelectedStrategy(st.id);
                     setSimulationResult(null);
                   }}
-                  className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                  aria-pressed={active}
+                  className={`min-h-[104px] p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
                     active
-                      ? "bg-sky-600/20 border-sky-500 text-white shadow-md shadow-sky-900/20"
-                      : "bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
+                      ? "bg-sky-600/20 border-sky-500 shadow-md shadow-sky-900/20"
+                      : "bg-slate-950/60 border-slate-800 hover:bg-slate-800/40 hover:border-slate-700"
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-xs font-semibold truncate">{st.label}</span>
+                  <div className="flex items-center justify-between gap-2">
                     <span
                       className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
                         active ? "bg-sky-500/30 text-sky-200" : "bg-slate-800 text-slate-400"
@@ -451,8 +461,22 @@ export const RebalancePanel: React.FC<RebalancePanelProps> = ({ portfolio }) => 
                     >
                       {st.badge}
                     </span>
+                    <span
+                      className={`h-2 w-2 rounded-full shrink-0 ${
+                        active ? "bg-sky-400 shadow shadow-sky-400/60" : "bg-slate-700"
+                      }`}
+                    />
                   </div>
-                  <p className="text-[10px] font-mono text-slate-400 line-clamp-1">{st.formula}</p>
+                  <span className="text-xs font-bold leading-snug whitespace-normal break-words text-white">
+                    {st.label}
+                  </span>
+                  <p
+                    className={`text-[11px] font-mono leading-relaxed whitespace-normal break-words ${
+                      active ? "text-sky-200" : "text-slate-400"
+                    }`}
+                  >
+                    {st.formula}
+                  </p>
                 </button>
               );
             })}

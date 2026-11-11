@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -19,19 +20,35 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import async_engine, init_db
 from app.core.metrics import MetricsMiddleware, default_metrics
+from app.domain.services.market_data_provider import PublicMarket10YProvider
 from app.schemas.envelope import APIErrorResponse, ErrorDetail, ResponseMeta, SubErrorDetail
 
 logger = logging.getLogger("investai.api")
 
 
+def _market_prewarm_enabled() -> bool:
+    """Background market pre-warming stays off under tests so they remain offline."""
+    if os.environ.get("TESTING") == "1" or "PYTEST_CURRENT_TEST" in os.environ:
+        return False
+    return settings.ENVIRONMENT.lower() not in {"test", "testing"}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan context manager for startup and shutdown hooks."""
-    # Startup: ensure tables exist in target database (PostgreSQL or local SQLite)
+    # Startup: bring the schema to the latest migration (PostgreSQL or local SQLite)
     await init_db()
-    yield
-    # Shutdown: clean disposal of connection pool
-    await async_engine.dispose()
+    prewarm_enabled = _market_prewarm_enabled()
+    if prewarm_enabled:
+        # Warm live quotes and main series in memory without delaying startup
+        PublicMarket10YProvider.start_background_sync()
+    try:
+        yield
+    finally:
+        if prewarm_enabled:
+            await PublicMarket10YProvider.stop_background_sync()
+        # Shutdown: clean disposal of connection pool
+        await async_engine.dispose()
 
 
 app = FastAPI(

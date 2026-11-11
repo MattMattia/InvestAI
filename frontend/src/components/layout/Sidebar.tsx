@@ -10,10 +10,10 @@ import {
   LineChart,
   Settings,
   ShieldCheck,
-  TrendingUp,
   UploadCloud,
 } from "lucide-react";
 import type React from "react";
+import { InvestAILogo } from "@/components/common/InvestAILogo";
 import { useAuth } from "@/hooks/useAuth";
 import type { NavSection } from "@/lib/navigation";
 
@@ -83,20 +83,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Top Branding Section */}
       <div className="flex flex-col">
         <div className="h-16 px-5 border-b border-slate-800/80 flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20 ring-1 ring-white/20">
-            <TrendingUp className="h-5 w-5 text-white" />
-          </div>
-          <div>
+          <InvestAILogo
+            size="md"
+            className="shrink-0 drop-shadow-[0_0_8px_rgba(14,165,233,0.35)]"
+          />
+          <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="font-bold text-base tracking-tight text-white font-mono">
                 InvestAI
               </span>
-              <span className="text-[10px] font-semibold uppercase px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">
-                PRO
+              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-gradient-to-r from-slate-200 via-sky-200 to-cyan-300 text-slate-900 border border-cyan-200/50 whitespace-nowrap">
+                Enterprise Pro
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 font-sans tracking-wide">
-              Enterprise Risk Engine
+            <p className="text-[10px] text-slate-400 font-sans tracking-wide whitespace-nowrap">
+              Quantitative Risk & BYMA Engine
             </p>
           </div>
         </div>

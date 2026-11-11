@@ -296,19 +296,19 @@ DEMO_HOLDINGS = [
         "asset_ticker": "GGAL",
         "quantity": 1500.0,
         "average_buy_price": 4850.0,
-        "current_price": 5120.0,
+        "current_price": 4980.0,
     },
     {
         "asset_ticker": "YPFD",
         "quantity": 250.0,
         "average_buy_price": 28500.0,
-        "current_price": 30200.0,
+        "current_price": 29850.0,
     },
     {
         "asset_ticker": "AAPL",
         "quantity": 180.0,
         "average_buy_price": 14200.0,
-        "current_price": 15450.0,
+        "current_price": 15120.0,
     },
     {
         "asset_ticker": "AL30",

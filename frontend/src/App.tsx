@@ -4,7 +4,7 @@
  * Portfolios Dashboard, System Health Diagnostics, and Prometheus Telemetry.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import {
   Activity,
@@ -21,7 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { IngestionView } from "@/components/ingestion/IngestionView";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -31,7 +31,8 @@ import { PortfoliosView } from "@/components/portfolios/PortfoliosView";
 import { usePortfolios } from "@/hooks/usePortfolios";
 import { authStorage } from "@/lib/authStorage";
 import { useHashRoute } from "@/lib/navigation";
-import { systemKeys } from "@/lib/queryKeys";
+import { marketKeys, systemKeys } from "@/lib/queryKeys";
+import { marketService } from "@/services/marketService";
 
 interface HealthResponse {
   status: string;
@@ -192,6 +193,23 @@ export const App: React.FC = () => {
   const [syncSuccessBanner, setSyncSuccessBanner] = useState<string | null>(null);
 
   const portfoliosQuery = usePortfolios();
+  const queryClient = useQueryClient();
+
+  // Warm the market cache at app start so "Mercado en Vivo" paints real data instantly
+  useEffect(() => {
+    void queryClient.prefetchQuery({
+      queryKey: marketKeys.quotes("ALL"),
+      queryFn: () => marketService.getLiveMarketFeed("ALL", false),
+    });
+    void queryClient.prefetchQuery({
+      queryKey: marketKeys.history("GGAL", "1M"),
+      queryFn: () => marketService.getHistoricalBars("GGAL", "1M"),
+    });
+    void queryClient.prefetchQuery({
+      queryKey: marketKeys.history("GGAL", "1D"),
+      queryFn: () => marketService.getHistoricalBars("GGAL", "1D"),
+    });
+  }, [queryClient]);
 
   // Query Backend Health endpoint with direct fallback if proxy wasn't hot-reloaded
   const healthQuery = useQuery({

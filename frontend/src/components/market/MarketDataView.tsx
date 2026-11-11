@@ -11,7 +11,7 @@ import React, { useMemo, useState } from "react";
 import { OrderExecutionModal } from "@/components/orders/OrderExecutionModal";
 import { useHashRoute } from "@/lib/navigation";
 import { marketKeys, portfolioKeys } from "@/lib/queryKeys";
-import { buildDeterministicHistoricalBars, marketService } from "@/services/marketService";
+import { marketService } from "@/services/marketService";
 import type { MarketQuote } from "@/types/api";
 import { type ChartTimeframe, FinancialTimeSeriesChart } from "./FinancialTimeSeriesChart";
 import { MarketStatusBar } from "./MarketStatusBar";
@@ -83,6 +83,30 @@ class ChartErrorBoundary extends React.Component<ChartErrorBoundaryProps, ChartE
   }
 }
 
+/** Loading placeholder with the exact chart footprint, so real data never shifts layout. */
+const ChartSkeleton: React.FC<{ ticker: string; timeframe: ChartTimeframe }> = ({
+  ticker,
+  timeframe,
+}) => (
+  <div
+    className="w-full rounded-2xl bg-slate-900 border border-slate-800 p-5 shadow-xl space-y-4"
+    role="status"
+    aria-live="polite"
+    aria-busy="true"
+  >
+    <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+      <div className="space-y-2">
+        <h3 className="text-lg font-bold text-white font-mono tracking-tight">{ticker}</h3>
+        <div className="h-7 w-44 rounded-md bg-slate-800/80 animate-pulse" />
+      </div>
+      <span className="text-[11px] font-mono text-sky-400">
+        Sincronizando serie real {timeframe}...
+      </span>
+    </div>
+    <div className="w-full aspect-[800/360] rounded-xl bg-slate-950/60 border border-slate-800/60 animate-pulse" />
+  </div>
+);
+
 export const MarketDataView: React.FC = () => {
   const { ticker: routeTicker, navigateToMarket } = useHashRoute();
   const queryClient = useQueryClient();
@@ -96,9 +120,6 @@ export const MarketDataView: React.FC = () => {
   const [isRefreshingManual, setIsRefreshingManual] = useState<boolean>(false);
   const [tradeModalQuote, setTradeModalQuote] = useState<MarketQuote | null>(null);
 
-  // Full catalog lookup so activeQuote is always resolved regardless of category tab
-  const allCuratedQuotes = useMemo(() => marketService.getCuratedQuotesSync("ALL"), []);
-
   // 1. Query official market session status
   const statusQuery = useQuery({
     queryKey: marketKeys.status(),
@@ -107,38 +128,39 @@ export const MarketDataView: React.FC = () => {
     refetchIntervalInBackground: false,
   });
 
-  // 2. Query live feed with 5s continuous polling and auto-sync
+  // 2. Query the full live feed with 5s continuous polling. No seed initialData: the first
+  // paint shows real quotes (pre-warmed server side and prefetched at app start) or a loader.
+  // Category tabs filter client-side, so the active quote is always the real one.
   const feedQuery = useQuery({
-    queryKey: marketKeys.quotes(selectedCategory),
-    queryFn: () => marketService.getLiveMarketFeed(selectedCategory, isRefreshingManual),
-    initialData: () => ({
-      quotes: marketService.getCuratedQuotesSync(selectedCategory),
-      ccl_rate: 1668.8,
-      mep_rate: 1581.1,
-      data_source: "CACHE_FALLBACK",
-      updated_at: new Date().toISOString(),
-    }),
+    queryKey: marketKeys.quotes("ALL"),
+    queryFn: () => marketService.getLiveMarketFeed("ALL", isRefreshingManual),
     refetchInterval: 5000,
     staleTime: 0,
     refetchIntervalInBackground: true,
   });
 
-  // 3. Query historical series with 5s auto-sync and smooth placeholder transitions
+  // 3. Query historical series with 5s auto-sync. Bars from another ticker or timeframe are
+  // never reused as placeholder: until the real series arrives a skeleton is rendered.
   const historyQuery = useQuery({
     queryKey: marketKeys.history(activeTicker, timeframe),
     queryFn: () => marketService.getHistoricalBars(activeTicker, timeframe),
-    initialData: () => buildDeterministicHistoricalBars(activeTicker, timeframe),
     refetchInterval: 5000,
     staleTime: 0,
-    placeholderData: (prev) => prev,
   });
 
-  const resolvedBars = useMemo(() => {
-    if (historyQuery.data && historyQuery.data.length > 0) {
-      return historyQuery.data;
-    }
-    return buildDeterministicHistoricalBars(activeTicker, timeframe);
-  }, [historyQuery.data, activeTicker, timeframe]);
+  const resolvedBars = historyQuery.data ?? [];
+  const hasRealBars = resolvedBars.length > 0;
+
+  // The backend schedule (single source of truth) overrides the client-side clock estimate
+  const marketStatus = useMemo(() => {
+    const base = statusQuery.data;
+    const backendIsOpen = feedQuery.data?.is_market_open;
+    if (!base || typeof backendIsOpen !== "boolean") return base;
+    return { ...base, is_open: backendIsOpen };
+  }, [statusQuery.data, feedQuery.data?.is_market_open]);
+
+  const marketOpenTime = feedQuery.data?.market_open_time || "10:30";
+  const marketCloseTime = feedQuery.data?.market_close_time || "18:00";
 
   // Manual refresh trigger: refetches live quotes and invalidates portfolio cache (MTM sync)
   const handleManualRefresh = async () => {
@@ -155,23 +177,23 @@ export const MarketDataView: React.FC = () => {
     navigateToMarket(ticker);
   };
 
-  // Filtered quotes based on search query
+  // Filtered quotes based on category tab and search query
   const filteredQuotes = useMemo(() => {
     const raw = feedQuery.data?.quotes || [];
-    if (!searchQuery.trim()) return raw;
+    const byCategory =
+      selectedCategory === "ALL" ? raw : raw.filter((q) => q.asset_type === selectedCategory);
+    if (!searchQuery.trim()) return byCategory;
     const term = searchQuery.trim().toLowerCase();
-    return raw.filter(
+    return byCategory.filter(
       (q) => q.ticker.toLowerCase().includes(term) || q.name.toLowerCase().includes(term),
     );
-  }, [feedQuery.data?.quotes, searchQuery]);
+  }, [feedQuery.data?.quotes, selectedCategory, searchQuery]);
 
-  // Active quote data for chart header
-  const activeQuote = useMemo(() => {
-    return (
-      (feedQuery.data?.quotes || []).find((q) => q.ticker === activeTicker) ||
-      allCuratedQuotes.find((q) => q.ticker === activeTicker)
-    );
-  }, [feedQuery.data?.quotes, allCuratedQuotes, activeTicker]);
+  // Active quote data for chart header (real feed only, never a static seed)
+  const activeQuote = useMemo(
+    () => (feedQuery.data?.quotes || []).find((q) => q.ticker === activeTicker),
+    [feedQuery.data?.quotes, activeTicker],
+  );
 
   // 10-Year Quantitative & Fundamental Metrics for activeTicker
   const activeMetrics10Y = useMemo(
@@ -183,32 +205,40 @@ export const MarketDataView: React.FC = () => {
     <div className="space-y-6">
       {/* 1. Official BYMA Session Status Bar with Live Multi-Source Badge & FX Rates */}
       <MarketStatusBar
-        status={statusQuery.data}
+        status={marketStatus}
         onRefresh={handleManualRefresh}
         isRefreshing={isRefreshingManual || feedQuery.isFetching}
         dataSource={feedQuery.data?.data_source}
         cclRate={feedQuery.data?.ccl_rate}
         mepRate={feedQuery.data?.mep_rate}
+        marketOpenTime={marketOpenTime}
+        marketCloseTime={marketCloseTime}
       />
 
       {/* 2. Interactive SVG Financial Time Series Chart with Error Boundary */}
       <div className="relative">
-        {historyQuery.isFetching && (
+        {historyQuery.isFetching && hasRealBars && (
           <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950/80 border border-sky-500/30 text-[11px] font-mono text-sky-400 backdrop-blur-sm shadow-sm animate-pulse">
             <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
             <span>Actualizando 5s...</span>
           </div>
         )}
-        <ChartErrorBoundary key={`${activeTicker}-${timeframe}`}>
-          <FinancialTimeSeriesChart
-            bars={resolvedBars}
-            activeTicker={activeTicker}
-            timeframe={timeframe}
-            onTimeframeChange={(tf) => setTimeframe(tf)}
-            quote={activeQuote}
-            cclRate={feedQuery.data?.ccl_rate}
-          />
-        </ChartErrorBoundary>
+        {hasRealBars ? (
+          <ChartErrorBoundary key={`${activeTicker}-${timeframe}`}>
+            <FinancialTimeSeriesChart
+              bars={resolvedBars}
+              activeTicker={activeTicker}
+              timeframe={timeframe}
+              onTimeframeChange={(tf) => setTimeframe(tf)}
+              quote={activeQuote}
+              cclRate={feedQuery.data?.ccl_rate}
+              marketOpenTime={marketOpenTime}
+              marketCloseTime={marketCloseTime}
+            />
+          </ChartErrorBoundary>
+        ) : (
+          <ChartSkeleton ticker={activeTicker} timeframe={timeframe} />
+        )}
       </div>
 
       {/* 2.5. Real-Time 10-Year Quantitative & Fundamental Metrics Card */}

@@ -1,7 +1,8 @@
 /**
  * MarketStatusBar Component for InvestAI Enterprise.
- * Displays official BYMA market session status (open/closed semaphores),
- * live Argentina Time (ART / UTC-3), next event countdown, and manual quote refresh trigger.
+ * Displays official BYMA market session status (open/closed semaphores), the active
+ * official trading window, live Argentina Time (ART / UTC-3) and the manual quote
+ * refresh trigger with auto-sync feedback.
  */
 
 import { Clock, RefreshCw } from "lucide-react";
@@ -16,6 +17,8 @@ interface MarketStatusBarProps {
   dataSource?: string;
   cclRate?: number;
   mepRate?: number;
+  marketOpenTime?: string;
+  marketCloseTime?: string;
 }
 
 export const MarketStatusBar: React.FC<MarketStatusBarProps> = ({
@@ -25,6 +28,8 @@ export const MarketStatusBar: React.FC<MarketStatusBarProps> = ({
   dataSource = "YAHOO_LIVE",
   cclRate = 1668.0,
   mepRate = 1581.0,
+  marketOpenTime = "10:30",
+  marketCloseTime = "18:00",
 }) => {
   const [artTime, setArtTime] = useState<string>("");
 
@@ -75,6 +80,13 @@ export const MarketStatusBar: React.FC<MarketStatusBarProps> = ({
           </span>
         </div>
 
+        {/* Official trading window currently in force */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-sky-500/30 font-mono text-xs text-sky-300 shadow-sm">
+          <span className="font-semibold tracking-wide tabular-nums">
+            🕒 RUEDA BYMA: {marketOpenTime} – {marketCloseTime} ART
+          </span>
+        </div>
+
         {/* Live Multi-source Feed Badge */}
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-emerald-500/30 font-mono text-xs text-emerald-400 shadow-sm">
           <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
@@ -109,21 +121,28 @@ export const MarketStatusBar: React.FC<MarketStatusBarProps> = ({
 
       {/* Right: Live ART Clock & Refresh Button */}
       <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800/80 font-mono text-xs text-sky-400">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800/80 font-mono text-xs text-sky-400 tabular-nums">
           <Clock className="h-3.5 w-3.5 text-slate-400" />
           <span>{artTime || "Cargando hora ART..."}</span>
         </div>
 
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          className="px-3.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs transition-all flex items-center gap-1.5 shadow-md shadow-sky-600/20 active:scale-95 disabled:opacity-50 cursor-pointer"
-          title="Actualizar cotizaciones en vivo y sincronizar portafolios (MTM)"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 text-white ${isRefreshing ? "animate-spin" : ""}`} />
-          <span>Actualizar</span>
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            aria-busy={isRefreshing}
+            className="min-w-[176px] px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 border border-sky-400/30 text-white font-semibold text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-sky-600/25 active:scale-95 disabled:opacity-80 disabled:cursor-progress cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+            title="Actualizar cotizaciones en vivo y sincronizar portafolios (MTM)"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 text-white ${isRefreshing ? "animate-spin" : ""}`} />
+            <span>{isRefreshing ? "Sincronizando MTM..." : "Actualizar"}</span>
+          </button>
+          <span className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Auto-sync cada 5s</span>
+          </span>
+        </div>
       </div>
     </div>
   );
