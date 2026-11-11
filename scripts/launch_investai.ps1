@@ -134,10 +134,30 @@ function Wait-ProcessWithUi {
     return $Process.HasExited
 }
 
+function Test-TcpPortOpen {
+    param(
+        [string]$HostName = '127.0.0.1',
+        [int]$Port,
+        [int]$TimeoutMs = 200
+    )
+    $client = New-Object System.Net.Sockets.TcpClient
+    try {
+        $iar = $client.BeginConnect($HostName, $Port, $null, $null)
+        $connected = $iar.AsyncWaitHandle.WaitOne($TimeoutMs, $false)
+        if (-not $connected) { return $false }
+        $client.EndConnect($iar)
+        return $true
+    } catch {
+        return $false
+    } finally {
+        $client.Close()
+    }
+}
+
 function Test-HttpOk {
     param([string]$Uri)
     try {
-        $response = Invoke-WebRequest -Uri $Uri -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop
+        $response = Invoke-WebRequest -Uri $Uri -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
         return ($response.StatusCode -eq 200)
     } catch {
         return $false
@@ -237,7 +257,7 @@ try {
     # 4. Backend FastAPI y Frontend Vite en paralelo, ocultos y con salida a archivos de log
     Set-SplashStage -Percent 60 -Message $stageServers
     $backendCommand = "/c `"`"$pythonCmd`" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > `"$backendLog`" 2>&1`""
-    $frontendCommand = "/c `"npm --prefix frontend run dev -- --port 5173 --strictPort > `"$frontendLog`" 2>&1`""
+    $frontendCommand = "/c `"npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173 --strictPort > `"$frontendLog`" 2>&1`""
     $backendProc = Start-Process -FilePath 'cmd.exe' -ArgumentList $backendCommand -WindowStyle Hidden -PassThru
     $frontendProc = Start-Process -FilePath 'cmd.exe' -ArgumentList $frontendCommand -WindowStyle Hidden -PassThru
     Write-LauncherLog "Backend PID $($backendProc.Id), Frontend PID $($frontendProc.Id)"
@@ -259,9 +279,11 @@ try {
     $frontendReady = $false
     $deadline = [DateTime]::UtcNow.AddSeconds(45)
     while ([DateTime]::UtcNow -lt $deadline) {
-        if (Test-HttpOk -Uri 'http://localhost:5173') { $frontendReady = $true; break }
+        if (Test-TcpPortOpen -HostName '127.0.0.1' -Port 5173 -TimeoutMs 200) {
+            if (Test-HttpOk -Uri 'http://127.0.0.1:5173') { $frontendReady = $true; break }
+        }
         if ($frontendProc.HasExited) { break }
-        Wait-WithUi -Milliseconds 200
+        Wait-WithUi -Milliseconds 150
     }
     if (-not $frontendReady) {
         Show-SplashFailure -Message 'El entorno Vite (5173) no pudo iniciar.'
