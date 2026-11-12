@@ -34,8 +34,13 @@ jobs:
           enable-cache: true
           cache-dependency-glob: backend/requirements.txt
           python-version: "3.11"
+      # uv-managed interpreters are marked externally managed, so install into a venv
+      # and put it first on PATH for the following steps.
       - name: Install dependencies
-        run: uv pip install --system -r backend/requirements.txt
+        run: |
+          uv venv .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          uv pip install --python .venv -r backend/requirements.txt
       # Ruff version pinned to match .pre-commit-config.yaml; ruff.toml excludes Alembic migrations.
       - name: Ruff lint
         run: uvx ruff@0.9.6 check backend
