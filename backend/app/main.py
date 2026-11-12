@@ -18,10 +18,11 @@ from app.api.deps import get_db_session
 from app.api.middleware.trace import RequestTraceMiddleware, get_current_request_id
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.database import async_engine, init_db
+from app.core.database import AsyncSessionLocal, async_engine, init_db
 from app.core.metrics import MetricsMiddleware, default_metrics
 from app.domain.services.market_data_provider import PublicMarket10YProvider
 from app.schemas.envelope import APIErrorResponse, ErrorDetail, ResponseMeta, SubErrorDetail
+from app.services.market_price_sync import MarketPriceSync
 
 logger = logging.getLogger("investai.api")
 
@@ -40,8 +41,10 @@ async def lifespan(app: FastAPI):
     await init_db()
     prewarm_enabled = _market_prewarm_enabled()
     if prewarm_enabled:
-        # Warm live quotes and main series in memory without delaying startup
-        PublicMarket10YProvider.start_background_sync()
+        # Warm live quotes and main series in memory without delaying startup; the same
+        # background sync is the only writer of holding prices (real prices only)
+        price_sync = MarketPriceSync(AsyncSessionLocal)
+        PublicMarket10YProvider.start_background_sync(on_real_prices=price_sync.persist)
     try:
         yield
     finally:

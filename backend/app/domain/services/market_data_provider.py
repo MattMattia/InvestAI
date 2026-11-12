@@ -15,6 +15,7 @@ import math
 import random
 import re
 import time
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
@@ -22,6 +23,9 @@ import httpx
 import numpy as np
 
 logger = logging.getLogger("investai.market_data")
+
+# Receptor de precios reales por ticker (p. ej. persistencia Mark-To-Market)
+RealPricesSink = Callable[[dict[str, dict[str, Any]]], Awaitable[object]]
 
 
 async def ssrf_checked_url(url: str) -> str:
@@ -1515,6 +1519,9 @@ class PublicMarket10YProvider:
     # Apertura oficial de la última rueda por ticker (serie diaria), fuente única para que
     # la columna "Apertura" y el primer punto del gráfico 1D coincidan
     _SESSION_OPEN: dict[str, float] = {}
+    # Último precio REAL descargado por ticker (sin micro-ticks ni semillas): única fuente
+    # que se persiste como Mark-To-Market de las tenencias
+    _REAL_PRICES: dict[str, dict[str, Any]] = {}
     _LAST_EXTERNAL_SYNC: float = 0.0
     _FX_STATE: tuple[float, float] = (1668.8, 1581.1)
     _semaphore = asyncio.Semaphore(8)
@@ -1540,6 +1547,8 @@ class PublicMarket10YProvider:
     )
     PREWARM_TIMEFRAMES: tuple[str, ...] = ("1D", "1M")
     PREWARM_INTERVAL_SECONDS: float = 15.0
+    # Tiempo máximo para entregar precios reales al receptor (p. ej. escritura en BD)
+    SINK_TIMEOUT_SECONDS: float = 10.0
 
     # Rueda oficial BYMA en hora de Argentina (ART, UTC-3)
     _ART_TZ = timezone(timedelta(hours=-3))
@@ -1594,17 +1603,35 @@ class PublicMarket10YProvider:
         if close_mins < end_mins <= cls._LATEST_CLOSE_MINUTES:
             cls._MARKET_CLOSE_HM = (end_mins // 60, end_mins % 60)
 
-    @staticmethod
-    def _ratchet_seed_price(inst: dict[str, Any], last_val: float) -> None:
+    @classmethod
+    def _ratchet_seed_price(
+        cls,
+        inst: dict[str, Any],
+        last_val: float,
+        source: str,
+        previous_close: float,
+    ) -> None:
         """
         Live State Ratchet: el último precio real descargado reemplaza en memoria a la
-        semilla estática, para que ningún fallback posterior revierta a un precio viejo.
+        semilla estática, para que ningún fallback posterior revierta a un precio viejo,
+        y queda registrado como precio real persistible.
         """
         real_price = round(last_val, 2)
         inst["target_price"] = real_price
         seed = BYMA_CURATED_UNIVERSE_MAP.get(inst["ticker"])
         if seed is not None:
             seed["target_price"] = real_price
+        cls._REAL_PRICES[inst["ticker"]] = {
+            "price": real_price,
+            "previous_close": round(previous_close, 2),
+            "source": source,
+            "observed_at": datetime.now(UTC).isoformat(),
+        }
+
+    @classmethod
+    def real_price_snapshot(cls) -> dict[str, dict[str, Any]]:
+        """Copia del último precio real por ticker; excluye micro-ticks y semillas."""
+        return {ticker: dict(entry) for ticker, entry in cls._REAL_PRICES.items()}
 
     @classmethod
     async def fetch_live_fx_rates(
@@ -1724,7 +1751,9 @@ class PublicMarket10YProvider:
                                             day_open = meta.get("regularMarketOpen") or (
                                                 opens[-1] if opens else prev_val
                                             )
-                                            cls._ratchet_seed_price(inst, last_val)
+                                            cls._ratchet_seed_price(
+                                                inst, last_val, "YAHOO_LIVE", prev_val
+                                            )
                                             if meta.get("regularMarketOpen") or opens:
                                                 cls._SESSION_OPEN[t] = round(float(day_open), 2)
                                             return {
@@ -1778,7 +1807,9 @@ class PublicMarket10YProvider:
                                             cls._LIVE_STATE.get(t, {}).get("previous_close")
                                             or last_val
                                         )
-                                        cls._ratchet_seed_price(inst, last_val)
+                                        cls._ratchet_seed_price(
+                                            inst, last_val, "GOOGLE_BCBA_LIVE", prev_val
+                                        )
                                         chg_nom = round(last_val - prev_val, 2)
                                         chg_pct = (
                                             round((chg_nom / prev_val) * 100.0, 2)
@@ -2262,7 +2293,34 @@ class PublicMarket10YProvider:
         return sum(1 for r in results if isinstance(r, list) and r)
 
     @classmethod
-    async def prewarm_and_loop(cls) -> None:
+    async def run_sync_cycle(
+        cls,
+        force_quotes: bool,
+        on_real_prices: RealPricesSink | None = None,
+    ) -> int:
+        """
+        Un ciclo de sincronización: refresca memoria y entrega los precios reales al
+        receptor (persistencia MTM). Una falla del receptor se registra y no corta el ciclo.
+        """
+        warmed = await cls._refresh_prewarm_set(force_quotes=force_quotes)
+        if on_real_prices is not None:
+            snapshot = cls.real_price_snapshot()
+            if snapshot:
+                try:
+                    # Acotado: una base bloqueada no puede detener el refresco de cotizaciones
+                    await asyncio.wait_for(
+                        on_real_prices(snapshot), timeout=cls.SINK_TIMEOUT_SECONDS
+                    )
+                except TimeoutError:
+                    logger.warning(
+                        "market_real_prices_sink_timeout timeout_s=%.1f", cls.SINK_TIMEOUT_SECONDS
+                    )
+                except Exception as exc:
+                    logger.warning("market_real_prices_sink_failed error=%s", exc)
+        return warmed
+
+    @classmethod
+    async def prewarm_and_loop(cls, on_real_prices: RealPricesSink | None = None) -> None:
         """
         Pre-calienta en memoria cotizaciones y series principales al arranque y luego las
         mantiene frescas en segundo plano, para que la primera vista de mercado responda
@@ -2270,7 +2328,7 @@ class PublicMarket10YProvider:
         """
         started = time.perf_counter()
         try:
-            warmed = await cls._refresh_prewarm_set(force_quotes=True)
+            warmed = await cls.run_sync_cycle(force_quotes=True, on_real_prices=on_real_prices)
             logger.info(
                 "market_prewarm_completed series=%d quotes=%d duration_ms=%.1f",
                 warmed,
@@ -2285,7 +2343,7 @@ class PublicMarket10YProvider:
             cycle_started = time.perf_counter()
             try:
                 # Sin forzar: respeta la ventana de sincronización externa de cotizaciones
-                await cls._refresh_prewarm_set(force_quotes=False)
+                await cls.run_sync_cycle(force_quotes=False, on_real_prices=on_real_prices)
                 logger.debug(
                     "market_background_sync duration_ms=%.1f",
                     (time.perf_counter() - cycle_started) * 1000.0,
@@ -2294,11 +2352,13 @@ class PublicMarket10YProvider:
                 logger.debug("market_background_sync_failed error=%s", exc)
 
     @classmethod
-    def start_background_sync(cls) -> asyncio.Task[None]:
+    def start_background_sync(
+        cls, on_real_prices: RealPricesSink | None = None
+    ) -> asyncio.Task[None]:
         """Inicia (una sola vez) la tarea de pre-calentamiento y sincronización continua."""
         if cls._BG_TASK is None or cls._BG_TASK.done():
             cls._BG_TASK = asyncio.create_task(
-                cls.prewarm_and_loop(), name="investai-market-prewarm"
+                cls.prewarm_and_loop(on_real_prices), name="investai-market-prewarm"
             )
         return cls._BG_TASK
 

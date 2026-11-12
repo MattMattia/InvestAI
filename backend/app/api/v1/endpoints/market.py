@@ -13,7 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, get_market_service
@@ -34,7 +34,6 @@ from app.domain.services.market_data_provider import (
 )
 from app.domain.services.market_history_service import MarketHistoryService
 from app.models.asset import AssetModel
-from app.models.holding import HoldingModel
 from app.schemas.envelope import (
     APIErrorResponse,
     APIResponse,
@@ -88,8 +87,13 @@ def _error_response(
     "/live-quotes",
     response_model=APIResponse[dict[str, Any]],
     status_code=status.HTTP_200_OK,
-    summary="Obtener cotizaciones en vivo del universo BYMA con sincronización MTM de portafolios",
-    description="Descarga cotizaciones multi-fuente en tiempo real (Yahoo Finance .BA, Google Finance :BCBA y DolarApi) y actualiza automáticamente current_price en activos y tenencias de la BD.",
+    summary="Obtener cotizaciones en vivo del universo BYMA (solo lectura)",
+    description=(
+        "Cotizaciones multi-fuente en tiempo real (Yahoo Finance .BA, Google Finance :BCBA y "
+        "DolarApi) con micro-ticks de 5s. Endpoint público y de solo lectura: el Mark-To-Market "
+        "de las tenencias lo persiste exclusivamente la sincronización de fondo del backend con "
+        "el último precio real descargado."
+    ),
 )
 async def get_live_market_quotes(
     category: str | None = Query(
@@ -98,37 +102,12 @@ async def get_live_market_quotes(
     refresh: bool = Query(
         default=False, description="Forzar actualización en vivo sin usar la caché TTL"
     ),
-    db: AsyncSession = Depends(get_db),
 ):
     """
-    Endpoint para cotizaciones de mercado en tiempo real multi-fuente y sincronización MTM.
+    Endpoint de solo lectura para cotizaciones de mercado en tiempo real multi-fuente.
     """
     batch = await PublicMarket10YProvider.fetch_live_quotes_batch(force_refresh=refresh)
     quotes_list: list[dict[str, Any]] = batch.get("quotes", [])
-
-    # Sincronización Automática con Base de Datos (Mark-To-Market)
-    for q in quotes_list:
-        t = q["ticker"]
-        p_dec = Decimal(str(q["last_price"]))
-        # 1. Actualizar Holdings de todos los portafolios que posean este ticker
-        await db.execute(
-            update(HoldingModel).where(HoldingModel.asset_ticker == t).values(current_price=p_dec)
-        )
-        # 2. Actualizar AssetModel si existe en la base de datos
-        res = await db.execute(select(AssetModel).where(AssetModel.ticker == t))
-        asset = res.scalar_one_or_none()
-        if asset:
-            payload = dict(asset.metrics_payload or {})
-            payload["reference_price"] = q["last_price"]
-            payload["current_price"] = q["last_price"]
-            payload["change_pct"] = q["change_pct"]
-            payload["change_nominal"] = q["change_nominal"]
-            payload["updated_at"] = q["updated_at"]
-            payload["data_source"] = q["data_source"]
-            asset.metrics_payload = payload
-            asset.metrics_updated_at = datetime.now(UTC)
-
-    await db.commit()
 
     # Filtrar por categoría si se especifica
     filtered_quotes = quotes_list

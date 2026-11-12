@@ -133,6 +133,7 @@ def feed(monkeypatch: pytest.MonkeyPatch) -> FakeYahoo:
     monkeypatch.setattr(Provider, "_LIVE_STATE", {})
     monkeypatch.setattr(Provider, "_BARS_CACHE", {})
     monkeypatch.setattr(Provider, "_SESSION_OPEN", {})
+    monkeypatch.setattr(Provider, "_REAL_PRICES", {})
     monkeypatch.setattr(Provider, "_LAST_EXTERNAL_SYNC", 0.0)
     # The class-level semaphore binds to the first event loop that contends on it.
     monkeypatch.setattr(Provider, "_semaphore", asyncio.Semaphore(8))
@@ -393,3 +394,73 @@ async def test_intraday_first_point_matches_the_quote_open_column(
 
     assert bars[0]["open"] == NVDA_REAL_OPEN
     assert Provider._LIVE_STATE["NVDA"]["open_price"] == NVDA_REAL_OPEN
+
+
+async def test_real_price_snapshot_tracks_provider_prices_not_ticks_or_seeds(feed: FakeYahoo):
+    # Every provider unreachable: the calibrated seed is served but it is not a real price.
+    await Provider.fetch_live_quotes_batch(force_refresh=True)
+    assert Provider.real_price_snapshot() == {}
+
+    feed.routes["NVDA.BA"] = FakeResponse(
+        200, _daily_quote_payload(NVDA_REAL_PRICE, NVDA_REAL_OPEN, previous_close=13040.0)
+    )
+    await Provider.fetch_live_quotes_batch(force_refresh=True)
+    for _ in range(20):  # simulated micro-ticks move last_price, never the real price
+        await Provider.fetch_live_quotes_batch(["NVDA"])
+
+    snapshot = Provider.real_price_snapshot()
+    assert set(snapshot) == {"NVDA"}
+    assert snapshot["NVDA"]["price"] == NVDA_REAL_PRICE
+    assert snapshot["NVDA"]["previous_close"] == 13040.0
+    assert snapshot["NVDA"]["source"] == "YAHOO_LIVE"
+
+    snapshot["NVDA"]["price"] = 1.0  # callers get a copy, not the live state
+    assert Provider.real_price_snapshot()["NVDA"]["price"] == NVDA_REAL_PRICE
+
+
+async def test_sync_cycle_publishes_real_prices_and_survives_a_failing_sink(
+    monkeypatch: pytest.MonkeyPatch, feed: FakeYahoo
+):
+    feed.routes["NVDA.BA?range=5d&interval=1d"] = FakeResponse(
+        200, _daily_quote_payload(NVDA_REAL_PRICE, NVDA_REAL_OPEN, previous_close=13040.0)
+    )
+    monkeypatch.setattr(Provider, "PREWARM_TICKERS", ("NVDA",))
+    monkeypatch.setattr(Provider, "PREWARM_TIMEFRAMES", ("1M",))
+    published: list[dict[str, Any]] = []
+
+    async def sink(prices: dict[str, Any]) -> None:
+        published.append(prices)
+
+    await Provider.run_sync_cycle(force_quotes=True, on_real_prices=sink)
+
+    assert published and published[0]["NVDA"]["price"] == NVDA_REAL_PRICE
+
+    async def broken_sink(_prices: dict[str, Any]) -> None:
+        raise RuntimeError("database unavailable")
+
+    await Provider.run_sync_cycle(force_quotes=True, on_real_prices=broken_sink)  # no raise
+
+
+async def test_sync_cycle_does_not_hang_on_a_stalled_sink(
+    monkeypatch: pytest.MonkeyPatch, feed: FakeYahoo
+):
+    feed.routes["NVDA.BA?range=5d&interval=1d"] = FakeResponse(
+        200, _daily_quote_payload(NVDA_REAL_PRICE, NVDA_REAL_OPEN, previous_close=13040.0)
+    )
+    monkeypatch.setattr(Provider, "PREWARM_TICKERS", ("NVDA",))
+    monkeypatch.setattr(Provider, "PREWARM_TIMEFRAMES", ("1M",))
+    monkeypatch.setattr(Provider, "SINK_TIMEOUT_SECONDS", 0.05)
+    cancelled = asyncio.Event()
+
+    async def stalled_sink(_prices: dict[str, Any]) -> None:
+        try:
+            await asyncio.sleep(3600)  # e.g. a database lock that never releases
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    await asyncio.wait_for(
+        Provider.run_sync_cycle(force_quotes=True, on_real_prices=stalled_sink), timeout=5
+    )
+
+    assert cancelled.is_set()
