@@ -248,12 +248,25 @@ async def get_current_user_profile(
     return APIResponse(data=UserResponse.model_validate(current_user))
 
 
+# SEC: roles a user may assign to themselves. ADMIN grants cross-tenant visibility over
+# every portfolio and order, so it is never self-assignable.
+SELF_ASSIGNABLE_ROLES: frozenset[str] = frozenset({UserRole.VIEWER.value, UserRole.TRADER.value})
+
+
+def _role_value(role: UserRole | str) -> str:
+    return role.value if isinstance(role, UserRole) else str(role)
+
+
 @router.patch(
     "/me",
     response_model=APIResponse[UserResponse],
     status_code=status.HTTP_200_OK,
     summary="Actualizar perfil de inversor y rol operativo del usuario autenticado",
-    description="Permite actualizar nombre, perfil de riesgo e intercambiar rol RBAC para pruebas institucionales.",
+    description=(
+        "Permite actualizar nombre y perfil de riesgo, y alternar el propio rol entre VIEWER y "
+        "TRADER. Asignarse ADMIN (visibilidad sobre carteras de todos los usuarios) está "
+        "prohibido (403); un ADMIN sí puede conservar su rol o bajarse a uno operativo."
+    ),
     responses={
         401: {"model": APIErrorResponse},
         403: {"model": APIErrorResponse},
@@ -267,7 +280,20 @@ async def update_current_user_profile(
 ) -> APIResponse[UserResponse]:
     """
     Actualiza los atributos de perfil y rol en caliente del usuario autenticado.
+    La validación de rol ocurre antes de aplicar cualquier cambio: una solicitud rechazada
+    no modifica nada.
     """
+    if payload.role is not None:
+        requested_role = _role_value(payload.role)
+        if (
+            requested_role not in SELF_ASSIGNABLE_ROLES
+            and _role_value(current_user.role) != UserRole.ADMIN.value
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="El rol ADMIN no puede autoasignarse.",
+            )
+
     if payload.full_name is not None:
         current_user.full_name = payload.full_name.strip()
 
@@ -281,9 +307,7 @@ async def update_current_user_profile(
         current_user.investor_profile = normalized_profile
 
     if payload.role is not None:
-        current_user.role = (
-            payload.role.value if isinstance(payload.role, UserRole) else str(payload.role)
-        )
+        current_user.role = _role_value(payload.role)
 
     current_user.updated_at = datetime.now(UTC)
     await db.commit()

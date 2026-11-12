@@ -68,11 +68,12 @@ async def forensic_env() -> AsyncGenerator[dict, None]:
     await engine.dispose()
 
 
-async def _seed_trader_user(
+async def _seed_user(
     session_factory: async_sessionmaker[AsyncSession],
-    prefix: str = "audit_trader",
+    prefix: str,
+    role: UserRole,
 ) -> dict:
-    """Crea un usuario TRADER directamente en la sesión de prueba y retorna sus cabeceras JWT."""
+    """Crea un usuario con el rol indicado en la sesión de prueba y retorna sus cabeceras JWT."""
     unique_email = f"{prefix}_{uuid.uuid4().hex[:8]}@investai.com"
     async with session_factory() as session:
         user = UserModel(
@@ -80,49 +81,118 @@ async def _seed_trader_user(
             hashed_password=get_password_hash("StrongPassword123!"),
             full_name="Operador Institucional Auditado",
             investor_profile="MODERATE",
-            role=UserRole.TRADER,
+            role=role,
             is_active=True,
         )
         session.add(user)
         await session.commit()
         await session.refresh(user)
-        token = create_access_token(subject=str(user.id), role=UserRole.TRADER.value)
+        token = create_access_token(subject=str(user.id), role=role.value)
         return {"headers": {"Authorization": f"Bearer {token}"}, "user_id": str(user.id)}
 
 
+async def _seed_trader_user(
+    session_factory: async_sessionmaker[AsyncSession],
+    prefix: str = "audit_trader",
+) -> dict:
+    """Crea un usuario TRADER directamente en la sesión de prueba y retorna sus cabeceras JWT."""
+    return await _seed_user(session_factory, prefix, UserRole.TRADER)
+
+
+def _payload(response: httpx.Response) -> dict:
+    raw = response.json()
+    return raw.get("data", raw)
+
+
 @pytest.mark.asyncio
-async def test_patch_auth_me_hot_swap_profile_and_rbac_role(
+async def test_patch_auth_me_hot_swap_profile_and_operational_role(
     forensic_env: dict,
 ) -> None:
-    """Verifica que PATCH /api/v1/auth/me permita conmutar perfil de inversor y rol RBAC en caliente."""
+    """PATCH /api/v1/auth/me permite cambiar perfil y alternar entre VIEWER y TRADER."""
     client: httpx.AsyncClient = forensic_env["client"]
     ctx = await _seed_trader_user(forensic_env["session_factory"], "hotswap")
     headers = ctx["headers"]
 
-    # Switch to CONSERVATIVE + ADMIN via PATCH /api/v1/auth/me
     update_res = await client.patch(
         "/api/v1/auth/me",
         headers=headers,
         json={
             "full_name": "Director de Cumplimiento",
             "investor_profile": "CONSERVATIVE",
-            "role": "ADMIN",
+            "role": "VIEWER",
         },
     )
     assert update_res.status_code == 200
-    raw_updated = update_res.json()
-    updated = raw_updated.get("data", raw_updated)
+    updated = _payload(update_res)
     assert updated["full_name"] == "Director de Cumplimiento"
     assert updated["investor_profile"] == "CONSERVATIVE"
-    assert updated["role"] == "ADMIN"
+    assert updated["role"] == "VIEWER"
 
-    # Verify GET /api/v1/auth/me reflects the hot-swapped role and profile
+    # A self-registered VIEWER activates trading on its own account
+    back_res = await client.patch("/api/v1/auth/me", headers=headers, json={"role": "TRADER"})
+    assert back_res.status_code == 200
+    assert _payload(back_res)["role"] == "TRADER"
+
     me_res = await client.get("/api/v1/auth/me", headers=headers)
     assert me_res.status_code == 200
-    raw_me = me_res.json()
-    me_data = raw_me.get("data", raw_me)
-    assert me_data["role"] == "ADMIN"
+    me_data = _payload(me_res)
+    assert me_data["role"] == "TRADER"
     assert me_data["investor_profile"] == "CONSERVATIVE"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("starting_role", [UserRole.TRADER, UserRole.VIEWER])
+async def test_patch_auth_me_rejects_self_promotion_to_admin(
+    forensic_env: dict,
+    starting_role: UserRole,
+) -> None:
+    """Un usuario no ADMIN nunca puede asignarse ADMIN (acceso a carteras de otros usuarios)."""
+    client: httpx.AsyncClient = forensic_env["client"]
+    ctx = await _seed_user(forensic_env["session_factory"], "escalation", starting_role)
+    headers = ctx["headers"]
+
+    res = await client.patch(
+        "/api/v1/auth/me",
+        headers=headers,
+        json={
+            "full_name": "Intento de Escalada",
+            "investor_profile": "AGGRESSIVE",
+            "role": "ADMIN",
+        },
+    )
+
+    assert res.status_code == 403
+    body = res.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "FORBIDDEN"
+
+    # The rejected request is atomic: nothing else in it was applied either
+    me_data = _payload(await client.get("/api/v1/auth/me", headers=headers))
+    assert me_data["role"] == starting_role.value
+    assert me_data["full_name"] == "Operador Institucional Auditado"
+    assert me_data["investor_profile"] == "MODERATE"
+
+
+@pytest.mark.asyncio
+async def test_patch_auth_me_admin_can_keep_or_step_down_role(
+    forensic_env: dict,
+) -> None:
+    """Un ADMIN puede reenviar su propio rol o bajarse a un rol operativo."""
+    client: httpx.AsyncClient = forensic_env["client"]
+    ctx = await _seed_user(forensic_env["session_factory"], "admin_self", UserRole.ADMIN)
+    headers = ctx["headers"]
+
+    keep_res = await client.patch("/api/v1/auth/me", headers=headers, json={"role": "ADMIN"})
+    assert keep_res.status_code == 200
+    assert _payload(keep_res)["role"] == "ADMIN"
+
+    down_res = await client.patch("/api/v1/auth/me", headers=headers, json={"role": "TRADER"})
+    assert down_res.status_code == 200
+    assert _payload(down_res)["role"] == "TRADER"
+
+    # Once stepped down, the account cannot climb back by itself
+    again_res = await client.patch("/api/v1/auth/me", headers=headers, json={"role": "ADMIN"})
+    assert again_res.status_code == 403
 
 
 def test_balanz_real_header_detection_and_descriptive_ticker_cleaning() -> None:

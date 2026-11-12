@@ -228,33 +228,36 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                     desc: "Modo restringido: bloquea creación de órdenes, ingesta y mutaciones para demostrar blindaje RBAC.",
                   },
                 ] as const
-              ).map((r) => {
-                const isSelected = selectedRole === r.role;
-                return (
-                  <button
-                    key={r.role}
-                    type="button"
-                    onClick={() => setSelectedRole(r.role)}
-                    className={`w-full p-3 rounded-xl border text-left flex items-start justify-between gap-3 transition ${
-                      isSelected
-                        ? "bg-slate-800/90 border-sky-500 shadow-sm"
-                        : "bg-slate-950 border-slate-800/80 hover:border-slate-700"
-                    }`}
-                  >
-                    <div className="space-y-0.5">
-                      <div className="text-xs font-semibold text-slate-100 flex items-center gap-2">
-                        <span>{r.title}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 leading-relaxed">{r.desc}</p>
-                    </div>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border shrink-0 ${r.badgeClass}`}
+              )
+                // ADMIN is never self-assignable: it is only shown to accounts that already hold it
+                .filter((r) => r.role !== "ADMIN" || user.role === "ADMIN")
+                .map((r) => {
+                  const isSelected = selectedRole === r.role;
+                  return (
+                    <button
+                      key={r.role}
+                      type="button"
+                      onClick={() => setSelectedRole(r.role)}
+                      className={`w-full p-3 rounded-xl border text-left flex items-start justify-between gap-3 transition ${
+                        isSelected
+                          ? "bg-slate-800/90 border-sky-500 shadow-sm"
+                          : "bg-slate-950 border-slate-800/80 hover:border-slate-700"
+                      }`}
                     >
-                      {r.role}
-                    </span>
-                  </button>
-                );
-              })}
+                      <div className="space-y-0.5">
+                        <div className="text-xs font-semibold text-slate-100 flex items-center gap-2">
+                          <span>{r.title}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">{r.desc}</p>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border shrink-0 ${r.badgeClass}`}
+                      >
+                        {r.role}
+                      </span>
+                    </button>
+                  );
+                })}
             </div>
           </div>
 
